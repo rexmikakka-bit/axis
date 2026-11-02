@@ -1499,6 +1499,57 @@ function check(group, label, actual, expected, tol = 0.005) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 12b2. HULL / SUBSYSTEM MISSILE BONUSES THAT NAME TWO SKILLS, AND BOMBER BOMB DAMAGE.
+//
+// SHIP_MISSILE_RANGE was generated keeping only the FIRST skill of pyfa's
+// `requiresSkill(A) or requiresSkill(B)` filters, so the second missile size lost the bonus: Golem
+// and Widow torpedoes, Claymore/Enforcer/Cobra HAMs, Pacifier/Sidewinder light missiles,
+// Marshal/Python cruise missiles. The subsystem copies (Tengu 4331, Loki 6923) were only ever
+// looked up on the HULL's effects, so the Tengu's +50% HM/HAM velocity never applied at all (a
+// Tengu HML fit read 77.5 km against pyfa's 116) and the Loki's hand-coded path gated on MLO and
+// gave its light missiles the HM bonus. Separately, the bombers' racial bomb damage
+// (eliteBonusCovertOps1, effects 3024/3026/3027/3028) was never in SHIP_MISSILE_DMG.
+//
+// All numbers from eos: one T2 launcher, Scourge ammo, all-V character, the charge's
+// maxVelocity × explosionDelay; bombs are getWeaponVolley().
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  console.log('\nTWO-SKILL MISSILE BONUSES');
+  const TENGU = ['Tengu Core - Augmented Graviton Reactor', 'Tengu Defensive - Supplemental Screening',
+    'Tengu Offensive - Accelerated Ejection Bay', 'Tengu Propulsion - Chassis Optimization'];
+  const LOKI = ['Loki Core - Immobility Drivers', 'Loki Defensive - Covert Reconfiguration',
+    'Loki Offensive - Launcher Efficiency Configuration', 'Loki Propulsion - Intercalated Nanofibers'];
+  const one = (ship, launcher, ammo, subs = []) => calcFitStats({ typeID: tid(ship), name: ship },
+    { high: [M(launcher, 'active', ammo)], mid: [], low: [], rigs: [], subsystems: subs.map(n => ({ typeID: tid(n) })) },
+    [], null, {});
+  const range = (cs) => {
+    const g = (cs.graphWeapons ?? [])[0];
+    return g ? g.lowerRange * (1 - g.higherChance) + g.higherRange * g.higherChance : 0;
+  };
+  for (const [ship, launcher, ammo, eos, subs] of [
+    ['Tengu',      'Heavy Missile Launcher II',         'Scourge Heavy Missile',         94331.25, TENGU],
+    ['Tengu',      'Heavy Assault Missile Launcher II', 'Scourge Heavy Assault Missile', 30375,    TENGU],
+    ['Tengu',      'Rapid Light Missile Launcher II',   'Scourge Light Missile',         42187.5,  TENGU],
+    ['Loki',       'Heavy Assault Missile Launcher II', 'Scourge Heavy Assault Missile', 25312.5,  LOKI],
+    ['Loki',       'Rapid Light Missile Launcher II',   'Scourge Light Missile',         42187.5,  LOKI],
+    ['Golem',      'Torpedo Launcher II',               'Scourge Torpedo',               43740],
+    ['Widow',      'Torpedo Launcher II',               'Scourge Torpedo',               43740],
+    ['Claymore',   'Heavy Assault Missile Launcher II', 'Scourge Heavy Assault Missile', 30375],
+    ['Pacifier',   'Light Missile Launcher II',         'Scourge Light Missile',         63281.25],
+    ['Sidewinder', 'Light Missile Launcher II',         'Scourge Light Missile',         63281.25],
+    ['Enforcer',   'Heavy Assault Missile Launcher II', 'Scourge Heavy Assault Missile', 30375],
+    ['Cobra',      'Heavy Assault Missile Launcher II', 'Scourge Heavy Assault Missile', 30375],
+    ['Marshal',    'Cruise Missile Launcher II',        'Scourge Cruise Missile',        222075],
+    ['Python',     'Cruise Missile Launcher II',        'Scourge Cruise Missile',        222075],
+  ]) check('twoskill', `${ship} ${ammo} range (m)`, range(one(ship, launcher, ammo, subs)), eos, 0.002);
+
+  for (const [ship, bomb, eos] of [
+    ['Purifier', 'Electron Bomb', 7250], ['Purifier', 'Shrapnel Bomb', 5800],
+    ['Manticore', 'Concussion Bomb', 7250], ['Hound', 'Shrapnel Bomb', 7250], ['Nemesis', 'Scorch Bomb', 7250],
+  ]) check('twoskill', `${ship} ${bomb} volley`, one(ship, 'Bomb Launcher I', bomb).weaponVolley.total, eos, 1e-6);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 12c. PROJECTED SENSOR MODULES — EWAR resistance from bursts, and boost stacking.
 //
 // Two bugs behind the same symptom (lock range far off eos on fits under command links):
