@@ -8567,7 +8567,7 @@ Nanofiber Internal Structure II
 }
 
 // ─── PRE-RELEASE SYNCHRONIZER RIGS ────────────────────────────────────────────────────────────────
-// The five pirate Synchronizer rigs (data/prerelease-rigs.js), built from one preview screenshot. NOT
+// The nine Synchronizer rigs (data/prerelease-rigs.js), built from preview screenshots. NOT
 // pyfa-validated: pyfa has no such rigs. Every expected value is the screenshot's percentage applied
 // by hand to the base attribute, so these pin Owen's reading of the text rather than CCP's numbers:
 // +1 point per fitted faction module on the four bonuses only, abyssal modules never counted, and
@@ -8576,7 +8576,7 @@ Nanofiber Internal Structure II
   console.log('\nPRE-RELEASE SYNCHRONIZER RIGS');
   const { Fit } = await import('./dogma-engine-init.js');
   const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
-  const { isPrereleaseRig } = await import('./data/prerelease-rigs.js');
+  const { isPrereleaseRig, prereleaseSkillApplies } = await import('./data/prerelease-rigs.js');
   // A raw Fit sets no skills, so the drawback skill never runs and the penalty is at full size.
   const raw = (hull, mods, rig) => {
     const f = new Fit(tid(hull));
@@ -8619,6 +8619,35 @@ Nanofiber Internal Structure II
   check('sync', 'Sansha: +11% afterburner velocity bonus', san.items[1].get('speedFactor'), 149.85);
   check('sync', 'Sansha: a microwarpdrive is not an afterburner', san.items[2].get('capacitorNeed'), 160);
 
+  // The empire navy four: four bonuses, no penalty. One faction module fitted, so every bonus reads 6%.
+  const rf = raw('Maelstrom', [['Republic Fleet Gyrostabilizer', 'online'], ['Large Shield Booster II'], ['Large Ancillary Shield Booster']], 'Large Republic Fleet Synchronizer');
+  check('sync', 'Republic Fleet: one module, no penalty slot', bonuses(rf.rig) + ' ' + rf.rig.get('synchronizerDrawback'), '6/6/-6/6 0');
+  check('sync', 'Republic Fleet: -6% shield booster cycle time', rf.items[1].get('duration'), 3760);
+  check('sync', 'Republic Fleet: ancillary boosters count as shield boosters', rf.items[2].get('duration'), 3760);
+  check('sync', 'Republic Fleet: +6% velocity', rf.ship.get('maxVelocity'), 127.2);
+  const fn = raw('Megathron', [['Federation Navy Magnetic Field Stabilizer', 'online'], ['Large Armor Repairer II']], 'Large Federation Navy Synchronizer');
+  check('sync', 'Federation Navy: +6% armor repair amount', fn.items[1].get('armorDamageAmount'), 975.2);
+  check('sync', 'Federation Navy: +6% structure HP', fn.ship.get('hp'), 8745);
+  const cn = (() => {
+    const f = new Fit(tid('Raven'));
+    f.addModule(tid('Caldari Navy Ballistic Control System'), 'online');
+    const l = f.addModule(tid('Cruise Missile Launcher II'), 'active');
+    f.setCharge(l, tid('Scourge Cruise Missile'));
+    f.addModule(tid('Large Caldari Navy Synchronizer'), 'online');
+    f.calculate();
+    return { ship: f.ship, charge: l._charge };
+  })();
+  check('sync', 'Caldari Navy: +6% missile damage, on the loaded charge', cn.charge.get('kineticDamage'), 397.5);
+  check('sync', 'Caldari Navy: +6% missile velocity', cn.charge.get('maxVelocity'), 4982);
+  check('sync', 'Caldari Navy: +6% shield HP', cn.ship.get('shieldCapacity'), 8162);
+  check('sync', 'Caldari Navy: +6% lock range', cn.ship.get('maxTargetRange'), 95400);
+  const inav = raw('Apocalypse', [['Imperial Navy Heat Sink', 'online'], ['Mega Pulse Laser II']], 'Large Imperial Navy Synchronizer');
+  check('sync', 'Imperial Navy: -6% energy turret activation cost', inav.items[1].get('capacitorNeed'), 30.456);
+  check('sync', 'Imperial Navy: +6% capacitor', inav.ship.get('capacitorCapacity'), 7420);
+  check('sync', 'Imperial Navy: +6% armor HP', inav.ship.get('armorHP'), 8162);
+  check('sync', 'the skill control shows only where there is a penalty',
+    [RIG, 'Large Imperial Navy Synchronizer'].map(n => prereleaseSkillApplies(tid(n)) ? 1 : 0).join(''), '10');
+
   // The skill, through calcFitStats the way the app runs it.
   const omen = lv => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: [{ typeID: tid(RIG), state: 'online' }] },
     [], { ...SKILLS_ALL_V, synchronizerRigging: lv }, {}).capRechargeMs;
@@ -8626,7 +8655,7 @@ Nanofiber Internal Structure II
   check('sync', 'skill at V: penalty halved to 100%', omen(5), 847500);
   check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizerRigging')?.group ?? '', 'Rigging');
   const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
-  check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '5/5/5');
+  check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '9/9/9');
   check('sync', 'calibration 250 on every size', [...new Set(rigNode.children.flatMap(c => c.mods.map(m => m.calib)))].join(','), '250');
   check('sync', 'every rig is flagged pre-release', rigNode.children.every(c => c.mods.every(m => isPrereleaseRig(m.typeID))) ? 1 : 0, 1, 0);
   let refused = 0;

@@ -31,6 +31,10 @@
 // before it indexes them. The per-module count is the engine's (Fit._synchronizeRigs), driven by the
 // `sync` field on each rig type.
 //
+// The four empire navy Synchronizers (Republic Fleet, Federation Navy, Caldari Navy, Imperial Navy)
+// came later, from four Large info windows Owen passed on. They have four bonuses and NO penalty, so
+// the skill does nothing for them. Same +1% rule, same 250 calibration, same three sizes.
+//
 // It retires itself: everything is skipped once the bundle has a type named "Medium Dark Blood
 // Synchronizer". When CCP ships them, delete this file, its call sites and the pre-release skill
 // control (lib/prerelease-skill.js and its users), and add the real effects to the bundle.
@@ -56,7 +60,7 @@ export const SYNC_BONUS_ATTRS = ['synchronizerBonus1', 'synchronizerBonus2', 'sy
 
 // Groups and skills the modifiers filter on.
 const G_ENERGY_TURRET = 53, G_PROJECTILE = 55, G_HYBRID = 74, G_NOS = 68, G_NEUT = 71, G_ECM = 201;
-const S_DRONES = 3436, S_AFTERBURNER = 3450;
+const S_DRONES = 3436, S_AFTERBURNER = 3450, S_MISSILES = 3319, S_SHIELD_OP = 3416, S_REPAIR = 3393;
 
 const ship = (attr, src) => ({ domain: 'shipID', func: 'ItemModifier', modifiedAttributeID: attr, modifyingAttributeID: src, operation: 6 });
 const group = (g, attr, src) => ({ domain: 'shipID', func: 'LocationGroupModifier', groupID: g, modifiedAttributeID: attr, modifyingAttributeID: src, operation: 6 });
@@ -69,11 +73,14 @@ const RECHARGE = 55, SHIELD_HP = 263, ARMOR_HP = 265, HULL_HP = 9, SIG = 552, WA
 const DRONE_RANGE = 458, LOCK_RANGE = 76, WEB_RESIST = 2115, VELOCITY = 37, CAP_NEED = 6;
 const DAMAGE = 64, FALLOFF = 158, TRACKING = 160, OPTIMAL = 54, FALLOFF_EFF = 2044;
 const NOS_AMOUNT = 90, NEUT_AMOUNT = 97, OVERHEAT_CYCLE = 1206, SPEED_FACTOR = 20, OVERHEAT_SPEED = 1223;
+const DURATION = 73, REPAIR_AMOUNT = 84, CAP_CAPACITY = 482;
+const MISSILE_DAMAGES = [114, 116, 117, 118];
 const SHIELD_RESONANCES = [271, 272, 273, 274];
 const ECM_STRENGTHS = [238, 239, 240, 241];
 
 // One entry per faction. `v` is [drawback, bonus1..4] in the attribute's own sign: a "reduction" or a
 // resistance is negative, because op 6 multiplies by (1 + v/100). `m` is the modifier list per slot.
+// The four empire navy rigs have no drawback: their `v[0]` is null and `m[0]` empty.
 // `icon` borrows the iconID of the existing rig family closest to each one's weapon bonus.
 const FACTIONS = [
   {
@@ -169,6 +176,78 @@ const FACTIONS = [
       ['5%', 'bonus to energy turret tracking'],
     ],
   },
+  // The empire navy four, from a second set of screenshots (Large only shown, 2026-11-01).
+  {
+    prefix: 'Republic Fleet', icon: 3201 /* projectile weapon rigs */,
+    v: [null, 5, 5, -5, 5],
+    m: [
+      [],
+      [group(G_PROJECTILE, DAMAGE, B1)],
+      [group(G_PROJECTILE, TRACKING, B2)],
+      // Ancillary boosters require Shield Operation too, so they are included.
+      [skill(S_SHIELD_OP, DURATION, B3)],
+      [ship(VELOCITY, B4)],
+    ],
+    lines: [
+      ['5%', 'bonus to Projectile Turret damage'],
+      ['5%', 'bonus to Projectile Turret tracking'],
+      ['5%', 'bonus to Shield Booster cycle time'],
+      ['5%', 'bonus to ship Maximum Velocity'],
+    ],
+  },
+  {
+    prefix: 'Federation Navy', icon: 3202 /* hybrid weapon rigs */,
+    v: [null, 5, 5, 5, 5],
+    m: [
+      [],
+      [group(G_HYBRID, DAMAGE, B1)],
+      [group(G_HYBRID, TRACKING, B2)],
+      [skill(S_REPAIR, REPAIR_AMOUNT, B3)],                                     // ancillary repairers included
+      [ship(HULL_HP, B4)],
+    ],
+    lines: [
+      ['5%', 'bonus to Hybrid Weapon damage'],
+      ['5%', 'bonus to Hybrid Weapon tracking'],
+      ['5%', 'bonus to Armor Repairer amount'],
+      ['5%', 'bonus to Structure hitpoints'],
+    ],
+  },
+  {
+    prefix: 'Caldari Navy', icon: 3197 /* launcher rigs */,
+    v: [null, 5, 5, 5, 5],
+    m: [
+      [],
+      // A ship-located skill filter also reaches loaded charges (dogma-engine.js), as hull missile
+      // bonuses do. An owner-located one would not.
+      MISSILE_DAMAGES.map(a => skill(S_MISSILES, a, B1)),
+      [skill(S_MISSILES, VELOCITY, B2)],
+      [ship(SHIELD_HP, B3)],
+      [ship(LOCK_RANGE, B4)],
+    ],
+    lines: [
+      ['5%', 'bonus to Missile Damage'],
+      ['5%', 'bonus to Missile maximum velocity'],
+      ['5%', 'bonus to Shield hitpoints'],
+      ['5%', 'bonus to maximum targeting range'],
+    ],
+  },
+  {
+    prefix: 'Imperial Navy', icon: 3203 /* energy weapon rigs */,
+    v: [null, 5, -5, 5, 5],
+    m: [
+      [],
+      [group(G_ENERGY_TURRET, DAMAGE, B1)],
+      [group(G_ENERGY_TURRET, CAP_NEED, B2)],
+      [ship(CAP_CAPACITY, B3)],
+      [ship(ARMOR_HP, B4)],
+    ],
+    lines: [
+      ['5%', 'bonus to Energy Turret damage'],
+      ['5%', 'reduction in Energy Turret capacitor activation cost'],
+      ['5%', 'bonus to maximum Capacitor amount'],
+      ['5%', 'bonus to Armor hitpoints'],
+    ],
+  },
 ];
 
 // Small/Medium/Large: rigSize, and the T1 rigs' volume (5/10/20 m3) and mass/HP.
@@ -207,19 +286,20 @@ export function applyPrereleaseRigs(types, effects, attrs) {
   for (const [id, a] of Object.entries(NEW_ATTRS)) attrs[id] ??= a;
 
   FACTIONS.forEach((f, fi) => {
-    f.m.forEach((mods, slot) => { effects[effectID(fi, slot)] = { c: 0, m: mods }; });
+    const slots = f.m.flatMap((mods, slot) => mods.length ? [slot] : []);
+    for (const slot of slots) effects[effectID(fi, slot)] = { c: 0, m: f.m[slot] };
     SIZES.forEach((s, si) => {
       const id = 990901 + fi * 3 + si;
       const name = `${s.name} ${f.prefix} Synchronizer`;
       const a = {
         4: 200, 9: 40, 38: 0, 161: s.volume, 162: 100, 422: 1, 633: 0,
         1153: CALIBRATION, 1547: s.rigSize,
-        [A_DRAWBACK]: f.v[0],
+        ...(f.v[0] != null && { [A_DRAWBACK]: f.v[0] }),
         ...Object.fromEntries(A_BONUS.map((aid, i) => [aid, f.v[i + 1]])),
       };
       types[id] = {
         n: name, g: GROUP, gn: GROUP_NAME, c: 7, mg: 4, a,
-        e: [RIG_SLOT_EFFECT, ...f.m.map((_, slot) => effectID(fi, slot))],
+        e: [RIG_SLOT_EFFECT, ...slots.map(slot => effectID(fi, slot))],
         sync: f.prefix,
       };
       PRERELEASE_RIG_TYPE_IDS.add(id);
@@ -234,7 +314,8 @@ export function applyPrereleaseRigs(types, effects, attrs) {
           ],
         },
       };
-      PRERELEASE_RIG_DESCRIPTIONS[id] = `${PRERELEASE_NOTICE} The penalty is reduced by the ${PRERELEASE_SKILL_NAME} skill, also pre-release: set its level below or in Settings > Skills.`;
+      PRERELEASE_RIG_DESCRIPTIONS[id] = f.v[0] == null ? PRERELEASE_NOTICE
+        : `${PRERELEASE_NOTICE} The penalty is reduced by the ${PRERELEASE_SKILL_NAME} skill, also pre-release: set its level below or in Settings > Skills.`;
     });
   });
 
@@ -268,3 +349,7 @@ export function applyPrereleaseRigModules(modulesData, marketGroups, typeIcons) 
 
 /** True for a rig or skill added here. */
 export const isPrereleaseRig = typeID => PRERELEASE_RIG_TYPE_IDS.has(Number(typeID)) || Number(typeID) === SKILL_ID;
+
+/** True where the skill control means something: the skill itself, or a rig with a penalty. */
+export const prereleaseSkillApplies = typeID => Number(typeID) === SKILL_ID
+  || (PRERELEASE_RIG_TYPE_IDS.has(Number(typeID)) && RIGS.find(r => r.id === Number(typeID))?.faction.v[0] != null);

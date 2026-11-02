@@ -34,7 +34,7 @@ import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS, dismissKeybo
 import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
-import { PRERELEASE_RIG_DESCRIPTIONS, isPrereleaseRig } from "../data/prerelease-rigs.js";
+import { PRERELEASE_RIG_DESCRIPTIONS, isPrereleaseRig, prereleaseSkillApplies } from "../data/prerelease-rigs.js";
 import { PrereleaseSkillControl } from "./prerelease-skill.jsx";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
@@ -1434,7 +1434,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
       {/* A pre-release Synchronizer rig shows its bonus text (the in-game Traits tab) and the control
           for the rumoured skill that cuts its penalty, right where you are reading about it. */}
       {isPrereleaseRig(typeID) && hasTraits(typeID) && <div style={{marginBottom:2}}><TraitsPanel typeID={typeID}/></div>}
-      {isPrereleaseRig(typeID) && <PrereleaseSkillControl/>}
+      {prereleaseSkillApplies(typeID) && <PrereleaseSkillControl/>}
       {/* Under the description, above the skills — it is a fact about the item, not a stat. */}
       {priceContent??(mutaplasmid?<div style={{fontSize:11,color:C.textMute,marginBottom:12}}>{t('no price')}</div>:<ItemPrice typeID={typeID}/>)}
       {/* Required skills */}
