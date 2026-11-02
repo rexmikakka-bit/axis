@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { calcFitStats, computeCommandBursts, computeProjectedReps, projectionResistances, assistanceFactors, applyRemoteRepDiminishing, calcRangeFactor, stackingPenalty, checkFitSkills, SKILL_DEFAULTS, TYPES, tidByName, isT3Cruiser, t3cSlotLayout, T3C_SUBSYSTEM_GROUPS } from "./calc.js";
+import { calcFitStats, checkFitSkills, SKILL_DEFAULTS, TYPES, tidByName, isT3Cruiser, t3cSlotLayout, T3C_SUBSYSTEM_GROUPS } from "./calc.js";
 import { SAVED_FITS_SEED, getGlobalCss, _bundleListeners, _bundleReady, buildSlotsFromEFT, generateEmptySlots, reconcileRacks, lookupShip, optimizeSlotPrice, moduleVariations, haptic, parseEFT, readClipboardText } from "./lib/core.js";
 import { DRONE_TYPES } from "./dogma-engine-init.js";
 import { fetchPrices } from "./prices.js";
@@ -23,6 +23,7 @@ import { resolveTabs, MAX_OPEN_TABS, sameTab } from "./lib/fit-tabs.js";
 import { getLoadedFitsDB, persistFitsDB } from "./lib/fits-store.js";
 import { buildFitEntry, emptyImplants } from "./lib/fit-entry.js";
 import { resolvePilotSkills, describeSkillSheet } from "./lib/pilot.js";
+import { buildExternalBursts, buildProjectedEffects } from "./lib/projection.js";
 import { resetScrollMemory } from "./lib/use-scroll-memory.js";
 import { initBackButton, BACK_APP } from "./lib/back-button.js";
 import { useBackHandler } from "./lib/use-back-handler.js";
@@ -45,10 +46,8 @@ const CLOSE_BROWSER_ON_ADD_KEY = 'axis_close_browser_on_add';
 // per render. Both memos below are keyed on `fitsDB`, which the autosave write-back replaces after
 // every edit, and both feed every fit calculation on screen — so handing back a fresh empty object
 // makes a single tap recalculate the whole fit twice. NO_PROJECTION is exactly what the memo
-// computes with no projected fits: no reps, no penalty, no debuffs, resistance 1.
-const NO_BURSTS = [];
-const NO_PROJECTION = {reps:{shield:0,armor:0,hull:0},webMult:1,neutGJs:0,capGJs:0,capEntries:[],
-  debuffs:null,boosts:{lock:[],scan:[]},ecm:[],ecmResist:1};
+// computes with no projected fits: no reps, no penalty, no debuffs, resistance 1. Both now live in
+// lib/projection.js, beside the functions that hand them back.
 const EMPTY_FIGHTER_INFO = [];
 
 export default function App(){
@@ -293,95 +292,11 @@ export default function App(){
   // Shared by the local fit's own command tab AND by each PROJECTED fit's command tab below — a
   // projected logi (e.g. a Guardian) can carry its own cmdFits (its own Sleipnir/Claymore links),
   // saved on that fit exactly like the active fit's are (see the fitsDB-writeback effect below).
-  const buildExternalBursts=(cmdFitsList)=>{
-    const out=[];
-    for(const cf of (cmdFitsList??[])){
-      // `active` is opt-OUT (undefined counts as on), so fits saved before the toggle existed keep
-      // applying and no storage migration is needed.
-      if(cf.active===false)continue;
-      const fit=fitsDB[cf.ship]?.find(f=>f.name===cf.fitName);
-      if(!fit)continue;
-      // The BOOSTER'S OWN fit decides who flies it: its `slots.pilot` if it names one, otherwise the
-      // app-wide sheet — the same resolution the Effects tab uses to DRAW this list. That shared
-      // resolver is the point. The two used to be computed separately and silently disagreed: the
-      // applied burst took the local sheet while the card beside it was hardcoded to all V, so a
-      // Vargur under Sleipnir links read 141.9k EHP against pyfa's 146k with the card still saying
-      // 22.5%. They only matched while every skill was unset (and so defaulted to V); the moment a
-      // real character was synced from ESI they came apart.
-      const bursts=computeCommandBursts({name:cf.ship,typeID:tidByName(cf.ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters});
-      for(const b of bursts)out.push(b);
-    }
-    return out;
-  };
-  const externalBursts=useMemo(()=>{const out=buildExternalBursts(cmdFits);return out.length?out:NO_BURSTS;},[cmdFits,fitsDB,sourceSkills]);
-  const projectedEffects=useMemo(()=>{
-    if(!projFits.length)return NO_PROJECTION;
-    // Collected, not summed: incoming remote reps go through a diminishing-returns curve that
-    // needs every source's amount AND cycle time together (applyRemoteRepDiminishing).
-    const repEntries={shield:[],armor:[],hull:[]};
-    const webMults=[]; let neutGJs=0, capGJs=0;
-    const capEntries=[];   // projected Remote Capacitor Transmitters, kept for the Projected list
-    const col={sig:[],lock:[],scan:[],trk:[],topt:[],tfall:[],mrng:[],edly:[],avel:[],acld:[]};
-    const boosts={lock:[],scan:[]};   // projected Remote Sensor Boosters -> attribute pool, not the debuff stack
-    // ECM is kept as raw per-type strengths, range-factored but NOT yet reduced to one number —
-    // which of the four attributes matters depends on the TARGET's sensor type, which calcFitStats
-    // (not this memo) knows. See calcFitStats's jamChance for the combination itself.
-    const ecmEntries=[];
-    // Target EWAR resistance. Overwhelmingly a COMMAND BURST effect (buff 19, Electronic Hardening)
-    // rather than a hull attribute, so externalBursts has to go in or every boosted fit reads as
-    // having no resistance and projected damps/disruptors hit at full strength. Applied PER SOURCE
-    // MODULE, before stacking — stack(b*r) != stack(b)*r, and eos does the former.
-    const tShip=activeFit?.ship;
-    const R=(projFits.length&&tShip)?projectionResistances({name:tShip,typeID:tidByName(tShip)},slots,fitSkills,{externalBursts}):null;
-    const rz=k=>(R&&Number.isFinite(R[k])?R[k]:1);
-    // disallowAssistance (in practice: an ACTIVE HIC bubble) refuses ALL incoming remote
-    // assistance - reps and remote sensor boosters - while still taking EWAR normally. Short of
-    // that, Siege/Triage/Bastion/Industrial Core IMPEDANCE scales each kind down (to ~0 for reps
-    // and cap). assistanceFactors folds both rules into one multiplier per kind.
-    const AF=assistanceFactors(R);
-    for(const pf of projFits){
-      if(pf.active===false)continue;   // see the cmdFits loop — opt-out, so old saves stay active
-      const fit=fitsDB[pf.ship]?.find(f=>f.name===pf.fitName);
-      if(!fit)continue;
-      // All V for the same reason as externalBursts above: a PROJECTED fit is another pilot's
-      // ship, so the local skill sheet has no business scaling its logi reps, webs or neuts —
-      // unless that fit names its own pilot.
-      // The projected fit's OWN command links (e.g. a Guardian sitting under its own Sleipnir's
-      // Rapid Repair burst) boost ITS reps before they ever reach the target — read from that
-      // fit's saved cmdFits, not the locally-edited fit's, or a boosted logi projects as if unboosted.
-      const eff=computeProjectedReps({name:pf.ship,typeID:tidByName(pf.ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits)});
-      const rangeM=(pf.rangeKm??30)*1000;
-      const rf=(o,fo)=>calcRangeFactor(o,fo,rangeM,true);
-      if(AF.rep>0)for(const r of eff.reps)repEntries[r.kind].push({amount:r.amount*AF.rep*rf(r.optimal,r.falloff),cycleS:r.cycleS});
-      for(const w of eff.webs)webMults.push(1+(w.speedFactor*rz('web')*rf(w.optimal,w.falloff))/100);
-      for(const n of eff.neuts)neutGJs+=n.gjPerSec*rz('neut')*rf(n.optimal,n.falloff);
-      // Remote capacitor transfer is ASSISTANCE: refused wholesale by disallowAssistance (an
-      // active HIC bubble), and NOT reduced by the target's EWAR resistance the way a neut is.
-      // Capacitor impedance (siege et al.) does reduce it.
-      if(AF.cap>0)for(const c of (eff.caps||[])){const g=c.gjPerSec*AF.cap*rf(c.optimal,c.falloff);if(g>0){capGJs+=g;capEntries.push({name:c.name,ship:pf.ship,gjPerSec:g});}}
-      for(const p of (eff.painters||[]))col.sig.push(p.sigBonus*rz('painter')*rf(p.optimal,p.falloff));
-      for(const d of (eff.damps||[])){col.lock.push(d.lockBonus*rz('damp')*rf(d.optimal,d.falloff));col.scan.push(d.scanResBonus*rz('damp')*rf(d.optimal,d.falloff));}
-      // Remote Sensor Booster: ASSISTANCE (not resisted), and a BONUS — so it must compete with the
-      // ship's own signal amps/Sensor Optimization burst in one penalized group. Only the attribute
-      // pool can do that, so these are handed to calcFitStats rather than stacked here.
-      if(AF.assist>0)for(const b of (eff.sensorBoosts||[])){if(b.lockBonus)boosts.lock.push(b.lockBonus*AF.assist*rf(b.optimal,b.falloff));if(b.scanResBonus)boosts.scan.push(b.scanResBonus*AF.assist*rf(b.optimal,b.falloff));}
-      for(const td of (eff.trackDisr||[])){const f=rz('disrupt')*rf(td.optimal,td.falloff);col.trk.push(td.tracking*f);col.topt.push(td.optimalBonus*f);col.tfall.push(td.falloffBonus*f);}
-      for(const g of (eff.guideDisr||[])){const f=rz('disrupt')*rf(g.optimal,g.falloff);col.mrng.push(g.missileRange*f);col.edly.push(g.explosionDelay*f);col.avel.push(g.aoeVel*f);col.acld.push(g.aoeCloud*f);}
-      // ECM jammers carry remoteResistanceID 2253 = ECMResistance, so they are resisted like any other
-      // EWAR (eos multiplies the strength by getResistance before addProjectedEcm). ECCM is priced in
-      // separately, on the denominator: jamChance divides by this fit's engine-computed sensorStrength.
-      for(const e of (eff.ecm||[])){const f=rz('ecm')*rf(e.optimal,e.falloff);const bt={};for(const k in e.byType)bt[k]=(e.byType[k]||0)*f;ecmEntries.push({byType:bt,ship:pf.ship});}
-    }
-    const reps={shield:applyRemoteRepDiminishing(repEntries.shield),armor:applyRemoteRepDiminishing(repEntries.armor),hull:applyRemoteRepDiminishing(repEntries.hull)};
-    const webMult=webMults.length?stackingPenalty(webMults):1;
-    const stackPct=(arr)=>arr.length?(stackingPenalty(arr.map(p=>1+p/100))-1)*100:0;
-    const debuffs={sig:stackPct(col.sig),lockRange:stackPct(col.lock),scanRes:stackPct(col.scan),tracking:stackPct(col.trk),turretOptimal:stackPct(col.topt),turretFalloff:stackPct(col.tfall),missileRange:stackPct(col.mrng),explosionDelay:stackPct(col.edly),aoeVel:stackPct(col.avel),aoeCloud:stackPct(col.acld)};
-    const hasDebuff=Object.values(debuffs).some(v=>Math.abs(v)>0.05);
-    // ecmResist is handed out so the Projected card can scale a jammer the same way this memo does;
-    // the card applies its OWN range factor (it has a per-card range slider), so it cannot reuse
-    // ecmEntries directly.
-    return {reps,webMult,neutGJs,capGJs,capEntries,debuffs:hasDebuff?debuffs:null,boosts,ecm:ecmEntries,ecmResist:rz('ecm'),assist:AF};
-  },[projFits,fitsDB,fitSkills,sourceSkills,activeFit,slots,externalBursts]);
+  // Both live in lib/projection.js so the damage graph can apply the same links and projections to
+  // its TARGET fit.
+  const externalBursts=useMemo(()=>buildExternalBursts(cmdFits,fitsDB,sourceSkills),[cmdFits,fitsDB,sourceSkills]);
+  const projectedEffects=useMemo(()=>buildProjectedEffects({projFits,fitsDB,sourceSkills,shipName:activeFit?.ship,slots,skills:fitSkills,externalBursts}),
+    [projFits,fitsDB,fitSkills,sourceSkills,activeFit,slots,externalBursts]);
   const projectedReps=projectedEffects.reps;
   // calcFitStats is ~18 ms on a battleship, and the three calls below are the bulk of what a single
   // tap on the Fittings screen costs. Nothing on that screen reads them — every consumer is listed

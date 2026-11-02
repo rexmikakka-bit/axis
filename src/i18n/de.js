@@ -413,8 +413,6 @@ export default {
   "Neuts: GJ volley": "Neuts: GJ-Salve",
   "Neuts: cap/s": "Neuts: Kond./s",
   "New Fit": "Neues Fitting",
-  "No MWD variant for this profile — applies to Frigate / Cruiser / Battleship":
-    "Keine MWD-Variante für dieses Profil — gilt für Frigate / Cruiser / Battleship",
   "No active command bursts on this fit": "Keine aktiven Command-Bursts in diesem Fitting",
   "No boosters added": "Keine Booster hinzugefügt",
   "No boosters found": "Keine Booster gefunden",
@@ -722,7 +720,6 @@ export default {
   "This device can't save files from the app — use Copy JSON instead.": "Dieses Gerät kann keine Dateien aus der App speichern – nutze stattdessen „JSON kopieren“.",
   "This device can't store an undo copy, so this CANNOT be undone. Export a backup first.":
     "Dieses Gerät kann keine Rückgängig-Kopie speichern, das lässt sich also NICHT rückgängig machen. Exportiere zuerst ein Backup.",
-  "This fit carries no propulsion module": "Dieses Fitting hat kein Antriebsmodul",
   "This slot was removed by a subsystem change. The module is kept here so you don't lose it, but it isn't fitted and doesn't affect any stat.":
     "Dieser Slot ist durch einen Subsystemwechsel weggefallen. Das Modul bleibt hier, damit es nicht verloren geht, es ist aber nicht gefittet und beeinflusst keinen Wert.",
   "Time, s": "Zeit, s",

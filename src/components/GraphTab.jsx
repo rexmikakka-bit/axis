@@ -4,7 +4,7 @@ import { haptic } from "../lib/core.js";
 import { useScrollMemory } from "../lib/use-scroll-memory.js";
 import { DAMAGE_PROFILES } from "../data/damage-profiles.js";
 import { FitPickerSheet } from "./effects.jsx";
-import { targetFitProfile } from "../lib/graph-target.js";
+import { targetFitProfile, stackedOnTop } from "../lib/graph-target.js";
 import { t } from "../lib/i18n.js";
 import {
   TYPES, tidByName, calcFitStats, computeProjectedReps,
@@ -144,9 +144,13 @@ const WINDOW_S_MAX=600, DEFAULT_WINDOW_S=120;
 // Damage graph's application curve. Shared so the transversal/angular readouts can't disagree with
 // that curve about how fast a webbed target is actually moving; see the damage curve's own
 // `webMultAt` (built from this) for the reasoning.
-function ownWebMultAt(ownProj, distM) {
+//
+// `theirs` is the webs ALREADY on a fit target (its own projected fits), as multipliers. Its speed
+// arrives already webbed by them, and yours join the same stacking pool, so what yours add is
+// stackedOnTop(theirs, yours) rather than their full stack.
+function ownWebMultAt(ownProj, distM, theirs) {
   const ms = (ownProj?.webs || []).map(w => 1 + (w.speedFactor * calcRangeFactor(w.optimal, w.falloff, distM, true)) / 100);
-  return ms.length ? stackingPenalty(ms) : 1;
+  return stackedOnTop(theirs, ms);
 }
 // Grapplers need no separate handling here: CCP files them in their own group but
 // computeProjectedReps already folds both into `webs` (see the damage curve's own comment on this).
@@ -200,12 +204,18 @@ function generateCurve(catKey,yKey,xKey,params={}){
     // in their own group but `computeProjectedReps` already folds both into `webs`.
     const PJ = params.ownProj || {};
     const rfE = (o,f,d) => calcRangeFactor(o,f,d,true);
-    const webMultAt = (dM) => ownWebMultAt(PJ, dM);
-    const sigMultAt = (dM) => { const ms=(PJ.painters||[]).map(p=>1+((p.sigBonus||0)*rfE(p.optimal,p.falloff,dM))/100); return ms.length?stackingPenalty(ms):1; };
-    // A scrambler does not modify an attribute — it turns the target's microwarpdrive OFF, which is a
-    // state the target either has or doesn't. `tgtNoMwd` is the same profile's not-MWDing sig/speed
-    // pair, supplied only when the target is a preset currently running its MWD; against a hand-typed
-    // sig or speed it is null, because there is no way to know how much of a typed 200 m is MWD bloom.
+    // A fit target arrives already painted and webbed by its OWN projected fits; yours join those in
+    // one stacking pool (stackedOnTop), rather than stacking separately at full strength on top.
+    const theirSig = (params.tgtIncoming?.sigList || []).map(p=>1+p/100);
+    const theirWeb = params.tgtIncoming?.webList || [];
+    const webMultAt = (dM) => ownWebMultAt(PJ, dM, theirWeb);
+    const sigMultAt = (dM) => stackedOnTop(theirSig, (PJ.painters||[]).map(p=>1+((p.sigBonus||0)*rfE(p.optimal,p.falloff,dM))/100));
+    // A scrambler does not modify an attribute — it turns the target's microwarpdrive (and MJD) OFF,
+    // which is a state the target either has or doesn't; an afterburner keeps running. `tgtNoMwd` is
+    // the sig/speed pair the target presents once scrammed: a preset's MWD-off variant, or for a fit
+    // target its fallback afterburner or bare hull (see targetFitProfile). It is null whenever a scram
+    // would change nothing — no MWD running — and against a hand-typed sig or speed, because there is
+    // no way to know how much of a typed 200 m is MWD bloom.
     // Tackle is hard-edged (no falloff), so this flips at exactly the scrambler's engine-computed
     // range — which on a Mordu's hull is a good deal further out than the module's own 9 km.
     const scrammedAt = (dM) => ownScrammedAt(PJ, dM);
@@ -871,7 +881,7 @@ function ScrubField({value,display,placeholder,anchor,onType,onScrub,style,title
   );
 }
 
-function TargetControls({tgtProfile,targetProfile,setTargetProfile,targetMwd,setTargetMwd,targetAngle,setTargetAngle,selfAngle,setSelfAngle,targetVel,setTargetVel,selfVel,setSelfVel,transversalSpeed,angularSpeed,angularDistM,showTransversal,setShowTransversal,tgtSig,setTgtSig,targetVelMax,setTargetVelMax,selfMaxVel,ship,ownProj,targetFit,targetFitStats,onPickFit,onClearFit,onOpenFit}){
+function TargetControls({tgtProfile,targetProfile,setTargetProfile,targetMwd,setTargetMwd,setTargetProp,setTargetMjd,targetAngle,setTargetAngle,selfAngle,setSelfAngle,targetVel,setTargetVel,selfVel,setSelfVel,transversalSpeed,angularSpeed,angularDistM,showTransversal,setShowTransversal,tgtSig,setTgtSig,targetVelMax,setTargetVelMax,selfMaxVel,ship,ownProj,targetFit,targetFitStats,onPickFit,onClearFit,onOpenFit}){
   // Same test the Stats tab's Firepower header uses, so the two agree on what counts as "active".
   const resistsOn=!!(tgtProfile?.r&&tgtProfile.r.some(v=>v>0.001));
   const fitActive=targetProfile===TARGET_FIT;
@@ -895,9 +905,14 @@ function TargetControls({tgtProfile,targetProfile,setTargetProfile,targetMwd,set
   // agree with the buttons above. On Ideal (or a hand-edited custom target) there is no MWD variant
   // to apply, so the flag is just remembered for the next profile picked.
   const toggleMwd=()=>{const next=!targetMwd;setTargetMwd(next);applyTarget(targetProfile,next);};
-  // A fit only has an MWD variant if it actually carries a prop mod; without one the two passes come
-  // back identical and the toggle would silently do nothing.
-  const mwdApplies=fitActive?!!targetFitStats?.hasProp:TARGET_PROFILES[targetProfile]?.mwdSig!=null;
+  // The MWD toggle exists only where there is an MWD to toggle: a hull preset with an MWD variant.
+  // It used to stay on screen (dimmed) for every target, and on a fit target it switched ANY prop
+  // mod — so an afterburner fit "had an MWD", and your scrambler shut its afterburner off. A fit
+  // target gets the prop row below instead, built from what the fit actually carries.
+  const mwdApplies=!fitActive&&TARGET_PROFILES[targetProfile]?.mwdSig!=null;
+  const fitProps=fitActive?targetFitStats:null;
+  const chipStyle=(on)=>({padding:"5px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",
+    background:on?C.accentLight:C.surface,border:`1px solid ${on?C.accentBorder:C.border}`,color:on?C.accent:C.textMid});
   // The honest admission, and the only state left now that the strip is custom-target-only: pyfa
   // drags a whole target FIT onto the graph and can just switch its prop mod off, whereas a
   // hand-typed 200 m could be a hull that size or a 40 m frigate blooming under an MWD, and nothing
@@ -938,25 +953,20 @@ function TargetControls({tgtProfile,targetProfile,setTargetProfile,targetMwd,set
         <button key={key} onClick={()=>pickProfile(key)} style={{padding:"5px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",background:targetProfile===key?C.accentLight:C.surface,border:`1px solid ${targetProfile===key?C.accentBorder:C.border}`,color:targetProfile===key?C.accent:C.textMid}}>{p.label()}</button>
       ))}
       {/* A TOGGLE, not another profile — hence the separator, so it doesn't read as a fifth
-          mutually-exclusive option. Dimmed (not disabled) where the current profile has no MWD
-          variant: the setting still holds for the next profile picked, and disabling it would make
-          the control look broken on the Ideal profile.
+          mutually-exclusive option. Shown only on a profile with an MWD variant (see mwdApplies);
+          the flag itself is kept while hidden, so it is back as it was on the next such profile.
           Its state is carried by the accent fill alone. A check mark used to sit in front of the
           label, which made the button wider when on — enough to wrap the whole row onto a second
           line on a phone, so turning MWD on moved the control out from under the thumb that had
           just pressed it. aria-pressed still carries the state where the colour cannot. */}
-      <span style={{width:1,alignSelf:"stretch",background:C.border,margin:"0 2px"}}/>
-      <button onClick={toggleMwd} aria-pressed={targetMwd}
-        title={mwdApplies
-          ? t("Target has its microwarpdrive running: much larger signature (easier to hit and to apply full missile damage) but much faster (harder for turrets to track)")
-          : fitActive?t("This fit carries no propulsion module")
-                     :t("No MWD variant for this profile — applies to Frigate / Cruiser / Battleship")}
-        style={{padding:"5px 10px",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer",
-                opacity:mwdApplies?1:0.45,
-                background:targetMwd?C.accentLight:C.surface,border:`1px solid ${targetMwd?C.accentBorder:C.border}`,
-                color:targetMwd?C.accent:C.textMid}}>
-        MWD
-      </button>
+      {mwdApplies&&<>
+        <span style={{width:1,alignSelf:"stretch",background:C.border,margin:"0 2px"}}/>
+        <button onClick={toggleMwd} aria-pressed={targetMwd}
+          title={t("Target has its microwarpdrive running: much larger signature (easier to hit and to apply full missile damage) but much faster (harder for turrets to track)")}
+          style={chipStyle(targetMwd)}>
+          MWD
+        </button>
+      </>}
     </div>
     {/* A saved fit standing in for the target. Deliberately its own row rather than a fifth button
         above: the row already wraps onto a second line on a phone once MWD is in it, and the chip
@@ -990,6 +1000,28 @@ function TargetControls({tgtProfile,targetProfile,setTargetProfile,targetMwd,set
       {targetFit&&<button onClick={onClearFit} title={t("Stop using a fit as the target")}
         style={{padding:"6px 9px",borderRadius:6,fontSize:12,cursor:"pointer",background:C.surface,border:`1px solid ${C.border}`,color:C.danger,flexShrink:0}}>&#10005;</button>}
     </div>
+    {/* Which of the fit's OWN prop mods it is running. Built from what is fitted, so a fit with no
+        MWD has no MWD to switch on and a tri-prop fit offers each of its three. One at a time, as in
+        space (maxGroupActive 1), hence a single choice; it starts on whatever the fit was saved
+        running. The MJD runs alongside a prop mod, so it is a separate toggle past the separator —
+        the same treatment the preset MWD toggle gets in the row above. Absent when the fit carries
+        neither. Your scrambler shuts off an MWD or MJD here and leaves an afterburner alone. */}
+    {fitProps&&(fitProps.props.length>0||fitProps.hasMjd)&&
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+        {fitProps.props.length>0&&<>
+          <button onClick={()=>setTargetProp('none')} aria-pressed={fitProps.prop==='none'}
+            title={t("Target has no propulsion module running")} style={chipStyle(fitProps.prop==='none')}>{t("No prop")}</button>
+          {fitProps.props.map(p=>(
+            <button key={p.id} onClick={()=>setTargetProp(p.id)} aria-pressed={fitProps.prop===p.id}
+              title={p.name} style={chipStyle(fitProps.prop===p.id)}>{p.label}</button>
+          ))}
+        </>}
+        {fitProps.hasMjd&&<>
+          {fitProps.props.length>0&&<span style={{width:1,alignSelf:"stretch",background:C.border,margin:"0 2px"}}/>}
+          <button onClick={()=>setTargetMjd(!fitProps.mjd)} aria-pressed={fitProps.mjd}
+            title={t("Target is spooling its micro jump drive: +150% signature radius")} style={chipStyle(fitProps.mjd)}>MJD</button>
+        </>}
+      </div>}
     {/* Target RESISTS — how much of your damage actually lands — are chosen ONCE, in Stats >
         Firepower, and only read here. This used to be a second picker writing the same shared
         state, which is two places to set one number with nothing to say which had won.
@@ -1122,6 +1154,11 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
   // Off by default: the hull profiles have always meant the bare hull, and silently switching them
   // to MWD-on values would move every existing user's curves with no visible cause.
   const[targetMwd,setTargetMwd]=useState(()=>gp('targetMwd',false));
+  // A FIT target's prop state instead: which fitted prop mod it is running ('none', or a slot id
+  // from targetFitProps) and whether its MJD is spooling. null follows the fit as saved; reset to
+  // null when a different fit is picked, since a slot id only means something on the fit it came from.
+  const[targetProp,setTargetProp]=useState(()=>gp('targetProp',null));
+  const[targetMjd,setTargetMjd]=useState(()=>gp('targetMjd',null));
   // Flight vectors start at rest: a graph should open showing the fit's own numbers, not a
   // pre-set engagement the reader did not choose and may not notice.
   const[targetVel,setTargetVel]=useState(()=>gp('targetVel',0)),[selfVel,setSelfVel]=useState(()=>gp('selfVel',0));
@@ -1162,8 +1199,8 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
   // backgrounding the app) keeps the setup — there is no "on unmount" hook to miss.
   useEffect(()=>{
     try{localStorage.setItem(GRAPH_PREFS_KEY,JSON.stringify(
-      {catKey,yKey,xKey,axisByCat,targetProfile,targetFit,targetMwd,targetAngle,selfAngle,targetVel,selfVel,targetVelMax,tgtSig,showTransversal,xZoom,yZoom,cursorX,exactHeadline,engRangeKm,winSec}));}catch{}
-  },[catKey,yKey,xKey,axisByCat,targetProfile,targetFit,targetMwd,targetAngle,selfAngle,targetVel,selfVel,targetVelMax,tgtSig,showTransversal,xZoom,yZoom,cursorX,exactHeadline,engRangeKm,winSec]);
+      {catKey,yKey,xKey,axisByCat,targetProfile,targetFit,targetMwd,targetProp,targetMjd,targetAngle,selfAngle,targetVel,selfVel,targetVelMax,tgtSig,showTransversal,xZoom,yZoom,cursorX,exactHeadline,engRangeKm,winSec}));}catch{}
+  },[catKey,yKey,xKey,axisByCat,targetProfile,targetFit,targetMwd,targetProp,targetMjd,targetAngle,selfAngle,targetVel,selfVel,targetVelMax,tgtSig,showTransversal,xZoom,yZoom,cursorX,exactHeadline,engRangeKm,winSec]);
   // The ladder the +/− buttons walk. The scrub gesture is continuous and lands BETWEEN these, so
   // stepZoom takes the first rung strictly past the current value rather than indexing off an exact
   // match — an in-between value used to miss the findIndex entirely and jump back to 1×.
@@ -1241,24 +1278,29 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
     if(!targetFit)return null;
     const fit=fitsDB?.[targetFit.ship]?.find(f=>f.name===targetFit.name);
     if(!fit)return null;
-    return targetFitProfile(targetFit.ship,fit,sourceSkills?sourceSkills(fit):skills);
-  },[targetFit,fitsDB,sourceSkills,skills]);
+    return targetFitProfile(targetFit.ship,fit,sourceSkills?sourceSkills(fit):skills,
+                            {prop:targetProp??undefined,mjd:targetMjd??undefined},{fitsDB,sourceSkills});
+  },[targetFit,fitsDB,sourceSkills,skills,targetProp,targetMjd]);
   // The single place a fit target's numbers are pushed into the sig/speed fields. An effect rather
   // than a write inside the picker's onSelect so that all three ways in agree: choosing a fit,
   // toggling MWD, and coming back to a graph whose target fit has been edited since. Typing in either
   // field sets targetProfile to "custom", which is what detaches it from here.
   useEffect(()=>{
     if(targetProfile!==TARGET_FIT||!targetFitStats)return;
-    const tgt=(targetMwd&&targetFitStats.hasProp)?targetFitStats.mwd:targetFitStats.noMwd;
+    const tgt=targetFitStats;
     setTgtSig(tgt.sig);setTargetVel(tgt.vel);setTargetVelMax(Math.max(tgt.vel,100));
-  },[targetProfile,targetFitStats,targetMwd]);
+  },[targetProfile,targetFitStats]);
+  const fitTargetLive=targetProfile===TARGET_FIT&&!!targetFitStats;
   const tgtNoMwd=useMemo(()=>{
     // A fit target is the case a scrambler was always missing: its prop mod can simply be switched
     // off and the hull re-read, which is exactly what a typed sig or speed cannot be decomposed into.
-    if(targetProfile===TARGET_FIT)return (targetMwd&&targetFitStats?.hasProp)?targetFitStats.noMwd:null;
+    // Null unless it is running an MWD or MJD — a scram leaves an afterburner alone.
+    if(targetProfile===TARGET_FIT)return targetFitStats?.scrammed??null;
     return (targetMwd&&TARGET_PROFILES[targetProfile]?.mwdSig!=null)?profileTarget(targetProfile,false):null;
   },[targetMwd,targetProfile,targetFitStats]);
-  const{pts,xMax,yMax:autoYMax}=generateCurve(catKey,validY,validX,{targetProfile,shipVelFrac:selfVelEff/(ship?.maxVelocity||500),ship:ship??{},cs,ownProj,selfVel:selfVelEff,targetVel,selfAngle,targetAngle,tgtSig,tgtSpeed:targetVel,tgtNoMwd,xZoom,engRangeKm:engRangeEff,timeWindowS:winSecEff});
+  // What the fit target already has painting and webbing it, for your own to stack against.
+  const tgtIncoming=fitTargetLive?targetFitStats.incoming:null;
+  const{pts,xMax,yMax:autoYMax}=generateCurve(catKey,validY,validX,{targetProfile,shipVelFrac:selfVelEff/(ship?.maxVelocity||500),ship:ship??{},cs,ownProj,selfVel:selfVelEff,targetVel,selfAngle,targetAngle,tgtSig,tgtSpeed:targetVel,tgtNoMwd,tgtIncoming,xZoom,engRangeKm:engRangeEff,timeWindowS:winSecEff});
   // xMax already reflects xZoom (the curve is generated across the zoomed domain, so it actually
   // extends to the new axis edge instead of stopping short). Y just rescales the axis.
   const yMax=autoYMax/yZoom;
@@ -1282,7 +1324,7 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
   // in the MWD-off speed first (only possible against a preset target whose MWD variant is known —
   // see `tgtNoMwd`'s own comment), THEN the web multiplier scales that down further.
   const targetVelNoMwd=(tgtNoMwd&&ownScrammedAt(ownProj,angularDistM))?tgtNoMwd.vel:targetVel;
-  const targetVelWebbed=targetVelNoMwd*ownWebMultAt(ownProj,angularDistM);
+  const targetVelWebbed=targetVelNoMwd*ownWebMultAt(ownProj,angularDistM,tgtIncoming?.webList);
   // Real transversal: component of relative velocity perpendicular to the line of sight (m/s).
   // North (up) on the compass = toward/away from the target (radial); E/W = across (transversal).
   const transversalSpeed=Math.abs(selfVelEff*Math.sin(selfAngle*Math.PI/180)-targetVelWebbed*Math.sin(targetAngle*Math.PI/180));
@@ -1468,9 +1510,9 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
         ewar and reps. Warp's own distance axes are not a projection and get no line. */}
     <div style={{padding:"4px 10px 0"}}><LineChart pts={pts} xMax={xMax} yMax={yMax} xLabel={xAxis?.label?.()} yLabel={yAxis?.label?.()} color={catColor} cursorX={cursorX} onCursorXChange={setCursorX}
       marker={xAxis?.key==="dist"&&(cs.targetRange>0)?{x:cs.exact?.targetRange??cs.targetRange,label:t("lock range")}:null}/></div>
-    {cat.showTargetControls&&<div style={{padding:"0 10px 12px"}}><TargetControls tgtProfile={tgtProfile} targetProfile={targetProfile} setTargetProfile={setTargetProfile} targetMwd={targetMwd} setTargetMwd={setTargetMwd} targetAngle={targetAngle} setTargetAngle={setTargetAngle} selfAngle={selfAngle} setSelfAngle={setSelfAngle} targetVel={targetVel} setTargetVel={setTargetVel} selfVel={selfVelEff} setSelfVel={setSelfVel} transversalSpeed={transversalSpeed} angularSpeed={angularSpeed} angularDistM={angularDistM} showTransversal={showTransversal} setShowTransversal={setShowTransversal} tgtSig={tgtSig} setTgtSig={setTgtSig} targetVelMax={targetVelMax} setTargetVelMax={setTargetVelMax} selfMaxVel={selfMaxVel} ship={ship} ownProj={ownProj} targetFit={targetFit} targetFitStats={targetFitStats} onPickFit={()=>setShowFitPicker(true)} onClearFit={()=>{setTargetFit(null);setTargetProfile("custom");}} onOpenFit={onOpenFit}/></div>}
+    {cat.showTargetControls&&<div style={{padding:"0 10px 12px"}}><TargetControls tgtProfile={tgtProfile} targetProfile={targetProfile} setTargetProfile={setTargetProfile} targetMwd={targetMwd} setTargetMwd={setTargetMwd} setTargetProp={setTargetProp} setTargetMjd={setTargetMjd} targetAngle={targetAngle} setTargetAngle={setTargetAngle} selfAngle={selfAngle} setSelfAngle={setSelfAngle} targetVel={targetVel} setTargetVel={setTargetVel} selfVel={selfVelEff} setSelfVel={setSelfVel} transversalSpeed={transversalSpeed} angularSpeed={angularSpeed} angularDistM={angularDistM} showTransversal={showTransversal} setShowTransversal={setShowTransversal} tgtSig={tgtSig} setTgtSig={setTgtSig} targetVelMax={targetVelMax} setTargetVelMax={setTargetVelMax} selfMaxVel={selfMaxVel} ship={ship} ownProj={ownProj} targetFit={targetFit} targetFitStats={targetFitStats} onPickFit={()=>setShowFitPicker(true)} onClearFit={()=>{setTargetFit(null);setTargetProfile("custom");}} onOpenFit={onOpenFit}/></div>}
     {showFitPicker&&<FitPickerSheet title={t("Target Fit")} fitsDB={fitsDB??{}} pinned={openTabFits}
-      onSelect={(shipName,fit)=>{setTargetFit({ship:shipName,name:fit.name});setTargetProfile(TARGET_FIT);}}
+      onSelect={(shipName,fit)=>{setTargetFit({ship:shipName,name:fit.name});setTargetProp(null);setTargetMjd(null);setTargetProfile(TARGET_FIT);}}
       onClose={()=>setShowFitPicker(false)}/>}
   </div>);
 }

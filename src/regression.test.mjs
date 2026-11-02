@@ -32,7 +32,8 @@ import { moduleGestureHistory } from './lib/module-gesture.js';
 
 import { resolvePilotSkills, describeSkillSheet, esiPilot, esiPilotId, profilePilot, profilePilotId, PILOT_ALL_V, PILOT_ALPHA, PILOT_ME } from './lib/pilot.js';
 import { buildShipTaxonomy, shipsUnder, nodeAtPath, classifyHull, TOP_ORDER, RACE_ICON_ID } from './lib/ship-taxonomy.js';
-import { targetFitProfile } from './lib/graph-target.js';
+import { targetFitProfile, stackedOnTop } from './lib/graph-target.js';
+import { buildProjectedEffects } from './lib/projection.js';
 import { byRecentlyModified, byNewestFitting } from './lib/fit-order.js';
 import { jargonSearch, nameMatchesQuery, searchScore, initialsOf } from './lib/jargon.js';
 import { browserMetaRank, metaOf } from './lib/meta.js';
@@ -3202,47 +3203,108 @@ Republic Fleet Command Mindlink`;
 // ─────────────────────────────────────────────────────────────────────────────
 // 13h-2. A SAVED FIT AS THE GRAPH'S TARGET
 //      targetFitProfile() reduces a saved fit to the two things the application maths asks of a
-//      target — signature radius and speed — each in a prop-mod-running and a prop-mod-idle variant,
-//      so a scrambler in your own fit has something real to switch off. It does NOT read resists;
-//      those stay owned by Stats > Firepower.
+//      target — signature radius and speed — with a chosen prop mod running, and what a warp
+//      scrambler leaves of it. It does NOT read resists; those stay owned by Stats > Firepower.
 //
-//      What is actually at stake here is the STATE FORCING. calc.js only counts an ACTIVE prop mod
-//      towards maxVelocityAB, and only an active microwarpdrive blooms signatureRadius — so reading
-//      the fit as saved would hand back whichever variant its owner happened to leave it in, and the
-//      MWD toggle would move the numbers on one saved fit and not another for no visible reason.
-//      Both directions are pinned: forcing ON must lift a fit saved with its MWD idle, and forcing
-//      OFF must drop one saved with it running, to the SAME pair.
+//      Three bugs this pins:
+//        - The graph's MWD toggle switched ANY prop mod, so an afterburner fit "had an MWD" and your
+//          scrambler shut its afterburner off. A scram stops an MWD or MJD only; a fit running its MWD
+//          falls back to the fastest afterburner it also carries.
+//        - A dual- or tri-prop fit was summed into one "prop on" pass. Only one prop mod runs at a
+//          time (maxGroupActive 1), so each is its own choice.
+//        - The target fit was read BARE: a Tempest painted by a Vigil showed 360 m on the graph and
+//          1022 m on its own page, and command links on it did nothing either.
+//
+//      The STATE FORCING is still the core: a fit saved with its MWD idle and one saved with it
+//      running must agree once a prop is chosen, or the chips would move one fit and not another.
 // ─────────────────────────────────────────────────────────────────────────────
 {
   console.log('\nGRAPH TARGET FIT');
-  const mwdID = tid('50MN Microwarpdrive II');
   const cruiser = 'Rupture';
-  const mk = (state) => ({ slots: { high: [], mid: [{ typeID: mwdID, state }], low: [], rigs: [] } });
-  const onSaved  = targetFitProfile(cruiser, mk('active'), null);
-  const offSaved = targetFitProfile(cruiser, mk('online'), null);
-  check('gtgt', 'a fit resolves to a target profile', onSaved && offSaved ? 1 : 0, 1, 0);
-  // The state the fit was SAVED in must not survive into the answer.
-  check('gtgt', 'saved-active and saved-idle agree on the MWD-on speed', onSaved.mwd.vel, offSaved.mwd.vel, 1e-9);
-  check('gtgt', 'saved-active and saved-idle agree on the MWD-on sig',   onSaved.mwd.sig, offSaved.mwd.sig, 1e-9);
-  check('gtgt', 'saved-active and saved-idle agree on the MWD-off speed', onSaved.noMwd.vel, offSaved.noMwd.vel, 1e-9);
-  check('gtgt', 'saved-active and saved-idle agree on the MWD-off sig',   onSaved.noMwd.sig, offSaved.noMwd.sig, 1e-9);
-  // ...and the two variants must actually differ, or the MWD toggle is a control that does nothing.
-  check('gtgt', 'MWD raises speed', onSaved.mwd.vel > onSaved.noMwd.vel * 3 ? 1 : 0, 1, 0);
-  check('gtgt', 'MWD blooms signature', onSaved.mwd.sig > onSaved.noMwd.sig * 3 ? 1 : 0, 1, 0);
-  check('gtgt', 'hasProp is set', onSaved.hasProp ? 1 : 0, 1, 0);
-  // The MWD-off pair is the BARE HULL, which is a number CCP publishes — so this is an absolute
-  // baseline, not a self-consistency check that would survive the whole function being wrong.
-  const bare = calcFitStats({ typeID: tid(cruiser), name: cruiser },
-                            { high: [], mid: [], low: [], rigs: [] }, [], null, {});
-  check('gtgt', 'MWD-off speed is the bare hull', onSaved.noMwd.vel, Math.round(bare.maxVelocity), 1e-9);
-  check('gtgt', 'MWD-off sig is the bare hull',   onSaved.noMwd.sig, bare.sigRadius, 1e-9);
-  // A fit with no prop mod at all: both variants collapse, and hasProp says so rather than leaving
-  // the UI offering a toggle that silently changes nothing.
-  const noProp = targetFitProfile(cruiser, { slots: { high: [], mid: [], low: [], rigs: [] } }, null);
-  check('gtgt', 'no prop mod: hasProp is false', noProp.hasProp ? 1 : 0, 0, 0);
-  check('gtgt', 'no prop mod: the two variants collapse', noProp.mwd.vel, noProp.noMwd.vel, 1e-9);
+  const mod = (n, state = 'online', ammo) => ({ typeID: tid(n), name: n, state, ammo });
+  const mk = (mid, extra = {}) => ({ slots: { high: [], mid, low: [], rigs: [] }, ...extra });
+  const bare = calcFitStats({ typeID: tid(cruiser), name: cruiser }, { high: [], mid: [], low: [], rigs: [] }, [], null, {});
+  const bareVel = Math.round(bare.maxVelocity);
+
+  // One MWD, saved running vs saved idle.
+  const mwdOn = mk([mod('50MN Microwarpdrive II', 'active')]), mwdIdle = mk([mod('50MN Microwarpdrive II')]);
+  const aOn = targetFitProfile(cruiser, mwdOn, null), aIdle = targetFitProfile(cruiser, mwdIdle, null);
+  check('gtgt', 'a fit resolves to a target profile', aOn && aIdle ? 1 : 0, 1, 0);
+  check('gtgt', 'MWD fit offers exactly one prop, labelled MWD', aOn.props.length === 1 && aOn.props[0].label === '50MN MWD' ? 1 : 0, 1, 0);
+  check('gtgt', 'no choice follows the fit as saved (running)', aOn.prop, 'mid:0', 0);
+  check('gtgt', 'no choice follows the fit as saved (idle)', aIdle.prop === 'none' ? 1 : 0, 1, 0);
+  const fOn = targetFitProfile(cruiser, mwdOn, null, { prop: 'mid:0' }), fIdle = targetFitProfile(cruiser, mwdIdle, null, { prop: 'mid:0' });
+  check('gtgt', 'saved-active and saved-idle agree on the MWD-on speed', fOn.vel, fIdle.vel, 1e-9);
+  check('gtgt', 'saved-active and saved-idle agree on the MWD-on sig', fOn.sig, fIdle.sig, 1e-9);
+  check('gtgt', 'MWD raises speed', fOn.vel > bareVel * 3 ? 1 : 0, 1, 0);
+  check('gtgt', 'MWD blooms signature', fOn.sig > bare.sigRadius * 3 ? 1 : 0, 1, 0);
+  // The scrammed pair is the BARE HULL here — a number CCP publishes, so an absolute baseline.
+  check('gtgt', 'scrammed MWD with no AB: bare-hull speed', fOn.scrammed.vel, bareVel, 1e-9);
+  check('gtgt', 'scrammed MWD with no AB: bare-hull sig', fOn.scrammed.sig, bare.sigRadius, 1e-9);
+  const off = targetFitProfile(cruiser, mwdOn, null, { prop: 'none' });
+  check('gtgt', '"No prop" on a saved-running MWD: bare-hull speed', off.vel, bareVel, 1e-9);
+  check('gtgt', '"No prop": a scram changes nothing', off.scrammed === null ? 1 : 0, 1, 0);
+
+  // Afterburner only: the bug report. Running it, a scram must change NOTHING.
+  const ab = targetFitProfile(cruiser, mk([mod('10MN Afterburner II', 'active')]), null);
+  check('gtgt', 'AB fit: labelled AB', ab.props[0].label, '10MN AB', 0);
+  check('gtgt', 'AB raises speed', ab.vel > bareVel * 1.5 ? 1 : 0, 1, 0);
+  check('gtgt', 'AB does not bloom signature', ab.sig, bare.sigRadius, 1e-9);
+  check('gtgt', 'a scram leaves a running AB alone', ab.scrammed === null ? 1 : 0, 1, 0);
+
+  // Tri-prop: one runs at a time, and a scrammed MWD falls back to the FASTEST afterburner.
+  const tri = mk([mod('10MN Afterburner II'), mod('50MN Microwarpdrive II', 'active'), mod('100MN Afterburner II')]);
+  const t3 = targetFitProfile(cruiser, tri, null);
+  check('gtgt', 'tri-prop offers all three', t3.props.map(p => p.label).join(','), '10MN AB,50MN MWD,100MN AB', 0);
+  check('gtgt', 'tri-prop starts on the saved running MWD', t3.prop, 'mid:1', 0);
+  const only = (idx) => targetFitProfile(cruiser, tri, null, { prop: `mid:${idx}` });
+  check('gtgt', 'one prop at a time: the MWD alone', t3.vel, only(1).vel, 1e-9);
+  const fastAb = Math.max(only(0).vel, only(2).vel);
+  check('gtgt', 'scrammed MWD falls back to the fastest AB', t3.scrammed.vel, fastAb, 1e-9);
+  check('gtgt', '...and names it', t3.scrammed.prop, only(0).vel > only(2).vel ? 'mid:0' : 'mid:2', 0);
+  // Two identical modules are one choice.
+  check('gtgt', 'duplicate props collapse to one chip',
+    targetFitProfile(cruiser, mk([mod('10MN Afterburner II'), mod('10MN Afterburner II', 'active')]), null).props.length, 1, 0);
+
+  // MJD: +150% sig while spooling, alongside a prop mod; a scram stops it.
+  const mjdFit = mk([mod('10MN Afterburner II', 'active'), mod('Medium Micro Jump Drive', 'active')]);
+  const mj = targetFitProfile(cruiser, mjdFit, null);
+  check('gtgt', 'MJD is detected and follows the save', mj.hasMjd && mj.mjd ? 1 : 0, 1, 0);
+  check('gtgt', 'MJD spooling: +150% sig', mj.sig, bare.sigRadius * 2.5, 1e-9);
+  check('gtgt', 'scrammed MJD: sig back to the hull', mj.scrammed.sig, bare.sigRadius, 1e-9);
+  check('gtgt', 'scrammed MJD: the AB keeps running', mj.scrammed.vel, ab.vel, 1e-9);
+  check('gtgt', 'MJD off by choice', targetFitProfile(cruiser, mjdFit, null, { mjd: false }).sig, bare.sigRadius, 1e-9);
+
+  // Its OWN surroundings: a painter projected onto it and a skirmish link it sits under. Same
+  // buildProjectedEffects/buildExternalBursts the fit's own page runs through, so the two agree.
+  const fitsDB = {
+    Vigil: [{ name: 'tp', slots: { high: [], mid: [mod('Target Painter II', 'active')], low: [], rigs: [] } }],
+    Claymore: [{ name: 'skirm', slots: { high: [mod('Skirmish Command Burst II', 'active', 'Evasive Maneuvers Charge')], mid: [], low: [], rigs: [] } }],
+  };
+  const ctx = { fitsDB, sourceSkills: () => null };
+  const painted = targetFitProfile(cruiser, mk([], { projFits: [{ ship: 'Vigil', fitName: 'tp', rangeKm: 10 }] }), null, {}, ctx);
+  const pe = buildProjectedEffects({ projFits: [{ ship: 'Vigil', fitName: 'tp', rangeKm: 10 }], fitsDB, sourceSkills: () => null,
+                                     shipName: cruiser, slots: { high: [], mid: [], low: [], rigs: [] }, skills: null, externalBursts: [] });
+  check('gtgt', 'projected painter reaches the target fit', painted.sig > bare.sigRadius * 1.3 ? 1 : 0, 1, 0);
+  // sigRadius is reported to 0.1 m, hence the tolerance.
+  check('gtgt', '...exactly as its own page applies it', painted.sig, bare.sigRadius * (1 + pe.debuffs.sig / 100), 1e-3);
+  check('gtgt', 'incoming painter handed back for stacking', painted.incoming.sigList.length, 1, 0);
+  const linked = targetFitProfile(cruiser, mk([], { cmdFits: [{ ship: 'Claymore', fitName: 'skirm' }] }), null, {}, ctx);
+  // Skirmish Command Burst II + Evasive Maneuvers at all V: -12.9375% sig (buff 20).
+  check('gtgt', 'skirmish link shrinks the target fit\'s sig', linked.sig, bare.sigRadius * (1 - 0.129375), 1e-3);
+  check('gtgt', 'no fitsDB: read bare, as before', targetFitProfile(cruiser, mk([], { projFits: [{ ship: 'Vigil', fitName: 'tp' }] }), null).sig, bare.sigRadius, 1e-9);
+
+  // Your painter on top of theirs shares ONE stacking pool: the second is worth 86.9%, not 100%.
+  check('gtgt', 'stackedOnTop: second painter penalised', stackedOnTop([1.3], [1.3]), 1 + 0.3 * Math.exp(-1 / 7.1289), 1e-12);
+  check('gtgt', 'stackedOnTop: nothing on them = your own stack', stackedOnTop([], [1.3]), 1.3, 1e-12);
+  check('gtgt', 'stackedOnTop: nothing of yours = 1', stackedOnTop([1.3], []), 1, 0);
+
+  // A fit with no prop mod offers nothing to toggle, and a scram has nothing to cut.
+  const noProp = targetFitProfile(cruiser, mk([]), null);
+  check('gtgt', 'no prop mod: no chips', noProp.props.length + (noProp.hasMjd ? 1 : 0), 0, 0);
+  check('gtgt', 'no prop mod: a scram changes nothing', noProp.scrammed === null ? 1 : 0, 1, 0);
   // Nonsense in, null out — the caller renders the reference as stale instead of crashing the graph.
-  check('gtgt', 'an unknown ship yields null', targetFitProfile('Not A Ship', mk('active'), null) === null ? 1 : 0, 1, 0);
+  check('gtgt', 'an unknown ship yields null', targetFitProfile('Not A Ship', mwdOn, null) === null ? 1 : 0, 1, 0);
   check('gtgt', 'a fit with no slots yields null', targetFitProfile(cruiser, {}, null) === null ? 1 : 0, 1, 0);
 }
 

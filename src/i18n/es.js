@@ -410,8 +410,6 @@ export default {
   "Neuts: GJ volley": "Neuts: andanada GJ",
   "Neuts: cap/s": "Neuts: cap./s",
   "New Fit": "Fitting nuevo",
-  "No MWD variant for this profile — applies to Frigate / Cruiser / Battleship":
-    "No hay variante con MWD para este perfil: se aplica a fragata / crucero / acorazado",
   "No active command bursts on this fit": "No hay command bursts activos en este fitting",
   "No boosters added": "No se han añadido boosters",
   "No boosters found": "No se han encontrado boosters",
@@ -728,7 +726,6 @@ export default {
     "Este dispositivo no puede guardar archivos desde la aplicación: usa «Copiar como JSON» en su lugar.",
   "This device can't store an undo copy, so this CANNOT be undone. Export a backup first.":
     "Este dispositivo no puede guardar una copia para deshacer, así que esto NO se puede deshacer. Exporta antes una copia de seguridad.",
-  "This fit carries no propulsion module": "Este fitting no lleva ningún módulo de propulsión",
   "This slot was removed by a subsystem change. The module is kept here so you don't lose it, but it isn't fitted and doesn't affect any stat.":
     "Esta ranura desapareció al cambiar de subsistema. El módulo se conserva aquí para que no lo pierdas, pero no está equipado y no afecta a ninguna estadística.",
   "Time, s": "Tiempo, s",
