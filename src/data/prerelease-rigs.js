@@ -19,7 +19,8 @@
 //   - Small and Large sizes. Only Medium was shown. Owen asked for all three with the same numbers.
 //   - typeIDs (990901+), the group, the market group and the attribute/effect IDs: placeholders
 //     well clear of CCP's ranges. Never exported to ESI.
-//   - calibration cost (100, as on a T1 rig), volume and HP: copied from the T1 rigs of each size.
+//   - volume and HP: copied from the T1 rigs of each size. Calibration is 250 on every size, from
+//     later word Owen passed on (2026-11-01). Only that one figure was given, so all sizes share it.
 //   - which dogma attribute each line touches, written the way CCP writes the nearest existing rig
 //     (comments name it). Every rig modifier is stacking-penalised, like any rig's.
 //   - "LCM strength" on the Dread Guristas rig is read as ECM strength: Guristas are the ECM faction
@@ -179,7 +180,7 @@ const SIZES = [
 const MG_ROOT = 990900;
 const MG_RIGS = 1111;
 const RIG_SLOT_EFFECT = 2663;
-const CALIBRATION = 100;
+const CALIBRATION = 250;
 
 // Effect IDs: 990900 + faction*10 + slot (0 = drawback, 1..4 = bonuses), and the skill's.
 const effectID = (fi, slot) => 990900 + fi * 10 + slot;

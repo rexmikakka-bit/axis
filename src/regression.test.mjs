@@ -8627,6 +8627,7 @@ Nanofiber Internal Structure II
   check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizerRigging')?.group ?? '', 'Rigging');
   const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
   check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '5/5/5');
+  check('sync', 'calibration 250 on every size', [...new Set(rigNode.children.flatMap(c => c.mods.map(m => m.calib)))].join(','), '250');
   check('sync', 'every rig is flagged pre-release', rigNode.children.every(c => c.mods.every(m => isPrereleaseRig(m.typeID))) ? 1 : 0, 1, 0);
   let refused = 0;
   try { slotsToEsiFitting(tid('Omen'), 'T', { ...EMPTY, rigs: [{ typeID: tid(RIG) }], services: [] }, [], [], []); } catch { refused = 1; }
