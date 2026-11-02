@@ -827,6 +827,11 @@ export class Fit {
     //     rather than combines. See _amplifyImplantSets.
     this._amplifyImplantSets();
 
+    // 2f. SYNCHRONIZER rigs (pre-release, data/prerelease-rigs.js): each bonus grows by one point
+    //     per fitted module of the rig's faction. Same reason as 2e for running here: the rig's own
+    //     effects carry the bonus to the ship in step 3, so it must be final before they read it.
+    this._synchronizeRigs();
+
     // 3. Run effects for all non-ship items (modules read skill-modified attrs) (implants, boosters, modules, drones)
     //    The ship runs AFTER skills so skill-scaled ship attrs are ready.
     const nonShipGroups = [
@@ -963,6 +968,28 @@ export class Fit {
   // Getting the ORDER right is the whole point. A Genolution CA-2 is +1.5% CPU with a set product of
   // 3.276, so pyfa gives one +4.914% bonus; applying +1.5% and then +3.414% separately instead yields
   // 1.015 x 1.03414, and a Curse read 498.58 tf of CPU output against pyfa's 498.34.
+  // A synchronizer carries `sync: '<faction>'` on its type and its bonuses in synchronizerBonus1..4.
+  // "+1% for every Dark Blood module fitted" is read as one percentage point per module, away from
+  // zero (a -10% signature reduction becomes -11%), on the bonuses and never the penalty. Abyssal
+  // modules never count, even when the base type is a faction module: a mutated module is the one
+  // with `_mutations`. Offline modules do count, because the rig text says "fitted". Other
+  // synchronizers don't count; their names start with the size, not the faction.
+  _synchronizeRigs() {
+    for (const rig of this._modules) {
+      const faction = rig._td?.sync;
+      if (!faction || rig.state === 'offline') continue;
+      const count = this._modules.filter(m => m !== rig && !m._mutations && (m._td?.c ?? 7) === 7
+        && m._td?.n?.startsWith(faction + ' ')).length;
+      if (!count) continue;
+      const source = _trace ? { name: `${faction} modules fitted (${count})`, kind: 'module' } : null;
+      for (const name of ['synchronizerBonus1', 'synchronizerBonus2', 'synchronizerBonus3', 'synchronizerBonus4']) {
+        const base = rig._td.a?.[name];
+        if (!base || AID[name] == null) continue;
+        rig.attrs.applyMod(AID[name], 2, Math.sign(base) * count, true, null, source);
+      }
+    }
+  }
+
   _amplifyImplantSets() {
     if (this._implants.length < 2) return;
     // setAttr -> the bonus attributes that set amplifies. Effects route them to the ship; we don't.

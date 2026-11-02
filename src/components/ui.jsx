@@ -34,13 +34,15 @@ import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS, dismissKeybo
 import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
+import { PRERELEASE_RIG_DESCRIPTIONS, isPrereleaseRig } from "../data/prerelease-rigs.js";
+import { PrereleaseSkillControl } from "./prerelease-skill.jsx";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
   const [descs, setDescs] = useState(null);
   useEffect(() => {
     if (_typeDescsCache) { setDescs(_typeDescsCache); return; }
     import("../data/type-descriptions.json").then(m => {
-      _typeDescsCache = m.default;
+      _typeDescsCache = { ...m.default, ...PRERELEASE_RIG_DESCRIPTIONS };
       setDescs(_typeDescsCache);
     });
   }, []);
@@ -673,6 +675,7 @@ function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badge
                 tap, and an explanation you have to go looking for arrives after the confusion it
                 exists to prevent. They never shrink the name — it ellipses first. */}
             {badges?.map(b=><span key={b.label} style={{flexShrink:0}}><SourceBadge label={b.label} color={b.color}/></span>)}
+            {isPrereleaseRig(mod.typeID)&&<span style={{flexShrink:0}}><SourceBadge label={t("Pre-release")} color={C.warning}/></span>}
           </div>
           {/* Between the name and the fitting cost, which is where the variations tab puts it — there
               it shares a line with the price, and this row has no price to share. Its own line rather
@@ -1418,6 +1421,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
                 recognisable as the same module wherever it appears. Sits beside the meta badge
                 because it is the other half of "what item is this" — the name alone cannot say. */}
             {grade && <AbyssalBadge grade={grade}/>}
+            {isPrereleaseRig(typeID) && <SourceBadge label={t("Pre-release")} color={C.warning}/>}
           </div>
         </div>
       </div>
@@ -1427,6 +1431,10 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
           {desc}
         </div>
       )}
+      {/* A pre-release Synchronizer rig shows its bonus text (the in-game Traits tab) and the control
+          for the rumoured skill that cuts its penalty, right where you are reading about it. */}
+      {isPrereleaseRig(typeID) && hasTraits(typeID) && <div style={{marginBottom:2}}><TraitsPanel typeID={typeID}/></div>}
+      {isPrereleaseRig(typeID) && <PrereleaseSkillControl/>}
       {/* Under the description, above the skills — it is a fact about the item, not a stat. */}
       {priceContent??(mutaplasmid?<div style={{fontSize:11,color:C.textMute,marginBottom:12}}>{t('no price')}</div>:<ItemPrice typeID={typeID}/>)}
       {/* Required skills */}

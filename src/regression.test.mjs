@@ -8565,6 +8565,73 @@ Nanofiber Internal Structure II
   const exported = slotsToEsiFitting(tid('Herald'), 'T', { ...EMPTY, high: [P('Small Focused Pulse Laser II')], services: [] }, [], [], []);
   check('prerelease', 'export to EVE carries the real hull typeID', exported.ship_type_id, 97793, 0);
 }
+
+// ─── PRE-RELEASE SYNCHRONIZER RIGS ────────────────────────────────────────────────────────────────
+// The five pirate Synchronizer rigs (data/prerelease-rigs.js), built from one preview screenshot. NOT
+// pyfa-validated: pyfa has no such rigs. Every expected value is the screenshot's percentage applied
+// by hand to the base attribute, so these pin Owen's reading of the text rather than CCP's numbers:
+// +1 point per fitted faction module on the four bonuses only, abyssal modules never counted, and
+// the rumoured skill taking 10% per level off the penalty. Delete with the file when CCP ships them.
+{
+  console.log('\nPRE-RELEASE SYNCHRONIZER RIGS');
+  const { Fit } = await import('./dogma-engine-init.js');
+  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
+  const { isPrereleaseRig } = await import('./data/prerelease-rigs.js');
+  // A raw Fit sets no skills, so the drawback skill never runs and the penalty is at full size.
+  const raw = (hull, mods, rig) => {
+    const f = new Fit(tid(hull));
+    const items = mods.map(([n, s = 'active', mut]) => f.addModule(tid(n), s, mut));
+    const r = rig && f.addModule(tid(rig), 'online');
+    f.calculate();
+    return { ship: f.ship, items, rig: r };
+  };
+  const bonuses = r => ['synchronizerBonus1', 'synchronizerBonus2', 'synchronizerBonus3', 'synchronizerBonus4'].map(n => r.get(n)).join('/');
+  const DB = 'Dark Blood Heat Sink', NEUT = 'Heavy Energy Neutralizer II', RIG = 'Medium Dark Blood Synchronizer';
+
+  const none = raw('Omen', [[NEUT]], RIG);
+  check('sync', 'no Dark Blood modules: the screenshot numbers', bonuses(none.rig), '10/10/5/5');
+  check('sync', 'neut drain +10% (600 GJ)', none.items[0].get('energyNeutralizerAmount'), 660);
+  const two = raw('Omen', [[NEUT], [DB, 'online'], [DB, 'online']], RIG);
+  check('sync', 'two Dark Blood modules: +1 point each', bonuses(two.rig), '12/12/7/7');
+  check('sync', 'neut drain at 12%', two.items[0].get('energyNeutralizerAmount'), 672);
+  check('sync', 'neut optimal at 7% (20 km)', two.items[0].get('maxRange'), 21400);
+  check('sync', 'an abyssal Dark Blood module does not count',
+    bonuses(raw('Omen', [[NEUT], [DB, 'online'], [DB, 'online', { damageMultiplier: 1.1 }]], RIG).rig), '11/11/6/6');
+  check('sync', 'an offline Dark Blood module counts (fitted)',
+    bonuses(raw('Omen', [[NEUT], [DB, 'offline']], RIG).rig), '11/11/6/6');
+  check('sync', 'the penalty does not grow with the count (200% on the unskilled 565 s)', two.ship.get('rechargeRate'), 1695000);
+
+  const dom = raw('Hurricane', [['Domination Gyrostabilizer', 'online'], ['425mm AutoCannon II']], 'Medium Domination Synchronizer');
+  check('sync', 'Domination: -30% shield HP', dom.ship.get('shieldCapacity'), 3150);
+  check('sync', 'Domination: -11% signature (one module)', dom.ship.get('signatureRadius'), 222.5);
+  check('sync', 'Domination: +6% warp speed', dom.ship.get('warpSpeedMultiplier'), 3.71);
+  check('sync', 'Domination: +11% projectile falloff', dom.items[1].get('falloff'), 15035, 1e-4);
+  const gur = raw('Vexor', [['Dread Guristas Multispectral ECM']], 'Medium Dread Guristas Synchronizer');
+  check('sync', 'Guristas: -60% drone control range', gur.ship.get('droneControlDistance'), 8000);
+  check('sync', 'Guristas: +6% shield resists (EM resonance)', gur.ship.get('shieldEmDamageResonance'), 0.94);
+  check('sync', 'Guristas: +6% ECM strength', gur.items[0].get('scanGravimetricStrengthBonus'), 3.074);
+  const ser = raw('Thorax', [['Shadow Serpentis Stasis Webifier']], 'Medium Shadow Serpentis Synchronizer');
+  check('sync', 'Serpentis: -60% lock range', ser.ship.get('maxTargetRange'), 21000);
+  check('sync', 'Serpentis: +11% web resistance', ser.ship.get('stasisWebifierResistance'), 0.89);
+  check('sync', 'Serpentis: +6% velocity', ser.ship.get('maxVelocity'), 265);
+  const san = raw('Omen', [['True Sansha Heat Sink', 'online'], ['10MN Afterburner II'], ['50MN Microwarpdrive II']], 'Medium True Sansha Synchronizer');
+  check('sync', 'Sansha: +400% afterburner activation cost', san.items[1].get('capacitorNeed'), 450);
+  check('sync', 'Sansha: +11% afterburner velocity bonus', san.items[1].get('speedFactor'), 149.85);
+  check('sync', 'Sansha: a microwarpdrive is not an afterburner', san.items[2].get('capacitorNeed'), 160);
+
+  // The skill, through calcFitStats the way the app runs it.
+  const omen = lv => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: [{ typeID: tid(RIG), state: 'online' }] },
+    [], { ...SKILLS_ALL_V, synchronizerRigging: lv }, {}).capRechargeMs;
+  check('sync', 'skill at 0: full 200% penalty', omen(0), 1271250);
+  check('sync', 'skill at V: penalty halved to 100%', omen(5), 847500);
+  check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizerRigging')?.group ?? '', 'Rigging');
+  const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
+  check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '5/5/5');
+  check('sync', 'every rig is flagged pre-release', rigNode.children.every(c => c.mods.every(m => isPrereleaseRig(m.typeID))) ? 1 : 0, 1, 0);
+  let refused = 0;
+  try { slotsToEsiFitting(tid('Omen'), 'T', { ...EMPTY, rigs: [{ typeID: tid(RIG) }], services: [] }, [], [], []); } catch { refused = 1; }
+  check('sync', 'export to EVE refuses a pre-release rig', refused, 1, 0);
+}
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {
   console.log(`ALL ${passed} REGRESSION CHECKS PASSED`);

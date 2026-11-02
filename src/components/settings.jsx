@@ -7,6 +7,8 @@ import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS } from "../li
 import { availableLocales, t } from "../lib/i18n.js";
 import { primePrices, getCachedPrices } from "../prices.js";
 import { allPriceableTypeIDs } from "../lib/core.js";
+import { PrereleaseSkillControl } from "./prerelease-skill.jsx";
+import { PRERELEASE_SKILL_KEY } from "../data/prerelease-rigs.js";
 
 // Skill groups are DERIVED from SKILL_CATALOG rather than hand-listed. The old hardcoded table
 // covered 28 skills; the catalog has 388 — every skill the engine reads PLUS every skill any
@@ -27,6 +29,8 @@ const GROUP_COLORS=new Proxy({},{ get(_,label){ return {
 const SKILL_GROUPS=(()=>{
   const byGroup=new Map();
   for(const e of SKILL_CATALOG){
+    // The pre-release skill has its own control pinned above the groups, which overrides the sheet.
+    if(e.key===PRERELEASE_SKILL_KEY)continue;
     if(!byGroup.has(e.group))byGroup.set(e.group,[]);
     byGroup.get(e.group).push({key:e.key,label:e.name});
   }
@@ -120,6 +124,7 @@ function SkillsPanel({skills,setSkills,profiles,setProfiles}){
     <div>
       <EsiSkillAlignPanel setSkills={setSkills}/>
       <SkillProfilesPanel skills={skills} setSkills={setSkills} profiles={profiles} setProfiles={setProfiles}/>
+      <PrereleaseSkillControl/>
       <div style={{display:"flex",gap:8,marginBottom:14}}>
         {/* Highlight reflects the ACTUAL state, not the last click: a preset is lit only while every
             skill still matches it, so it goes dark again the moment you adjust one. "All V"

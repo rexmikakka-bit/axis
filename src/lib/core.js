@@ -17,6 +17,7 @@ import TYPE_ICONS       from "../data/type-icons.json" with { type: "json" };
 import { calcFitStats, computeCommandBursts, computeProjectedReps, calcRangeFactor, getModuleStats, layerEHP, peakRegen, calcAlignTime, calcLockTime, stackingPenalty, rangeFactor, calcTurretCTH, calcTurretMult, calcMissileFactor, SKILL_DEFAULTS, TYPES, tidByName, boosterSideEffectsFor, isT3Cruiser, subsystemsForHull, t3cSlotLayout, T3C_SUBSYSTEM_GROUPS, ATTR_ID_TO_NAME, simulateCapTrace, fitCostClassOf } from "../calc.js";
 import { DAMAGE_PROFILES } from "../data/damage-profiles.js";
 import { NEW_SHIP_TRAITS } from "../data/new-ships.js";
+import { PRERELEASE_RIG_TRAITS, applyPrereleaseRigModules } from "../data/prerelease-rigs.js";
 import { isValidCharge } from "../dogma-engine.js";
 import { classifyHull } from "./ship-taxonomy.js";
 import { t } from "./i18n.js";
@@ -27,6 +28,10 @@ import { t } from "./i18n.js";
 // fit parsed. That is 14.5 of the 16.4 ms it costs to import one fit, so a 1,700-fit pyfa backup spent
 // 25 of its 28 seconds here. It is also on the path of every EFT paste and every ESI import today.
 // First-wins on a duplicate name, matching the `.find` it replaces.
+// The pre-release Synchronizer rigs join the module list, market tree and icon map here, before
+// anything below indexes them. Their dogma types were added in dogma-engine-init.js.
+applyPrereleaseRigModules(modulesData, marketGroupsData, TYPE_ICONS);
+
 const MODULE_BY_NAME = new Map();
 for (const m of Object.values(modulesData ?? {})) if (m?.name && !MODULE_BY_NAME.has(m.name)) MODULE_BY_NAME.set(m.name, m);
 function moduleByName(name) { return MODULE_BY_NAME.get(name); }
@@ -289,6 +294,7 @@ Promise.all([import('../data-bundle.js'), import('../data/ship-traits.json')]).t
   // pyfa itself reads, so it is current by construction.
   Object.assign(shipTraits, _traitsMod.default ?? _traitsMod ?? {});
   Object.assign(shipTraits, NEW_SHIP_TRAITS);
+  Object.assign(shipTraits, PRERELEASE_RIG_TRAITS);
   // Variations for module groups gaining newer faction/navy members (grouped by group+size,
   // since the precomputed bundle predates them). Override so existing members (e.g. T2 MGC) gain
   // the new siblings; each affected group's full variation list is rebuilt from current type data.
