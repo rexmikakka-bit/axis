@@ -27,6 +27,7 @@ import { TYPES, tidByName } from '../calc.js';
 import { lookupShip } from './core.js';
 import { t } from './i18n.js';
 import { isPrereleaseRig } from '../data/prerelease-rigs.js';
+import { isPrereleaseShip } from '../data/prerelease-ships.js';
 import dronesData from '../data/drones.json' with { type: 'json' };
 
 // name -> our section key. Order is the enum's, and the names are exact: "FighterBay", not "Fighter".
@@ -127,7 +128,8 @@ export function esiFittingToImportShape(esiFitting) {
 // opts: { description, includeCharges, includeImplants, includeBoosters, implants, boosters }
 export function slotsToEsiFitting(shipTypeID, fitName, slots, drones, cargoItems, fighters, opts = {}) {
   const { description = '', includeCharges = true, includeImplants = false, includeBoosters = false, implants = [], boosters = [] } = opts;
-  // A pre-release rig's typeID is our placeholder, which EVE would reject with a bare 422.
+  // A pre-release hull's or rig's typeID is our placeholder, which EVE would reject with a bare 422.
+  if (isPrereleaseShip(shipTypeID)) throw new Error(t('This ship is not in EVE yet, so it cannot be saved to your in-game fittings'));
   if (['rigs', 'high', 'mid', 'low'].some(s => (slots?.[s] ?? []).some(x => isPrereleaseRig(x?.typeID))))
     throw new Error(t('This fit has a pre-release rig that is not in EVE yet, so it cannot be saved to your in-game fittings'));
   const items = [];

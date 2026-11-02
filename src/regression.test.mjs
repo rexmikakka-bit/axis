@@ -4795,7 +4795,9 @@ Republic Fleet Command Mindlink`;
   check('search', 'ONI finds both Navy Issue hulls', shipHits('oni').slice(0, 2).join('|'), 'Omen Navy Issue|Osprey Navy Issue', 0);
   check('search', 'RSI finds the Raven State Issue', shipHits('rsi')[0], 'Raven State Issue', 0);
   check('search', 'VNI finds the Vexor Navy Issue', shipHits('vni')[0], 'Vexor Navy Issue', 0);
-  check('search', 'TFI covers all four Fleet Issue hulls', shipHits('tfi').filter((n) => /Fleet Issue$/.test(n)).length, 4, 0);
+  // Five since the pre-release Tornado Fleet Issue (data/prerelease-ships.js) joined the Tempest,
+  // Typhoon, Thrasher and Talwar; back to 4 if that file is deleted without CCP shipping it.
+  check('search', 'TFI covers all five Fleet Issue hulls', shipHits('tfi').filter((n) => /Fleet Issue$/.test(n)).length, 5, 0);
   // A full name must still beat the longer hull that contains it — "raven" is not Raven Navy Issue.
   check('search', 'an exact hull name outranks its variants', shipHits('raven')[0], 'Raven', 0);
   check('search', 'substring search still works', shipHits('ishtar')[0], 'Ishtar', 0);
@@ -8661,6 +8663,58 @@ Nanofiber Internal Structure II
   let refused = 0;
   try { slotsToEsiFitting(tid('Omen'), 'T', { ...EMPTY, rigs: [{ typeID: tid(RIG) }], services: [] }, [], [], []); } catch { refused = 1; }
   check('sync', 'export to EVE refuses a pre-release rig', refused, 1, 0);
+}
+// ─── PRE-RELEASE NAVY ATTACK BATTLECRUISERS ─────────────────────────────────────────────────────
+// Oracle/Talos/Naga Navy Issue and Tornado Fleet Issue (data/prerelease-ships.js), from CCP's
+// "Fractured Skies in focus" stat cards plus the stats Owen passed on. NOT pyfa-validated: pyfa has no
+// such hulls. Each expected value is the card's bonus applied by hand at V to the base hull's number:
+// six guns at 1 + 15%x5 = 1.75 against the base's eight at 1.25 is 1.05x the DPS; the Tornado's six at
+// 1/(1 - 50%) against eight at 1/(1 - 25%) is 1.125x. Delete with the file when CCP ships them.
+{
+  console.log('\nPRE-RELEASE NAVY ATTACK BATTLECRUISERS');
+  const { Fit } = await import('./dogma-engine-init.js');
+  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
+  const { isPrereleaseShip } = await import('./data/prerelease-ships.js');
+  const P = (name, state = 'active', ammo) => ({ typeID: tid(name), state, ammo });
+  const run = (ship, slots) => calcFitStats({ typeID: tid(ship), name: ship }, { ...EMPTY, ...slots }, [], SKILLS_ALL_V, {});
+  const guns = (ship, n, gun, ammo) => run(ship, { high: Array.from({ length: n }, () => P(gun, 'active', ammo)) });
+  const dpsRatio = (base, navy, gun, ammo) => guns(navy, 6, gun, ammo).weaponDps.total / guns(base, 8, gun, ammo).weaponDps.total;
+
+  check('navyabc', 'Oracle NI: 6 guns at 15%/lvl vs 8 at 5%', dpsRatio('Oracle', 'Oracle Navy Issue', 'Mega Pulse Laser II', 'Multifrequency L'), 1.05, 1e-4);
+  check('navyabc', 'Talos NI: 6 guns at 15%/lvl vs 8 at 5%', dpsRatio('Talos', 'Talos Navy Issue', 'Neutron Blaster Cannon II', 'Antimatter Charge L'), 1.05, 1e-4);
+  check('navyabc', 'Tornado FI: 6 guns at 10% ROF/lvl vs 8 at 5%', dpsRatio('Tornado', 'Tornado Fleet Issue', '1400mm Howitzer Artillery II', 'Republic Fleet EMP L'), 1.125, 1e-4);
+  const oni = run('Oracle Navy Issue', {});
+  check('navyabc', 'Oracle NI: 1200 MW grid at V', oni.pgTotal, 1500);
+  check('navyabc', 'Oracle NI: 225 m/s at V', oni.maxVelocity, 281);
+  check('navyabc', 'Oracle NI: 70 km lock at V', oni.targetRange, 87.5);
+  const engine = (ship, skill, mod, charge) => {
+    const f = new Fit(tid(ship)); f.setSkill(skill, 5);
+    const m = f.addModule(tid(mod), 'online');
+    if (charge) f.setCharge(m, tid(charge));
+    f.calculate();
+    return m;
+  };
+  check('navyabc', 'Oracle NI: +37.5% large energy optimal',
+    engine('Oracle Navy Issue', 'Amarr Battlecruiser', 'Mega Pulse Laser II').get('maxRange') / engine('Oracle', 'Amarr Battlecruiser', 'Mega Pulse Laser II').get('maxRange'), 1.375, 1e-4);
+  check('navyabc', 'Talos NI: +37.5% large hybrid falloff',
+    engine('Talos Navy Issue', 'Gallente Battlecruiser', 'Neutron Blaster Cannon II').get('falloff') / engine('Talos', 'Gallente Battlecruiser', 'Neutron Blaster Cannon II').get('falloff'), 1.375, 1e-4);
+  check('navyabc', 'Talos NI: tracking bonus gone',
+    engine('Talos Navy Issue', 'Gallente Battlecruiser', 'Neutron Blaster Cannon II').get('trackingSpeed') / engine('Talos', 'Gallente Battlecruiser', 'Neutron Blaster Cannon II').get('trackingSpeed'), 1 / 1.375, 1e-4);
+  check('navyabc', 'Talos NI: -75% armor plate mass', engine('Talos Navy Issue', 'Gallente Battlecruiser', '1600mm Steel Plates II').get('massAddition'), 937500);
+  check('navyabc', 'Tornado FI: -75% MWD signature penalty', engine('Tornado Fleet Issue', 'Minmatar Battlecruiser', '50MN Microwarpdrive II').get('signatureRadiusBonus'), 118.75);
+  const torp = engine('Naga Navy Issue', 'Caldari Battlecruiser', 'Torpedo Launcher II', 'Inferno Torpedo')._charge;
+  check('navyabc', 'Naga NI: +25% torpedo thermal damage', torp.get('thermalDamage'), 562.5);
+  check('navyabc', 'Naga NI: +50% torpedo velocity', torp.get('maxVelocity'), 2700);
+  const cruise = engine('Naga Navy Issue', 'Caldari Battlecruiser', 'Cruise Missile Launcher II', 'Scourge Cruise Missile');
+  check('navyabc', 'Naga NI: +50% cruise kinetic damage', cruise._charge.get('kineticDamage'), 562.5);
+  check('navyabc', 'Naga NI: launchers at 5% grid', cruise.get('power'), 75.65);
+  const naga = run('Naga Navy Issue', { high: Array.from({ length: 6 }, () => P('Cruise Missile Launcher II', 'active', 'Scourge Cruise Missile')) });
+  check('navyabc', 'Naga NI: six cruise launchers fit (650 MW)', naga.pgUsed <= naga.pgTotal ? 1 : 0, 1, 0);
+  check('navyabc', 'all four flagged pre-release',
+    ['Oracle Navy Issue', 'Talos Navy Issue', 'Naga Navy Issue', 'Tornado Fleet Issue'].every(n => isPrereleaseShip(tid(n)) && isPrereleaseShip(n)) ? 1 : 0, 1, 0);
+  let refused = 0;
+  try { slotsToEsiFitting(tid('Naga Navy Issue'), 'T', { ...EMPTY, high: [P('Cruise Missile Launcher II')], services: [] }, [], [], []); } catch { refused = 1; }
+  check('navyabc', 'export to EVE refuses a pre-release hull', refused, 1, 0);
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

@@ -79,6 +79,7 @@ export default {
   "Alpha": "Альфа",
   "Always open fits in a new tab": "Всегда открывать фиттинги в новой вкладке",
   "Pre-release": "Предрелиз",
+  "This ship is not in EVE yet, so it cannot be saved to your in-game fittings": "Этого корабля ещё нет в EVE, поэтому его нельзя сохранить во внутриигровые фиттинги",
   "This fit has a pre-release rig that is not in EVE yet, so it cannot be saved to your in-game fittings": "В этом фите есть предрелизный риг, которого ещё нет в EVE, поэтому его нельзя сохранить в игровые фиты",
   "Rumoured skill: {pct}% less Synchronizer rig penalty at this level (10% per level). Applies to every pilot, since no character has it yet.": "Слух о навыке: на этом уровне штраф ригов Synchronizer меньше на {pct}% (10% за уровень). Применяется ко всем пилотам, так как ни у одного персонажа его ещё нет.",
   "A saved fitting or a ship in your hangar": "Сохранённый фиттинг или корабль из ангара",

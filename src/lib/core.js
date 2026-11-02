@@ -17,6 +17,7 @@ import TYPE_ICONS       from "../data/type-icons.json" with { type: "json" };
 import { calcFitStats, computeCommandBursts, computeProjectedReps, calcRangeFactor, getModuleStats, layerEHP, peakRegen, calcAlignTime, calcLockTime, stackingPenalty, rangeFactor, calcTurretCTH, calcTurretMult, calcMissileFactor, SKILL_DEFAULTS, TYPES, tidByName, boosterSideEffectsFor, isT3Cruiser, subsystemsForHull, t3cSlotLayout, T3C_SUBSYSTEM_GROUPS, ATTR_ID_TO_NAME, simulateCapTrace, fitCostClassOf } from "../calc.js";
 import { DAMAGE_PROFILES } from "../data/damage-profiles.js";
 import { NEW_SHIP_TRAITS } from "../data/new-ships.js";
+import { PRERELEASE_TRAITS } from "../data/prerelease-ships.js";
 import { PRERELEASE_RIG_TRAITS, applyPrereleaseRigModules } from "../data/prerelease-rigs.js";
 import { isValidCharge } from "../dogma-engine.js";
 import { classifyHull } from "./ship-taxonomy.js";
@@ -294,6 +295,7 @@ Promise.all([import('../data-bundle.js'), import('../data/ship-traits.json')]).t
   // pyfa itself reads, so it is current by construction.
   Object.assign(shipTraits, _traitsMod.default ?? _traitsMod ?? {});
   Object.assign(shipTraits, NEW_SHIP_TRAITS);
+  Object.assign(shipTraits, PRERELEASE_TRAITS);
   Object.assign(shipTraits, PRERELEASE_RIG_TRAITS);
   // Variations for module groups gaining newer faction/navy members (grouped by group+size,
   // since the precomputed bundle predates them). Override so existing members (e.g. T2 MGC) gain

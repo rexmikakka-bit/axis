@@ -13,9 +13,12 @@ import SYSFX_DATA   from './data/system-effects.json' with { type: 'json' };
 import { initEngine } from './dogma-engine.js';
 import { applyNewShips } from './data/new-ships.js';
 import { applyPrereleaseRigs } from './data/prerelease-rigs.js';
+import { applyPrereleaseShips } from './data/prerelease-ships.js';
 
 // Hulls CCP has shipped that our eve.db predates. Raw bundles, so it has to come first.
 applyNewShips(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA);
+// Hulls CCP has announced but not shipped (the navy attack battlecruisers). Same constraint.
+applyPrereleaseShips(TYPES_DATA, EFFECTS_DATA);
 // Rigs CCP has shown but not shipped (the Synchronizers). Same constraint.
 applyPrereleaseRigs(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA);
 initEngine(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA, SYSFX_DATA.effects);

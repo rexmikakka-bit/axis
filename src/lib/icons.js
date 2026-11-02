@@ -1,4 +1,8 @@
 import TYPE_ICONS from "../data/type-icons.json";
+import { PRERELEASE_SHIP_ART } from "../data/prerelease-ships.js";
+
+// A pre-release hull's placeholder typeID has no art anywhere, so it borrows its base hull's.
+const artID = typeID => PRERELEASE_SHIP_ART[typeID] ?? typeID;
 
 // ── Icons & renders ─────────────────────────────────────────────────────────────
 // These are BUNDLED from src/assets/, not fetched. The shipped app has to work offline, so the art
@@ -73,6 +77,7 @@ for (const [p, u] of Object.entries(_HERO_FILES)) {
 // the offline image matches what was there online rather than being a substitute for it.
 const eveIcon = (typeID, size = 32) => {
   if (!typeID) return null;
+  typeID = artID(typeID);
   const iid = TYPE_ICONS[typeID];
   if (iid != null && _iconByID[iid]) return _iconByID[iid];                 // bundled (offline)
   if (_typeIconByID[typeID]) return _typeIconByID[typeID];                  // drone/fighter/deployable (offline)
@@ -82,6 +87,7 @@ const eveIcon = (typeID, size = 32) => {
 
 const eveRender = (typeID, size = 64) => {
   if (!typeID) return null;
+  typeID = artID(typeID);
   if (_renderByType[typeID]) return _renderByType[typeID];                  // bundled (offline)
   return `https://images.evetech.net/types/${typeID}/render?size=${size}`;  // fallback (online only)
 };
@@ -94,7 +100,7 @@ const eveRender = (typeID, size = 64) => {
 // CCP's server at all and lands here.
 const eveHeroRender = (typeID) => {
   if (!typeID) return null;
-  return _heroByType[typeID] ?? eveRender(typeID);
+  return _heroByType[artID(typeID)] ?? eveRender(typeID);
 };
 
 // A HERO-sized render at 512, fetched.
@@ -108,7 +114,7 @@ const eveHeroRender = (typeID) => {
 // 256 but ~39 KB at 512, and across 440 hulls that is 5.3 MB against 17 MB — the latter roughly
 // doubling the app's download for a picture most sessions never open.
 const eveRenderHi = (typeID, size = 512) =>
-  typeID ? `https://images.evetech.net/types/${typeID}/render?size=${size}` : null;
+  typeID ? `https://images.evetech.net/types/${artID(typeID)}/render?size=${size}` : null;
 
 // Warm the browser's HTTP cache with a hull's hero render ahead of anyone asking to see it, so the
 // ship sheet opens sharp rather than blurred-then-sharp. Nothing here draws: an Image() whose src is

@@ -79,6 +79,7 @@ export default {
   "Alpha": "Alpha",
   "Always open fits in a new tab": "Toujours ouvrir les fittings dans un nouvel onglet",
   "Pre-release": "Préversion",
+  "This ship is not in EVE yet, so it cannot be saved to your in-game fittings": "Ce vaisseau n'est pas encore dans EVE, il ne peut donc pas être enregistré dans vos fittings en jeu",
   "This fit has a pre-release rig that is not in EVE yet, so it cannot be saved to your in-game fittings": "Ce fitting contient un rig en préversion qui n'est pas encore dans EVE, il ne peut donc pas être enregistré dans vos fittings en jeu",
   "Rumoured skill: {pct}% less Synchronizer rig penalty at this level (10% per level). Applies to every pilot, since no character has it yet.": "Compétence supposée : {pct}% de pénalité en moins pour les rigs Synchronizer à ce niveau (10% par niveau). S'applique à tous les pilotes, car aucun personnage ne l'a encore.",
   "A saved fitting or a ship in your hangar": "Un fitting enregistré ou un vaisseau de votre hangar",

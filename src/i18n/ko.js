@@ -77,6 +77,7 @@ export default {
   "Alpha": "알파",
   "Always open fits in a new tab": "피팅을 항상 새 탭에서 열기",
   "Pre-release": "출시 전",
+  "This ship is not in EVE yet, so it cannot be saved to your in-game fittings": "이 함선은 아직 EVE에 없어 게임 내 피팅에 저장할 수 없습니다",
   "This fit has a pre-release rig that is not in EVE yet, so it cannot be saved to your in-game fittings": "이 피팅에는 아직 EVE에 없는 출시 전 리그가 있어 게임 내 피팅에 저장할 수 없습니다",
   "Rumoured skill: {pct}% less Synchronizer rig penalty at this level (10% per level). Applies to every pilot, since no character has it yet.": "소문의 스킬: 이 레벨에서 Synchronizer 리그 페널티 {pct}% 감소 (레벨당 10%). 아직 가진 캐릭터가 없으므로 모든 파일럿에게 적용됩니다.",
   "A saved fitting or a ship in your hangar": "저장된 피팅 또는 격납고의 함선",
