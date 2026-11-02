@@ -1247,7 +1247,14 @@ export class Fit {
         } else if (domain === 'itemID') {
           src.attrs.applyMod(dstAttr, op, rawVal, effectiveDirect, pg, source);
         } else if (domain === 'charID') {
-          // skill → char attr; not used for fitting stats
+          // Character attributes are not modelled, with one exception: the ship's own
+          // droneControlDistance stands in for the character's (calc.js reads it there). HULL
+          // bonuses to it (Ishtar 1084, Griffin Navy Issue 8102, Penitence 13045) land here. Skills
+          // and Drone Link Augmentors also write it through charID, but the drone-control-range
+          // block in calculate() already adds those, so only the ship's own effects are routed.
+          if (src === this.ship && dstAttr === (AID.droneControlDistance ?? 458)) {
+            this.ship.attrs.applyMod(dstAttr, op, rawVal, effectiveDirect, pg, source);
+          }
         } else if (domain === 'otherID') {
           // Launcher ↔ charge link; custom handler covers this
         }
