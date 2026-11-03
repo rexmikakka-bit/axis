@@ -33,7 +33,7 @@ import { moduleGestureHistory } from './lib/module-gesture.js';
 import { resolvePilotSkills, describeSkillSheet, esiPilot, esiPilotId, profilePilot, profilePilotId, PILOT_ALL_V, PILOT_ALPHA, PILOT_ME } from './lib/pilot.js';
 import { buildShipTaxonomy, shipsUnder, nodeAtPath, classifyHull, TOP_ORDER, RACE_ICON_ID } from './lib/ship-taxonomy.js';
 import { targetFitProfile, stackedOnTop } from './lib/graph-target.js';
-import { buildProjectedEffects } from './lib/projection.js';
+import { buildProjectedEffects, buildExternalBursts, projectedFitEffects } from './lib/projection.js';
 import { byRecentlyModified, byNewestFitting } from './lib/fit-order.js';
 import { jargonSearch, nameMatchesQuery, searchScore, initialsOf } from './lib/jargon.js';
 import { browserMetaRank, metaOf } from './lib/meta.js';
@@ -1003,6 +1003,20 @@ function check(group, label, actual, expected, tol = 0.005) {
   check('projburst', 'boosted remote shield rep HP/s', boosted.reps[0]?.rawPS, 101.80, 0.002);
   check('projburst', 'ratio is the cycle-time ratio 8000/6680',
         boosted.reps[0].rawPS / plain.reps[0].rawPS, 8000 / 6680, 0.002);
+
+  // The SAVED fit's own cmdFits, resolved the way every caller does it (projectedFitEffects). The
+  // Projected card used to call computeProjectedReps without them, so a linked Basilisk showed its
+  // unlinked 85 HP/s on the card while the Stats tab applied the linked number.
+  const fitsDB = {
+    Claymore: [{ name: 'shield', slots: { high: [M('Shield Command Burst II', 'active', 'Active Shielding Charge')], mid: [], low: [], rigs: [] } }],
+    Basilisk: [{ name: 'linked', slots, cmdFits: [{ ship: 'Claymore', fitName: 'shield' }] }],
+  };
+  const src = fitsDB.Basilisk[0];
+  const viaCard = projectedFitEffects('Basilisk', src, fitsDB, () => null);
+  const bursts = buildExternalBursts(src.cmdFits, fitsDB, () => null);
+  check('projburst', 'saved fit\'s own links reach its projection', viaCard.reps[0]?.rawPS > plain.reps[0].rawPS ? 1 : 0, 1, 0);
+  check('projburst', '...exactly as the applied bursts give', viaCard.reps[0]?.rawPS,
+        computeProjectedReps(basi, slots, null, { externalBursts: bursts }).reps[0]?.rawPS, 1e-12);
 }
 
 // -----------------------------------------------------------------------------

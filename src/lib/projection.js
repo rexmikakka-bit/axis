@@ -38,6 +38,16 @@ export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
 }
 
 /**
+ * What the saved fit `fit` (a `ship`) projects, flown by its own pilot and boosted by its OWN
+ * command links. Every caller that shows or applies a projected fit goes through here: the
+ * Projected card used to call computeProjectedReps without the links, so a linked Basilisk read its
+ * unlinked reps on the card while the Stats tab beside it applied the linked ones.
+ */
+export function projectedFitEffects(ship, fit, fitsDB, sourceSkills) {
+  return computeProjectedReps({name:ship,typeID:tidByName(ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits,fitsDB,sourceSkills)});
+}
+
+/**
  * The combined effect of `projFits` on the ship `shipName` fitted with `slots`, which is flown on
  * `skills` and sits under `externalBursts`. Returns NO_PROJECTION when nothing is projected.
  */
@@ -74,7 +84,7 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
     // The projected fit's OWN command links (e.g. a Guardian sitting under its own Sleipnir's
     // Rapid Repair burst) boost ITS reps before they ever reach the target — read from that
     // fit's saved cmdFits, not the locally-edited fit's, or a boosted logi projects as if unboosted.
-    const eff=computeProjectedReps({name:pf.ship,typeID:tidByName(pf.ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits,fitsDB,sourceSkills)});
+    const eff=projectedFitEffects(pf.ship,fit,fitsDB,sourceSkills);
     const rangeM=(pf.rangeKm??30)*1000;
     const rf=(o,fo)=>calcRangeFactor(o,fo,rangeM,true);
     if(AF.rep>0)for(const r of eff.reps)repEntries[r.kind].push({amount:r.amount*AF.rep*rf(r.optimal,r.falloff),cycleS:r.cycleS});

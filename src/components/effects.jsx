@@ -8,6 +8,7 @@ import { BOOSTER_DATA, CMD_SHIP_FITS, WARFARE_BUFF_UNIT, haptic } from "../lib/c
 import { byRecentlyModified } from "../lib/fit-order.js";
 import { boosterSideEffectsFor, computeProjectedReps, computeCommandBursts, calcRangeFactor, stackingPenalty, jamChanceFrom, SKILL_DEFAULTS, tidByName, TYPES } from "../calc.js";
 import { t } from "../lib/i18n.js";
+import { projectedFitEffects } from "../lib/projection.js";
 
 const BOOSTER_SIDE_EFFECTS = {
   "Blue Pill":     [{attr:"Shield Capacity",penalty:"-22.5%"},{attr:"Turret Optimal Range",penalty:"-22.5%"},{attr:"Cap Capacity",penalty:"-22.5%"},{attr:"Missile Explosion Velocity",penalty:"-22.5%"}],
@@ -590,7 +591,7 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
       {projFits.map((f,i)=>{
         const srcFit=fitsDB[f.ship]?.find(x=>x.name===f.fitName);
         const rangeKm=f.rangeKm??30;
-        const eff=srcFit?computeProjectedReps({name:f.ship,typeID:tidByName(f.ship)},srcFit.slots,sourceSkills(srcFit),{implants:srcFit.implants,boosters:srcFit.boosters,drones:srcFit.drones}):{reps:[],webs:[],neuts:[]};
+        const eff=srcFit?projectedFitEffects(f.ship,srcFit,fitsDB,sourceSkills):{reps:[],webs:[],neuts:[]};
         const rf=(o,fo)=>calcRangeFactor(o,fo,rangeKm*1000,true);
         const totals={shield:0,armor:0,hull:0};
         // What THIS fit accepts (HIC bubble, siege/triage/bastion impedance), as App.jsx applies it.
@@ -664,7 +665,7 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
       })}
       <button className="press" onClick={()=>{haptic();setShowProjPicker(true);}} style={{width:"100%",padding:"12px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:4}}>{t("+ Add Projected Fit")}</button>
       {showProjPicker&&<FitPickerSheet title={t("Project a Fit")} fitsDB={fitsDB} pinned={openTabFits} onSelect={(ship,fit)=>{
-        const eff=computeProjectedReps({name:ship,typeID:tidByName(ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones});
+        const eff=projectedFitEffects(ship,fit,fitsDB,sourceSkills);
         const optims=[...eff.reps,...eff.webs,...eff.neuts,...(eff.painters||[]),...(eff.damps||[]),...(eff.trackDisr||[]),...(eff.guideDisr||[])].map(m=>m.optimal).filter(v=>v>0);
         const rangeKm=optims.length?Math.round(Math.min(...optims)/1000):30;
         setProjFits(prev=>[...prev,{ship,fitName:fit.name,rangeKm}]);

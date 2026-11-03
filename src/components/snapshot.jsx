@@ -3,6 +3,7 @@ import { C } from "../theme.js";
 import { eveRender } from "../lib/icons.js";
 import { computeCommandBursts, computeProjectedReps, calcRangeFactor, tidByName, TYPES } from "../calc.js";
 import { WARFARE_BUFF_UNIT, loadedChargeCount } from "../lib/core.js";
+import { projectedFitEffects } from "../lib/projection.js";
 import { abyssalGrade } from "../lib/eft-export.js";
 import { getCachedPrices, fetchPrices, priceAsOf } from "../prices.js";
 import { fmtPriceAge } from "../lib/fmt.js";
@@ -192,7 +193,7 @@ function buildProjected(cmdFits, projFits, fitsDB, skills, assist = { rep: 1, ca
     const fit = fitsDB?.[pf.ship]?.find((f) => f.name === pf.fitName);
     if (!fit) continue;
     let eff;
-    try { eff = computeProjectedReps({ name: pf.ship, typeID: tidByName(pf.ship) }, fit.slots, skills, { implants: fit.implants, boosters: fit.boosters, drones: fit.drones }); } catch { continue; }
+    try { eff = projectedFitEffects(pf.ship, fit, fitsDB, () => skills); } catch { continue; }
     const rangeM = (pf.rangeKm ?? 30) * 1000;
     const rf = (o, fo) => calcRangeFactor(o, fo, rangeM, true);
     const fx = [];
