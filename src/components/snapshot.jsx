@@ -165,7 +165,9 @@ function fmtBuff(buffID, value) {
 }
 // `assist` is what the snapshot's own fit accepts (App.jsx's assistanceFactors): a sieged dread
 // takes no remote reps, so the card must not advertise them.
-function buildProjected(cmdFits, projFits, fitsDB, skills, assist = { rep: 1, cap: 1, assist: 1 }) {
+// `sourceSkills(fit)` is App's per-fit pilot resolver: a link or projected fit is another pilot's
+// ship, flown on ITS saved pilot, exactly as the Effects tab and the applied stats read it.
+function buildProjected(cmdFits, projFits, fitsDB, sourceSkills, assist = { rep: 1, cap: 1, assist: 1 }) {
   const links = [];
   for (const cf of (cmdFits ?? [])) {
     // `active` is opt-OUT — undefined counts as on, so fits saved before the toggle existed keep
@@ -174,7 +176,7 @@ function buildProjected(cmdFits, projFits, fitsDB, skills, assist = { rep: 1, ca
     const fit = fitsDB?.[cf.ship]?.find((f) => f.name === cf.fitName);
     if (!fit) continue;
     let bursts = [];
-    try { bursts = computeCommandBursts({ name: cf.ship, typeID: tidByName(cf.ship) }, fit.slots, skills, { implants: fit.implants, boosters: fit.boosters }); } catch { /* skip */ }
+    try { bursts = computeCommandBursts({ name: cf.ship, typeID: tidByName(cf.ship) }, fit.slots, sourceSkills(fit), { implants: fit.implants, boosters: fit.boosters }); } catch { /* skip */ }
     if (!bursts.length) continue;
     const byCharge = {}, order = []; let warfare = null;
     for (const b of bursts) {
@@ -193,7 +195,7 @@ function buildProjected(cmdFits, projFits, fitsDB, skills, assist = { rep: 1, ca
     const fit = fitsDB?.[pf.ship]?.find((f) => f.name === pf.fitName);
     if (!fit) continue;
     let eff;
-    try { eff = projectedFitEffects(pf.ship, fit, fitsDB, () => skills); } catch { continue; }
+    try { eff = projectedFitEffects(pf.ship, fit, fitsDB, sourceSkills); } catch { continue; }
     const rangeM = (pf.rangeKm ?? 30) * 1000;
     const rf = (o, fo) => calcRangeFactor(o, fo, rangeM, true);
     const fx = [];
@@ -726,14 +728,14 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
 }
 
 // ── the modal: preview + save/share ─────────────────────────────────────────────
-function SnapshotModal({ onClose, cmdFits, projFits, fitsDB, skills, assist, priceHub = "Jita", priceSource = "fuzzwork", ...cardProps }) {
+function SnapshotModal({ onClose, cmdFits, projFits, fitsDB, sourceSkills, assist, priceHub = "Jita", priceSource = "fuzzwork", ...cardProps }) {
   const abyssalData=useAbyssalData(cardProps.slots);
   const cardRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null);
   const [preview, setPreview] = useState(null);
   const [pricesReady, setPricesReady] = useState(false);
-  const projected = useMemo(() => buildProjected(cmdFits, projFits, fitsDB, skills, assist), [cmdFits, projFits, fitsDB, skills, assist]);
+  const projected = useMemo(() => buildProjected(cmdFits, projFits, fitsDB, sourceSkills, assist), [cmdFits, projFits, fitsDB, sourceSkills, assist]);
 
   const render = async () => {
     const html2canvas = (await import("html2canvas")).default;
