@@ -116,7 +116,7 @@ function SatelliteApp({ id }) {
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.surface, color: C.text, fontSize: 13 }}>
         <div style={{ height: 28, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px", background: C.surfaceAlt,
                       borderBottom: `1px solid ${C.border}` }}>
-          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid }}>{title}</span>
+          <span style={{ fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid }}>{title}</span>
           <span style={{ flex: 1 }} />
           <TitleButton label={t("Dock")} onClick={() => { sync.post({ type: "closed", id }); closeThisWindow(); }}>⇲</TitleButton>
         </div>
@@ -222,8 +222,8 @@ function DesktopApp() {
                            background: on ? C.bg : "transparent", border: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
                            marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}
                   onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? C.text : C.textMid }}>{tb.ship}</span>
-                  <span style={{ fontSize: 12.5, color: C.textMid }}>{tb.name}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? C.text : C.textMid }}>{tb.ship}</span>
+                  <span style={{ fontSize: 13.5, color: C.textMid }}>{tb.name}</span>
                   {s.openFitTabs.length > 0 && <button type="button" aria-label={t("Close tab")} title={t("Close tab")}
                     onClick={(e) => { e.stopPropagation(); s.closeFitTab(tb); }}
                     style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}

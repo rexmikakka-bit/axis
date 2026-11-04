@@ -19,7 +19,7 @@ export default function Menu({ label, items, align = "right", ariaLabel, buttonS
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={ariaLabel} onClick={() => setOpen(o => !o)}
-        style={{ height: 28, padding: "0 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
+        style={{ height: 28, padding: "0 10px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
                  display: "flex", alignItems: "center", gap: 6,
                  background: open ? C.surfaceAlt : "transparent", border: `1px solid ${open ? C.borderStrong : "transparent"}`, color: C.text, ...buttonStyle }}>
         {label}
@@ -29,19 +29,19 @@ export default function Menu({ label, items, align = "right", ariaLabel, buttonS
                                   background: C.surface, border: `1px solid ${C.borderStrong}`, borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.45)", padding: 4 }}>
           {items.filter(Boolean).map((it, i) => {
             if (it.divider) return <div key={i} style={{ height: 1, background: C.border, margin: "4px 6px" }} />;
-            if (it.heading) return <div key={i} style={{ padding: "6px 10px 2px", fontSize: 10.5, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid }}>{it.heading}</div>;
+            if (it.heading) return <div key={i} style={{ padding: "6px 10px 2px", fontSize: 11.5, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid }}>{it.heading}</div>;
             const checkable = it.checked !== undefined;
             return (
               <button key={i} type="button" role={checkable ? "menuitemcheckbox" : "menuitem"} aria-checked={checkable ? !!it.checked : undefined}
                 disabled={it.disabled} onClick={() => { it.onSelect?.(); if (!checkable) setOpen(false); }}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "none", borderRadius: 5,
-                         background: "transparent", color: it.disabled ? C.textMute : C.text, fontSize: 12.5, textAlign: "left",
+                         background: "transparent", color: it.disabled ? C.textMute : C.text, fontSize: 13.5, textAlign: "left",
                          cursor: it.disabled ? "default" : "pointer" }}
                 onMouseEnter={(e) => { if (!it.disabled) e.currentTarget.style.background = C.surfaceAlt; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
                 {checkable && <span aria-hidden="true" style={{ width: 14, color: C.accent, fontWeight: 700 }}>{it.checked ? "✓" : ""}</span>}
                 <span style={{ flex: 1 }}>{it.label}</span>
-                {it.hint && <span style={{ fontSize: 11, color: C.textMid }}>{it.hint}</span>}
+                {it.hint && <span style={{ fontSize: 12, color: C.textMid }}>{it.hint}</span>}
               </button>
             );
           })}

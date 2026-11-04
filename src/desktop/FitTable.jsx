@@ -61,7 +61,7 @@ export function FitTable({ api }) {
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
     const widths = FIT_COLS.map(c => cols?.[c.id] ?? c.w);
-    const template = `12px 18px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
+    const template = `12px 20px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
     const prices = getCachedPrices(hub, source);
     const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
     const item = (id) => cs?.fittedItems?.get(id);
@@ -79,8 +79,8 @@ export function FitTable({ api }) {
     };
     const endResize = () => { drag.current = null; };
 
-    const cell = { fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "right" };
-    const histBtn = (on) => ({ height: 24, padding: "0 8px", borderRadius: 5, fontSize: 11.5, border: `1px solid ${C.borderStrong}`, background: "transparent",
+    const cell = { fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "right" };
+    const histBtn = (on) => ({ height: 24, padding: "0 8px", borderRadius: 5, fontSize: 12.5, border: `1px solid ${C.borderStrong}`, background: "transparent",
                                color: on ? C.text : C.textMute, cursor: on ? "pointer" : "default" });
 
     return (
@@ -94,7 +94,7 @@ export function FitTable({ api }) {
         </div>
         {/* Column header */}
         <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 24, padding: "0 12px", flex: "none",
-                      borderBottom: `1px solid ${C.border}`, fontSize: 10.5, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
+                      borderBottom: `1px solid ${C.border}`, fontSize: 11.5, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
           <span /><span /><span>{t("Module")} · {t("Charge")}</span>
           {FIT_COLS.map(c => (
             <span key={c.id} style={{ position: "relative", textAlign: "right", color: c.id === "cpu" ? resourceColor("cpu") : c.id === "pg" ? resourceColor("pg") : C.textMid }}>
@@ -116,8 +116,8 @@ export function FitTable({ api }) {
               <div key={sec.key}>
                 {/* Rack header: one colour for every rack (the handoff's rule), with its sums. */}
                 <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 22, padding: "0 12px",
-                              background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, fontSize: 11, color: C.textMid }}>
-                  <span style={{ gridColumn: "1 / 4", fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase" }}>
+                              background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.textMid }}>
+                  <span style={{ gridColumn: "1 / 4", fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>
                     {sec.label} <span style={{ fontWeight: 500 }}>{fitted.length} / {total}</span>
                   </span>
                   {sec.key === "rigs"
@@ -128,8 +128,8 @@ export function FitTable({ api }) {
                 {rows.map((row, rowIdx) => {
                   if (row.type === "empty") return (
                     <div key={row.id} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }} onClick={() => openEmpty(sec.key, row.id)}
-                      style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 24, padding: "0 12px",
-                               borderBottom: `1px solid ${C.border}99`, cursor: "pointer", color: C.textMid, fontSize: 12 }}>
+                      style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
+                               borderBottom: `1px solid ${C.border}99`, cursor: "pointer", color: C.textMid, fontSize: 13 }}>
                       <span /><span style={{ textAlign: "center", color: C.borderStrong }}>+</span>
                       <span style={{ gridColumn: "3 / -1" }}>{row.name}</span>
                     </div>
@@ -148,7 +148,7 @@ export function FitTable({ api }) {
                   return (
                     <div key={row.rkey || row.id || row.name} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
                       onClick={() => sec.key === "subsystems" ? openSubsystem(row) : openMenu(sec.key, row.id)} className="no-select"
-                      style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 24, padding: "0 12px",
+                      style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
                                borderBottom: `1px solid ${isDragOver ? C.accent : row.orphan ? C.danger : `${C.border}99`}`, cursor: "pointer",
                                opacity: isDragSrc ? 0.45 : 1, background: row.orphan ? `${C.danger}14` : isDragOver ? C.accentLight : "transparent" }}
                       onMouseEnter={ev => { if (!row.orphan && !dragUI) ev.currentTarget.style.background = C.surfaceAlt; }}
@@ -157,21 +157,21 @@ export function FitTable({ api }) {
                         {sec.key === "subsystems" ? null
                           : <StateDot row={row} rack={sec.key} gestureMemory={gestureMemory} states={validStatesFor(row)} onSet={st => setRowState(sec.key, row, st)} />}
                       </span>
-                      <span style={{ width: 18, height: 18, opacity: row.state === "offline" ? 0.4 : 1 }}>
-                        {row.typeID && <img className="eve-icon" src={eveIcon(row.typeID, 32)} width={18} height={18} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}
+                      <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
+                        {row.typeID && <img className="eve-icon" src={eveIcon(row.typeID, 32)} width={20} height={20} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}
                       </span>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 12.5 }}>
-                        {row.count > 1 && <span style={{ fontSize: 10.5, fontWeight: 700, color: C.textMid, flex: "none" }}>{row.count}×</span>}
-                        {row.mutaplasmid && <span title={t("Abyssal (mutated) module")} style={{ fontSize: 9.5, fontWeight: 800, color: C.danger, border: `1px solid ${C.danger}`, borderRadius: 3, padding: "0 3px", flex: "none" }}>A</span>}
-                        <span title={row.name} style={{ fontWeight: 600, color: row.orphan ? C.danger : row.state === "offline" ? C.textMid : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1 auto", minWidth: 60 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 13.5 }}>
+                        {row.count > 1 && <span style={{ fontSize: 11.5, fontWeight: 500, color: C.textMid, flex: "none" }}>{row.count}×</span>}
+                        {row.mutaplasmid && <span title={t("Abyssal (mutated) module")} style={{ fontSize: 10.5, fontWeight: 800, color: C.danger, border: `1px solid ${C.danger}`, borderRadius: 3, padding: "0 3px", flex: "none" }}>A</span>}
+                        <span title={row.name} style={{ fontWeight: 500, color: row.orphan ? C.danger : row.state === "offline" ? C.textMid : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1 auto", minWidth: 60 }}>
                           {sec.key === "subsystems" ? (row.name || "").replace(/^.+?\s-\s/, "") : row.name}
                         </span>
-                        {row.state === "overheated" && <span style={{ fontSize: 10, fontWeight: 700, color: C.overheat, flex: "none" }}>{t("OH")}</span>}
+                        {row.state === "overheated" && <span style={{ fontSize: 11, fontWeight: 500, color: C.overheat, flex: "none" }}>{t("OH")}</span>}
                         {charge && <span title={`${charge} · ${row.charges}/${row.maxCharges}`} style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1000 auto", minWidth: 24 }}>· {charge}</span>}
                         {charge && <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")}
                           onClick={ev => { ev.stopPropagation(); const ids = new Set(row.groupIds ?? [row.id]);
                             setSlots(prev => ({ ...prev, [sec.key]: prev[sec.key].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); }}
-                          style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", padding: 0, fontSize: 11, flex: "none" }}>×</button>}
+                          style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", padding: 0, fontSize: 12, flex: "none" }}>×</button>}
                       </span>
                       <span style={{ ...cell, color: resourceColor("cpu") }}>{cpu ? num(cpu) : ""}</span>
                       <span style={{ ...cell, color: resourceColor("pg") }}>{pg ? num(pg) : ""}</span>

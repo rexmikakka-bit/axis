@@ -5,7 +5,7 @@ import { TYPES, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { DMG, validStatesFor } from "../lib/core.js";
 import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { TargetProfileSheet } from "../components/ui.jsx";
-import { KV, SectionLabel, Empty, TYPE } from "./kit.jsx";
+import { KV, Empty, Dialog, TYPE, WEIGHT } from "./kit.jsx";
 
 // The desktop Firepower window: the phone's Firepower card (tabs.jsx StatsTab) figure for figure —
 // resist-weighted when a target profile is set, spool ranges, clip damage only for weapons that
@@ -20,7 +20,7 @@ const isWeapon = (tid) => { const e = TYPES[String(tid)]?.e; return usesTurretHa
 function Toggle({ on, onClick, color, children, title }) {
   return (
     <button type="button" aria-pressed={on} onClick={onClick} title={title}
-      style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 11.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+      style={{ height: 26, padding: "0 11px", borderRadius: 13, fontSize: 12.5, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
                background: on ? `${color}1f` : "transparent", border: `1px solid ${on ? color : C.borderStrong}`, color: on ? color : C.textMid }}>
       <span style={{ width: 6, height: 6, borderRadius: 99, background: on ? color : C.textMid }} />{children}
     </button>
@@ -37,10 +37,36 @@ function Spine({ dmg }) {
   );
 }
 
-function AmmoTable({ s, ship, opts }) {
+// Collapsed to one line in the window — what is loaded, and the button — with the ranking in a dialog
+// big enough to read whole names. Picking a round loads it and closes the dialog.
+function AmmoSection({ s, ship, opts }) {
   const racks = useMemo(() => weaponRacks(s.slots), [s.slots]);
-  const [rackIdx, setRackIdx] = useState(0);
-  const rack = racks[Math.min(rackIdx, Math.max(0, racks.length - 1))];
+  const [open, setOpen] = useState(null);   // rack index whose picker is open
+  if (!racks.length) return null;
+  return (
+    <div style={{ flex: "none", borderTop: `1px solid ${C.border}`, padding: "6px 0" }}>
+      {racks.map((r, i) => (
+        <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 12px", minHeight: 28 }}>
+          <span style={{ fontSize: TYPE.label, color: C.textMid, flex: "none" }}>{t("Ammo")}</span>
+          <span title={`${r.mounts.length}× ${r.name}`} style={{ fontSize: TYPE.label, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {r.ammo ? r.ammo.replace(/\s*\(\d+\)$/, "") : <span style={{ color: C.textMid }}>{t("None loaded")}</span>}
+            {racks.length > 1 && <span style={{ color: C.textMid }}> · {r.mounts.length}× {r.name}</span>}
+          </span>
+          <button type="button" onClick={() => setOpen(i)}
+            style={{ height: 26, padding: "0 12px", borderRadius: 6, fontSize: 12.5, cursor: "pointer", flex: "none",
+                     background: C.surfaceAlt, border: `1px solid ${C.borderStrong}`, color: C.text }}>{t("Change…")}</button>
+        </div>
+      ))}
+      {open != null && racks[open] && (
+        <Dialog title={`${t("Ammo")} · ${racks[open].mounts.length}× ${racks[open].name}`} onClose={() => setOpen(null)} width={620}>
+          <AmmoTable s={s} ship={ship} opts={opts} rack={racks[open]} onPicked={() => setOpen(null)} />
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+function AmmoTable({ s, ship, opts, rack, onPicked }) {
   const [result, setResult] = useState(null);
   const rackKey = rack ? `${rack.name}|${rack.mounts.length}|${rack.ammo}` : "";
   useEffect(() => {
@@ -50,53 +76,49 @@ function AmmoTable({ s, ship, opts }) {
     const id = setTimeout(() => { if (!dead) setResult(rankAmmo(ship, s.slots, s.drones ?? [], s.fitSkills, opts, rack, false)); }, 0);
     return () => { dead = true; clearTimeout(id); };
   }, [ship, s.slots, s.drones, s.fitSkills, opts, rackKey]);   // eslint-disable-line react-hooks/exhaustive-deps
-  if (!racks.length) return null;
   const rows = [...(result?.rows ?? [])].flatMap(r => (r.variants ?? [r]).filter(v => !v.unscored)).sort((a, b) => (b.dps ?? 0) - (a.dps ?? 0));
   const best = rows[0];
-  const load = (row) => s.setSlots(prev => {
-    const next = { ...prev };
-    for (const { key } of rack.mounts) if (next[key] === prev[key]) next[key] = (prev[key] ?? []).slice();
-    for (const { key, index } of rack.mounts) next[key][index] = { ...next[key][index], ammo: row.name, charges: row.charges, maxCharges: row.charges };
-    return next;
-  });
+  const load = (row) => {
+    s.setSlots(prev => {
+      const next = { ...prev };
+      for (const { key } of rack.mounts) if (next[key] === prev[key]) next[key] = (prev[key] ?? []).slice();
+      for (const { key, index } of rack.mounts) next[key][index] = { ...next[key][index], ammo: row.name, charges: row.charges, maxCharges: row.charges };
+      return next;
+    });
+    onPicked?.();
+  };
   const range = (r) => r.optimal == null ? "" : r.falloff > 0 ? `${Math.round(r.optimal)} + ${Math.round(r.falloff)} km` : `${Math.round(r.optimal)} km`;
+  const cols = "4px minmax(0,1fr) 70px 70px 110px";
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-      <SectionLabel right={racks.length > 1 && (
-        <select value={rackIdx} onChange={e => setRackIdx(+e.target.value)} aria-label={t("Weapon")}
-          style={{ height: 22, fontSize: 11.5, background: C.bg, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 5 }}>
-          {racks.map((r, i) => <option key={r.name} value={i}>{r.mounts.length}× {r.name}</option>)}
-        </select>)}>
-        {t("Ammo")}{racks.length === 1 ? ` · ${rack.mounts.length}× ${rack.name}` : ""}
-      </SectionLabel>
-      <div style={{ display: "grid", gridTemplateColumns: "3px minmax(0,1fr) 52px 52px 92px", columnGap: 8, padding: "0 12px 3px",
-                    fontSize: 10.5, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
+    <div style={{ padding: "4px 0 8px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 12, padding: "6px 16px", position: "sticky", top: 0, background: C.surface,
+                    fontSize: TYPE.section, fontWeight: WEIGHT.value, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, borderBottom: `1px solid ${C.border}` }}>
         <span /><span>{t("Charge")}</span><span style={{ textAlign: "right" }}>{result?.targeted ? t("Applied") : t("DPS")}</span>
         <span style={{ textAlign: "right" }}>{t("Volley")}</span><span style={{ textAlign: "right" }}>{t("Range")}</span>
       </div>
-      <div style={{ flex: 1, minHeight: 60, overflowY: "auto" }}>
-        {!result && <div style={{ padding: "6px 12px", fontSize: TYPE.small, color: C.textMid }}>{t("Comparing ammo…")}</div>}
-        {rows.map(r => {
-          const loaded = r.name === rack.ammo;
-          return (
-            <div key={r.name} role="button" tabIndex={0} onClick={() => load(r)} onKeyDown={e => { if (e.key === "Enter") load(r); }}
-              title={loaded ? t("Loaded") : t("Load into every {name}", { name: rack.name })}
-              style={{ display: "grid", gridTemplateColumns: "3px minmax(0,1fr) 52px 52px 92px", columnGap: 8, alignItems: "center", minHeight: 24, padding: "0 12px",
-                       cursor: "pointer", fontSize: 12, fontVariantNumeric: "tabular-nums", background: loaded ? C.accentLight : "transparent",
-                       boxShadow: loaded ? `inset 2px 0 0 ${C.accent}` : "none" }}
-              onMouseEnter={e => { if (!loaded) e.currentTarget.style.background = C.surfaceAlt; }}
-              onMouseLeave={e => { if (!loaded) e.currentTarget.style.background = "transparent"; }}>
-              <Spine dmg={r.dmg} />
-              <span title={r.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: loaded ? C.accent : C.text, fontWeight: loaded ? 600 : 500 }}>
-                {r.label ?? r.name}{r === best && !loaded && <span style={{ color: C.success, fontSize: 10.5, marginLeft: 6 }}>{t("best")}</span>}
-              </span>
-              <span style={{ textAlign: "right", color: C.text }}>{fmtDps(r.dps)}</span>
-              <span style={{ textAlign: "right", color: C.textMid }}>{fmtN(r.volley)}</span>
-              <span style={{ textAlign: "right", color: C.rig, whiteSpace: "nowrap" }}>{range(r)}</span>
-            </div>
-          );
-        })}
-      </div>
+      {!result && <div style={{ padding: "10px 16px", fontSize: TYPE.label, color: C.textMid }}>{t("Comparing ammo…")}</div>}
+      {rows.map(r => {
+        const loaded = r.name === rack.ammo;
+        return (
+          <div key={r.name} role="button" tabIndex={0} onClick={() => load(r)} onKeyDown={e => { if (e.key === "Enter") load(r); }}
+            title={loaded ? t("Loaded") : t("Load into every {name}", { name: rack.name })}
+            style={{ display: "grid", gridTemplateColumns: cols, columnGap: 12, alignItems: "center", minHeight: 32, padding: "0 16px",
+                     cursor: "pointer", fontSize: 13.5, fontVariantNumeric: "tabular-nums", background: loaded ? C.accentLight : "transparent",
+                     boxShadow: loaded ? `inset 3px 0 0 ${C.accent}` : "none" }}
+            onMouseEnter={e => { if (!loaded) e.currentTarget.style.background = C.surfaceAlt; }}
+            onMouseLeave={e => { if (!loaded) e.currentTarget.style.background = "transparent"; }}>
+            <Spine dmg={r.dmg} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: loaded ? C.accent : C.text }}>
+              {r.name}
+              {loaded && <span style={{ color: C.accent, fontSize: TYPE.small, marginLeft: 8 }}>{t("loaded")}</span>}
+              {r === best && !loaded && <span style={{ color: C.success, fontSize: TYPE.small, marginLeft: 8 }}>{t("best")}</span>}
+            </span>
+            <span style={{ textAlign: "right", color: C.text }}>{fmtDps(r.dps)}</span>
+            <span style={{ textAlign: "right", color: C.textMid }}>{fmtN(r.volley)}</span>
+            <span style={{ textAlign: "right", color: C.rig, whiteSpace: "nowrap" }}>{range(r)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -147,16 +169,16 @@ export function FirepowerPanel({ s, ship, cs }) {
         <Toggle on={!!s.factorInReload} onClick={() => s.setFactorInReload(v => !v)} color={C.accent} title={t("Average reload time into DPS")}>{t("Reload")}</Toggle>
         <span style={{ flex: 1 }} />
         <button type="button" onClick={() => setPicker(true)}
-          style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 11.5, cursor: "pointer", background: "transparent",
+          style={{ height: 26, padding: "0 11px", borderRadius: 13, fontSize: 12.5, cursor: "pointer", background: "transparent",
                    border: `1px solid ${tgt ? C.accent : C.borderStrong}`, color: tgt ? C.accent : C.textMid }}>
           {t("Target")}: {s.tgtProfile?.n ?? t("None (0%)")}
         </button>
       </div>
       <div style={{ flex: "none" }}>
-        <KV min={150} rows={[
+        <KV cols={2} rows={[
           [t("Weapon DPS"), rangeOf(w.total ?? 0, (tgt ? eff.weaponDpsMax : cs.weaponDpsMax) ?? 0), { color: C.accent }],
           [t("Drone DPS"), fmtDps((d?.total ?? 0) + (f?.total ?? 0))],
-          [t("Total DPS"), rangeOf(tot.total ?? 0, (tgt ? eff.totalDpsMax : cs.totalDpsMax) ?? 0), { weight: 700 }],
+          [t("Total DPS"), rangeOf(tot.total ?? 0, (tgt ? eff.totalDpsMax : cs.totalDpsMax) ?? 0), { color: C.text, weight: 600 }],
           [t("Volley"), spool ? `${fmtDps(vol.total ?? 0)}–${fmtDps((tgt ? eff.totalVolleyMax : cs.totalVolleyMax) ?? 0)}` : fmtDps(vol.total ?? 0)],
           hasClip && [t("Clip Dmg"), fmtN(clip.total ?? 0), { title: (clip.total ?? 0).toLocaleString() }],
           hasClip && (cs.clipSeconds ?? 0) > 0 && [t("Clip Duration"), `${Math.round(cs.clipSeconds)}s${(cs.clipReloadSeconds ?? 0) > 0 ? ` (+${Math.round(cs.clipReloadSeconds)}s)` : ""}`],
@@ -166,12 +188,13 @@ export function FirepowerPanel({ s, ship, cs }) {
           <div style={{ display: "flex", gap: 12, padding: "0 12px 6px", fontSize: TYPE.small, flexWrap: "wrap" }}>
             {[["EM", split.em, DMG.em.color], ["Thermal", split.th, DMG.th.color], ["Kinetic", split.kin, DMG.kin.color], ["Explosive", split.exp, DMG.exp.color]]
               .filter(([, v]) => (v ?? 0) > 0.05).map(([l, v, c]) => (
-                <span key={l}><span style={{ color: c, fontWeight: 700 }}>{fmtDps(v)}</span> <span style={{ color: C.textMid }}>{l}</span></span>
+                <span key={l}><span style={{ color: c, fontWeight: 500 }}>{fmtDps(v)}</span> <span style={{ color: C.textMid }}>{l}</span></span>
               ))}
           </div>
         )}
       </div>
-      <AmmoTable s={s} ship={ship} opts={opts} />
+      <AmmoSection s={s} ship={ship} opts={opts} />
+      <span style={{ flex: 1 }} />
       {picker && <TargetProfileSheet current={s.tgtProfile} onSelect={s.setTgtProfile} onClose={() => setPicker(false)} />}
     </div>
   );

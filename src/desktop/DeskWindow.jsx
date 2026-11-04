@@ -102,7 +102,7 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, onFocu
                  background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, borderRadius: "5px 5px 0 0",
                  color: C.textMute, cursor: locked ? "default" : "grab", userSelect: "none", touchAction: "none", outline: "none" }}>
         <Grip />
-        <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
+        <span style={{ fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
         <span style={{ flex: 1 }} />
         {extra}

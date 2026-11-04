@@ -89,7 +89,7 @@ export function CapacitorPanel({ cs }) {
   const capIn = regen + (cs.capFillPS ?? 0);
   const neut = (1 - (cs.energyWarfareResist ?? 1)) * 100;
   return (
-    <KV rows={[
+    <KV cols={2} rows={[
       [t("State"), stable ? t("Stable") : t("Unstable"), { color: tone }],
       [stable ? t("Stable at") : t("Lasts"), stable ? `${((cs.capLevel ?? 1) * 100).toFixed(1)}%` : fmtDur(cs.capTime), { color: tone }],
       [t("Delta"), `${(cs.capDelta ?? 0) >= 0 ? "+" : ""}${fmtF(cs.capDelta ?? 0)} GJ/s`, { color: tone, title: exact(cs.capDelta, 3, " GJ/s") }],
@@ -112,7 +112,7 @@ export function TargetingPanel({ s, cs }) {
   return (
     <>
       <SectionLabel>{t("Targeting")}</SectionLabel>
-      <KV rows={[
+      <KV cols={2} rows={[
         [t("Lock range"), `${fmtF(cs.targetRange ?? 0)} km`, { title: exact(x.targetRange, 3, " km") }],
         [t("Scan res."), `${fmtN(cs.scanRes ?? 0)} mm`, { title: exact(x.scanRes, 2, " mm") }],
         [t("Targets"), String(Math.round(cs.maxTargets ?? 0))],
@@ -122,7 +122,7 @@ export function TargetingPanel({ s, cs }) {
         cs.droneBay > 0 && [t("Drone range"), `${fmtN(Math.round((cs.droneControlRange ?? 0) / 1000))} km`],
       ]} />
       <SectionLabel>{t("Mobility")}</SectionLabel>
-      <KV rows={[
+      <KV cols={2} rows={[
         [t("Speed"), `${Math.round(abOn ? cs.maxVelocityAB : (cs.maxVelocity ?? 0))} m/s`, { title: exact(abOn ? x.maxVelocityAB : x.maxVelocity, 2, " m/s") }],
         [t("Align time"), `${fmtF(cs.alignTime ?? 0)} s`, { title: exact(x.alignTime, 3, " s") }],
         [t("Signature radius"), `${fmtN(cs.sigRadius ?? 0)} m`, { title: exact(x.sigRadius, 2, " m") }],
@@ -166,8 +166,8 @@ export function ValidityBadge({ issues, onOpen }) {
   const color = n ? (issues.some(i => i.sev === "err") ? C.danger : C.warning) : C.success;
   return (
     <button type="button" onClick={onOpen} title={n ? issues.map(i => i.msg).join("\n") : t("No fitting issues detected.")}
-      style={{ height: 20, padding: "0 8px", borderRadius: 10, border: `1px solid ${color}`, background: "transparent", color,
-               fontSize: 11, fontWeight: 600, cursor: "pointer", marginRight: 4 }}>
+      style={{ height: 22, padding: "0 9px", borderRadius: 11, border: `1px solid ${color}`, background: "transparent", color,
+               fontSize: 12, fontWeight: 500, cursor: "pointer", marginRight: 4 }}>
       {n ? t({ one: "{n} issue", other: "{n} issues" }, { n }) : t("Valid")}
     </button>
   );

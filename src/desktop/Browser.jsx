@@ -31,21 +31,21 @@ const Caret = ({ open }) => (
 function TreeRow({ depth, open, leaf, selected, icon, label, sub, onClick, onContextMenu, title }) {
   return (
     <div role="treeitem" aria-expanded={leaf ? undefined : open} aria-selected={selected} onClick={onClick} onContextMenu={onContextMenu} title={title}
-      style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 24, padding: `2px 10px 2px ${10 + depth * INDENT}px`, cursor: "pointer",
-               background: selected ? C.surfaceAlt : "transparent", boxShadow: selected ? `inset 2px 0 0 ${C.accent}` : "none", fontSize: 12.5 }}
+      style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 26, padding: `2px 10px 2px ${10 + depth * INDENT}px`, cursor: "pointer",
+               background: selected ? C.surfaceAlt : "transparent", boxShadow: selected ? `inset 2px 0 0 ${C.accent}` : "none", fontSize: 13.5 }}
       onMouseEnter={e => { if (!selected) e.currentTarget.style.background = `${C.surfaceAlt}99`; }}
       onMouseLeave={e => { if (!selected) e.currentTarget.style.background = "transparent"; }}>
       {leaf ? <span style={{ width: 10, flex: "none" }} /> : <Caret open={open} />}
       {icon && <img className="eve-icon" src={icon} width={16} height={16} alt="" style={{ flex: "none" }} onError={e => { e.target.style.visibility = "hidden"; }} />}
       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{label}</span>
-      {sub && <span style={{ fontSize: 11, color: C.textMid, flex: "none" }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 12, color: C.textMid, flex: "none" }}>{sub}</span>}
     </div>
   );
 }
 
 const SearchBox = ({ value, onChange, placeholder }) => (
   <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
-    style={{ height: 28, margin: "8px 10px 6px", boxSizing: "border-box", width: "calc(100% - 20px)", padding: "0 10px", borderRadius: 6, fontSize: 12.5,
+    style={{ height: 28, margin: "8px 10px 6px", boxSizing: "border-box", width: "calc(100% - 20px)", padding: "0 10px", borderRadius: 6, fontSize: 13.5,
              background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none", flex: "none" }} />
 );
 
@@ -84,13 +84,13 @@ function ItemRow({ mod, price, onFit, onInfo }) {
                borderBottom: `1px solid ${C.border}99` }}
       onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
       <img className="eve-icon" src={eveIcon(mod.typeID, 32)} width={16} height={16} alt="" style={{ gridRow: "1 / 3", alignSelf: "center" }} onError={e => { e.target.style.visibility = "hidden"; }} />
-      <span style={{ fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", gridColumn: "2 / 4" }}>{mod.name}</span>
-      <span style={{ fontSize: 11, color: C.textMid, display: "flex", gap: 8, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", gridColumn: "2 / 4" }}>{mod.name}</span>
+      <span style={{ fontSize: 12, color: C.textMid, display: "flex", gap: 8, fontVariantNumeric: "tabular-nums" }}>
         <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>
         {a.cpu != null && <span style={{ color: resourceColor("cpu") }}>{+(+a.cpu).toFixed(1)} tf</span>}
         {a.power != null && <span style={{ color: resourceColor("pg") }}>{+(+a.power).toFixed(1)} MW</span>}
       </span>
-      <span style={{ fontSize: 11, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{isk(price)}</span>
+      <span style={{ fontSize: 12, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{isk(price)}</span>
     </div>
   );
 }
@@ -132,13 +132,13 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
     );
   });
 
-  if (!ship) return <div style={{ padding: 14, fontSize: 12, color: C.textMid }}>{t("Open a fit from the Browser to see it here.")}</div>;
+  if (!ship) return <div style={{ padding: 14, fontSize: 13, color: C.textMid }}>{t("Open a fit from the Browser to see it here.")}</div>;
   return (
     <>
       <div style={{ display: "flex", gap: 6, padding: "8px 10px 0", flex: "none", flexWrap: "wrap" }}>
         {(isStructure ? STRUCTURE_RACKS : RACKS).map(([k, label]) => (
           <button key={k} type="button" aria-pressed={rack === k} onClick={() => { setRack(k); setSelected(null); setOpen(new Set()); }}
-            style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 11.5, cursor: "pointer",
+            style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
                      background: rack === k ? C.accentLight : "transparent", border: `1px solid ${rack === k ? C.accent : C.borderStrong}`,
                      color: rack === k ? C.accent : C.textMid }}>{t(label)}</button>
         ))}
@@ -148,7 +148,7 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
           ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} onFit={fit} onInfo={setInfo} />)
-          : <div style={{ padding: "10px 12px", fontSize: 12, color: C.textMid }}>{q ? t("No modules found") : t("Pick a category above.")}</div>}
+          : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? t("No modules found") : t("Pick a category above.")}</div>}
       </div>
       {info && <ItemInfoSheet typeID={info.typeID} onClose={() => setInfo(null)} />}
     </>
@@ -197,7 +197,7 @@ function ShipsPane({ s }) {
         <input autoFocus defaultValue={fit.name} aria-label={t("Fit name")}
           onKeyDown={e => { if (e.key === "Enter") rename(ship, fit.id, e.target.value); if (e.key === "Escape") setRenaming(null); }}
           onBlur={e => rename(ship, fit.id, e.target.value)}
-          style={{ width: "100%", height: 24, boxSizing: "border-box", padding: "0 8px", borderRadius: 5, fontSize: 12.5, background: C.bg, border: `1px solid ${C.accent}`, color: C.text, outline: "none" }} />
+          style={{ width: "100%", height: 24, boxSizing: "border-box", padding: "0 8px", borderRadius: 5, fontSize: 13.5, background: C.bg, border: `1px solid ${C.accent}`, color: C.text, outline: "none" }} />
       </div>
     );
     return (
@@ -234,7 +234,7 @@ function ShipsPane({ s }) {
     const count = shipsUnder(n).reduce((a, sh) => a + (fitsDB[sh.name]?.length ?? 0), 0);
     return (
       <div key={key} role="group">
-        <TreeRow depth={depth} open={isOpen} label={<span style={{ fontWeight: depth === 0 ? 600 : 500 }}>{n.label}</span>} sub={count ? String(count) : null} onClick={() => toggle(key)} />
+        <TreeRow depth={depth} open={isOpen} label={<span style={{ fontWeight: depth === 0 ? 500 : 400 }}>{n.label}</span>} sub={count ? String(count) : null} onClick={() => toggle(key)} />
         {isOpen && <>{(n.children ?? []).map(c => nodeRow(c, depth + 1))}{(n.ships ?? []).map(sh => hullRow(sh, depth + 1))}</>}
       </div>
     );
@@ -252,7 +252,7 @@ function ShipsPane({ s }) {
       <div role="tree" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         {q
           ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.filter(h => h.fit).map(h => fitRow(h.ship, h.fit, 0))}
-              {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 12, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
+              {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
           : tree.map(n => nodeRow(n, 0))}
       </div>
 
@@ -267,7 +267,7 @@ export default function DeskBrowser({ s, ship, adderRef, remoteAdd }) {
       <div role="tablist" style={{ display: "flex", margin: "8px 10px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 6, overflow: "hidden", flex: "none" }}>
         {[["market", t("Market")], ["ships", t("Ships")]].map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)}
-            style={{ flex: 1, height: 28, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+            style={{ flex: 1, height: 28, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 500,
                      background: mode === id ? C.accentLight : "transparent", color: mode === id ? C.accent : C.textMid }}>{label}</button>
         ))}
       </div>

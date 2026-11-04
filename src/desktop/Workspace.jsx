@@ -38,7 +38,7 @@ export const openWindow = (setState, id) => setState(s => ({
 export function Chip({ on, onClick, children, title, pressed = true }) {
   return (
     <button type="button" onClick={onClick} title={title} aria-pressed={pressed ? !!on : undefined}
-      style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 11, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
+      style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
                background: on ? C.accentLight : "transparent", border: `1px solid ${on ? C.accent : C.borderStrong}`,
                color: on ? C.accent : C.textMid }}>
       {children}
@@ -48,7 +48,7 @@ export function Chip({ on, onClick, children, title, pressed = true }) {
 export function Button({ primary, onClick, children, disabled }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      style={{ height: 30, padding: "0 12px", borderRadius: 6, fontSize: 12, fontWeight: primary ? 600 : 500, cursor: disabled ? "default" : "pointer",
+      style={{ height: 28, padding: "0 12px", borderRadius: 6, fontSize: 13, fontWeight: 500, cursor: disabled ? "default" : "pointer",
                whiteSpace: "nowrap", opacity: disabled ? 0.5 : 1,
                background: primary ? C.accent : C.surfaceAlt, border: `1px solid ${primary ? C.accent : C.borderStrong}`,
                color: primary ? C.bg : C.text }}>
@@ -57,7 +57,7 @@ export function Button({ primary, onClick, children, disabled }) {
   );
 }
 const SectionLabel = ({ children }) => (
-  <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid, whiteSpace: "nowrap" }}>{children}</span>
+  <span style={{ fontSize: 11, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid, whiteSpace: "nowrap" }}>{children}</span>
 );
 
 // `onPopOut(id)` / `onDock(id)` let the app open and close the real OS window; the workspace only
@@ -185,7 +185,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
         <SectionLabel>{t("Detached")}</SectionLabel>
         {detached.length
           ? detached.map(w => <Chip key={w.id} pressed={false} onClick={() => dock(w.id)} title={t("Dock")}>{t(w.title)}</Chip>)
-          : <span style={{ fontSize: 11.5, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
+          : <span style={{ fontSize: 12, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>
         {PRESETS.map(p => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}>{t(p.title)}</Chip>)}
