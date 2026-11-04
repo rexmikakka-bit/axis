@@ -8,6 +8,7 @@
     "build": "vite build",
     "dev:desktop": "vite --config vite.desktop.config.js",
     "build:desktop": "vite build --config vite.desktop.config.js",
+    "tauri": "tauri",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node src/regression.test.mjs",
@@ -39,6 +40,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

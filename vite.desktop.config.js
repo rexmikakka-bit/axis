@@ -8,10 +8,16 @@ import base from './vite.config.js'
 //   npm run build:desktop   -> dist-desktop/
 export default mergeConfig(base, defineConfig({
   plugins: [{
-    // Serve desktop.html at "/" in dev, so the app opens at the root like the phone one does.
+    // Serve desktop.html at "/" in dev, so the app opens at the root like the phone one does, and
+    // emit it as index.html, which is the file the Tauri shell (src-tauri/) loads.
     name: 'axis-desktop-root',
+    enforce: 'post',   // after Vite's own HTML plugin has put the page into the bundle
     configureServer(server) {
       server.middlewares.use((req, _res, next) => { if (req.url === '/' || req.url === '/index.html') req.url = '/desktop.html'; next() })
+    },
+    generateBundle(_opts, bundle) {
+      const page = bundle['desktop.html']
+      if (page) page.fileName = 'index.html'
     },
   }],
   build: {
