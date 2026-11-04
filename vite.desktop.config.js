@@ -13,7 +13,12 @@ export default mergeConfig(base, defineConfig({
     name: 'axis-desktop-root',
     enforce: 'post',   // after Vite's own HTML plugin has put the page into the bundle
     configureServer(server) {
-      server.middlewares.use((req, _res, next) => { if (req.url === '/' || req.url === '/index.html') req.url = '/desktop.html'; next() })
+      // Path only: a popped-out window is "/?satellite=<id>", and it has to get the desktop page too.
+      server.middlewares.use((req, _res, next) => {
+        const [path, query] = req.url.split('?')
+        if (path === '/' || path === '/index.html') req.url = '/desktop.html' + (query != null ? `?${query}` : '')
+        next()
+      })
     },
     generateBundle(_opts, bundle) {
       const page = bundle['desktop.html']

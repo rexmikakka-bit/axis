@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName } from "../calc.js";
@@ -14,22 +14,103 @@ import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
 import { SkillsProvider } from "../components/skill-mark.jsx";
 import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
-import Workspace, { useLayoutState, openWindow, Button } from "./Workspace.jsx";
+import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, Button } from "./Workspace.jsx";
+import { WINDOWS } from "./layout.js";
+import { useSessionSync } from "./sync.js";
+import { TitleButton } from "./DeskWindow.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, ResourcesWindow, BrowserWindow,
          CargoWindow, DronesWindow, ImplantsWindow, EffectsWindow, NotesWindow } from "./windows.jsx";
 
 // The desktop app. The fit session (use-fit-session.js) is the phone's, so every edit, setting and
 // saved fit means the same thing in both. Around it: a header carrying everything the phone keeps in
 // its menu, the open-fit tabs, and the window workspace.
+//
+// A window popped out to another monitor is this same app started as `?satellite=<id>`, showing
+// that one window and kept in step with the main one by sync.js.
 
-export default function DesktopApp() {
+const SATELLITE = (() => { try { const id = new URLSearchParams(window.location.search).get("satellite"); return WINDOWS.some(w => w.id === id) ? id : null; } catch { return null; } })();
+
+export default function DesktopRoot() {
+  return SATELLITE ? <SatelliteApp id={SATELLITE} /> : <DesktopApp />;
+}
+
+function useBanner() {
   const [banner, setBanner] = useState(null);
+  const notify = (kind, msg, ms) => { setBanner(kind == null ? null : { kind, msg }); if (ms) setTimeout(() => setBanner(null), ms); };
+  const view = banner && <div role="status" style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 300,
+    background: banner.kind === "success" ? C.success : C.surfaceAlt, color: banner.kind === "success" ? "#0e0e10" : C.textMid,
+    border: banner.kind === "success" ? "none" : `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700,
+    boxShadow: "0 6px 20px rgba(0,0,0,.35)" }}>{banner.kind === "success" ? "✓ " : ""}{banner.msg}</div>;
+  return { notify, view };
+}
+
+/** What every window shows, for the main app and for a popped-out window alike. */
+function useWindowContents(s, isOpen, sheet) {
+  const ship = useActiveShip(s);
+  const stats = useDeskStats(s, {
+    snapshot: isOpen("cargo") || isOpen("drones") || isOpen("effects") || sheet === "shipinfo" || sheet === "snapshot",
+    drones: isOpen("drones"),
+  });
+  const renderWindow = (id) => {
+    if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
+    switch (id) {
+      case "browser": return <BrowserWindow s={s} />;
+      case "fitting": return <FittingWindow s={s} ship={ship} />;
+      case "graphs": return <GraphsWindow s={s} ship={ship} />;
+      case "resources": return <ResourcesWindow s={s} ship={ship} />;
+      case "cargo": return <CargoWindow s={s} stats={stats} />;
+      case "drones": return <DronesWindow s={s} stats={stats} />;
+      case "implants": return <ImplantsWindow s={s} />;
+      case "effects": return <EffectsWindow s={s} stats={stats} />;
+      case "notes": return <NotesWindow s={s} />;
+      default: return null;
+    }
+  };
+  // "Fitting · Sleipnir": the window title says which hull you are editing.
+  const windowTitle = (id) => id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : t(WINDOWS.find(w => w.id === id)?.title ?? id);
+  return { ship, stats, renderWindow, windowTitle };
+}
+
+/** One window, popped out into its own OS window. Closing it (or Dock) puts it back in the workspace. */
+function SatelliteApp({ id }) {
+  const banner = useBanner();
+  const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify });
+  const sync = useSessionSync(s);
+  useEffect(() => { initKeyboardTracking(); }, []);
+  useEffect(() => {
+    sync.post({ type: "hello", id });
+    const bye = () => sync.post({ type: "closed", id });
+    window.addEventListener("beforeunload", bye);
+    return () => window.removeEventListener("beforeunload", bye);
+  }, [id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const { renderWindow, windowTitle } = useWindowContents(s, (w) => w === id, null);
+  const title = windowTitle(id);
+  useEffect(() => { document.title = `${title} · Axis`; }, [title]);
+  return (
+    <SkillsProvider value={s.fitSkills}>
+      <style>{getGlobalCss()}</style>
+      <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.surface, color: C.text, fontSize: 13 }}>
+        <div style={{ height: 28, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px", background: C.surfaceAlt,
+                      borderBottom: `1px solid ${C.border}` }}>
+          <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid }}>{title}</span>
+          <span style={{ flex: 1 }} />
+          <TitleButton label={t("Dock")} onClick={() => { sync.post({ type: "closed", id }); window.close(); }}>⇲</TitleButton>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{renderWindow(id)}</div>
+      </div>
+      {banner.view}
+    </SkillsProvider>
+  );
+}
+
+function DesktopApp() {
+  const banner = useBanner();
   const s = useFitSession({
     // The fit lives in its own window here, so opening one changes no navigation.
     onFitOpened: () => {},
-    notify: (kind, msg, ms) => { setBanner(kind == null ? null : { kind, msg }); if (ms) setTimeout(() => setBanner(null), ms); },
+    notify: banner.notify,
   });
-  const flash = (kind, msg, ms = 3000) => { setBanner({ kind, msg }); setTimeout(() => setBanner(null), ms); };
+  const flash = (kind, msg, ms = 3000) => banner.notify(kind, msg, ms);
   useEffect(() => { initKeyboardTracking(); }, []);
 
   const [layoutState, setLayoutState] = useLayoutState();
@@ -39,11 +120,29 @@ export default function DesktopApp() {
   const [importInitial, setImportInitial] = useState(null);
   const close = () => setSheet(null);
 
-  const ship = useActiveShip(s);
-  const stats = useDeskStats(s, {
-    snapshot: isOpen("cargo") || isOpen("drones") || isOpen("effects") || sheet === "shipinfo" || sheet === "snapshot",
-    drones: isOpen("drones"),
+  const { ship, stats, renderWindow, windowTitle } = useWindowContents(s, isOpen, sheet);
+
+  // ── Pop-out: a real OS window per detached window ─────────────────────────────────────────────
+  const popups = useRef({});
+  const sync = useSessionSync(s, {
+    onMessage: (m) => {
+      if (m.type === "hello") sync.sendAll();
+      if (m.type === "closed" && WINDOWS.some(w => w.id === m.id)) { delete popups.current[m.id]; dockWindow(setLayoutState, m.id); }
+    },
   });
+  const popOut = (id) => {
+    const g = layoutState.windows[id];
+    const url = `${window.location.pathname}?satellite=${encodeURIComponent(id)}`;
+    const w = window.open(url, `axis-${id}`, `popup,width=${Math.round(g.w)},height=${Math.round(g.h)}`);
+    if (!w) { flash("none", t("Couldn't open a new window. Allow pop-ups for Axis and try again.")); return; }
+    popups.current[id] = w;
+    detachWindow(setLayoutState, id);
+  };
+  const dock = (id) => { try { popups.current[id]?.close(); } catch { /* already gone */ } delete popups.current[id]; };
+  // Windows left detached by a previous session have no OS window any more: bring them home.
+  useEffect(() => {
+    for (const w of WINDOWS) if (layoutState.windows[w.id]?.detached) dockWindow(setLayoutState, w.id);
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
   const shipMeta = useMemo(() => {
     const sh = s.activeFit?.ship ? lookupShip(s.activeFit.ship) : null;
     return { faction: sh?.race ?? "", cls: sh?.hullClass ?? sh?.groupName ?? "" };
@@ -62,24 +161,6 @@ export default function DesktopApp() {
     s.importFit(parsed);
     flash("success", t('Imported "{name}"', { name: parsed.fitName }));
   };
-
-  const renderWindow = (id) => {
-    if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
-    switch (id) {
-      case "browser": return <BrowserWindow s={s} />;
-      case "fitting": return <FittingWindow s={s} ship={ship} />;
-      case "graphs": return <GraphsWindow s={s} ship={ship} />;
-      case "resources": return <ResourcesWindow s={s} ship={ship} />;
-      case "cargo": return <CargoWindow s={s} stats={stats} />;
-      case "drones": return <DronesWindow s={s} stats={stats} />;
-      case "implants": return <ImplantsWindow s={s} />;
-      case "effects": return <EffectsWindow s={s} stats={stats} />;
-      case "notes": return <NotesWindow s={s} />;
-      default: return null;
-    }
-  };
-  // "Fitting · Sleipnir", as the window title says which hull you are editing.
-  const windowTitle = (id) => id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : undefined;
 
   const newTab = () => { s.wantNewTab.current = true; s.setNewTabIntent(true); openWindow(setLayoutState, "browser"); };
   const hasFit = !!s.activeFit?.ship;
@@ -136,13 +217,11 @@ export default function DesktopApp() {
             style={{ height: 30, width: 30, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 16 }}>+</button>
         </div>
 
-        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} />
+        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle}
+          onPopOut={popOut} onDock={dock} />
       </div>
 
-      {banner && <div role="status" style={{ position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 300,
-        background: banner.kind === "success" ? C.success : C.surfaceAlt, color: banner.kind === "success" ? "#0e0e10" : C.textMid,
-        border: banner.kind === "success" ? "none" : `1px solid ${C.border}`, borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700,
-        boxShadow: "0 6px 20px rgba(0,0,0,.35)" }}>{banner.kind === "success" ? "✓ " : ""}{banner.msg}</div>}
+      {banner.view}
 
       {/* "EFT" and "EVE" stay as they are — one is a file format's name, the other the game's. */}
       {sheet === "import" && <ChooserSheet title={t("Import Fit")} onClose={close} options={[

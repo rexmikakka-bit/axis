@@ -8904,6 +8904,18 @@ Nanofiber Internal Structure II
   check('desk', 'persist: round trip', JSON.stringify(D.readLayoutState(store(saved))), JSON.stringify(D.defaultLayoutState()));
   check('desk', 'bring to front: already on top is a no-op', D.bringToFront(def, 'notes') === def ? 1 : 0, 1, 0);
   check('desk', 'bring to front: raises above the rest', D.bringToFront(def, 'browser').browser.z, D.topZ(def) + 1, 0);
+  // Pop-out sync sends only the hulls whose arrays changed. Built from the same reference contract
+  // the IndexedDB writer uses: one edit replaces exactly one hull's array.
+  const P = await import('./desktop/fits-patch.js');
+  const rif = [{ name: 'a' }], tmp = [{ name: 'b' }];
+  const db0 = { Rifter: rif, Tempest: tmp };
+  check('desk', 'sync: nothing changed -> no patch', P.fitsPatch(db0, { ...db0 }) === null ? 1 : 0, 1, 0);
+  const db1 = { ...db0, Rifter: [...rif, { name: 'c' }] };
+  check('desk', 'sync: one edited hull -> one entry', Object.keys(P.fitsPatch(db0, db1)).join(), 'Rifter');
+  const db2 = { Rifter: rif };
+  check('desk', 'sync: deleted hull -> null', JSON.stringify(P.fitsPatch(db0, db2)), '{"Tempest":null}');
+  check('desk', 'sync: patch round-trips', JSON.stringify(P.applyFitsPatch(db0, P.fitsPatch(db0, db1))), JSON.stringify(db1));
+  check('desk', 'sync: applying a delete removes the hull', 'Tempest' in P.applyFitsPatch(db0, { Tempest: null }) ? 1 : 0, 0, 0);
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

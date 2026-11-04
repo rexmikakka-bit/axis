@@ -16,6 +16,12 @@ export function useLayoutState() {
   return [state, setState];
 }
 
+/** Mark a window docked again (its OS window was closed), raising it in the workspace. */
+export const dockWindow = (setState, id) => setState(s => ({
+  ...s, windows: bringToFront({ ...s.windows, [id]: { ...s.windows[id], open: true, detached: false } }, id),
+}));
+export const detachWindow = (setState, id) => setState(s => ({ ...s, windows: { ...s.windows, [id]: { ...s.windows[id], detached: true } } }));
+
 /** Open (and raise) a window from outside the workspace — e.g. the Browser when "+" starts a new tab. */
 export const openWindow = (setState, id) => setState(s => ({
   ...s, windows: bringToFront({ ...s.windows, [id]: { ...s.windows[id], open: true, detached: false } }, id),
@@ -47,7 +53,9 @@ const SectionLabel = ({ children }) => (
   <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid, whiteSpace: "nowrap" }}>{children}</span>
 );
 
-export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra }) {
+// `onPopOut(id)` / `onDock(id)` let the app open and close the real OS window; the workspace only
+// records the detached state they report back through `setState`.
+export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, onPopOut, onDock }) {
   const layout = state.windows;
   // `extra` rides along only when the windows actually changed, so a pointer move that snaps to the
   // same spot re-renders nothing.
@@ -77,8 +85,9 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     return bringToFront({ ...l, [id]: { ...w, open: true, detached: false } }, id);
   });
   const close = useCallback((id) => setLayout(l => ({ ...l, [id]: { ...l[id], open: false } })), [setLayout]);
-  const popOut = useCallback((id) => setLayout(l => ({ ...l, [id]: { ...l[id], detached: true } })), [setLayout]);
-  const dock = (id) => setLayout(l => bringToFront({ ...l, [id]: { ...l[id], detached: false, open: true } }, id));
+  const popOutLocal = useCallback((id) => setLayout(l => ({ ...l, [id]: { ...l[id], detached: true } })), [setLayout]);
+  const popOut = onPopOut ?? popOutLocal;
+  const dock = (id) => { onDock?.(id); setLayout(l => bringToFront({ ...l, [id]: { ...l[id], detached: false, open: true } }, id)); };
 
   // Drags are measured from the rect the gesture started at (see DeskWindow).
   const dragStart = useRef({});
