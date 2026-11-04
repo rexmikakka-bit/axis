@@ -306,7 +306,12 @@ function ResistRow({ name, ehp, res }) {
           <span style={{ position: "relative", fontSize: 13, fontWeight: 600, color: T.text }}>{res[k] != null ? res[k].toFixed(1) : "-"}</span>
         </div>
       ))}
-      <div style={{ fontSize: 14, fontWeight: 700, color: T.text, textAlign: "right" }}>{fmtK(ehp)}</div>
+      {/* The multiplier under it is HP × this = EHP, the same figure the Stats tab's resist table
+          prints beside each layer, in the same green. */}
+      <div style={{ textAlign: "right", lineHeight: 1.05 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{fmtK(ehp)}</div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: T.faction }}>{ehpOf(1, res).toFixed(2)}x</div>
+      </div>
     </>
   );
 }
