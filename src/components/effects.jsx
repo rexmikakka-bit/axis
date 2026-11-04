@@ -128,7 +128,7 @@ function environmentList(){
   }
   return out.filter(g=>g.count);
 }
-function EnvironmentPickerSheet({current,onSelect,onClose}){
+export function EnvironmentPickerSheet({current,onSelect,onClose}){
   const[search,setSearch]=useState("");
   const[openCat,setOpenCat]=useState(()=>new Set(["Wormhole"]));
   const q=search.trim().toLowerCase();
@@ -180,7 +180,7 @@ function EnvironmentPickerSheet({current,onSelect,onClose}){
   </BottomSheet>);
 }
 
-function BoosterPickerSheet({onAdd,onClose}){
+export function BoosterPickerSheet({onAdd,onClose}){
   const[slotDrill,setSlotDrill]=useState(null);
   const[catDrill,setCatDrill]=useState(null);
   const[search,setSearch]=useState("");
@@ -389,7 +389,7 @@ export function FitPickerSheet({title,fitsDB,onSelect,onClose,filterFn,pinned,pi
 // that hasn't been edited keeps the same object reference forever, so a WeakMap needs no manual
 // invalidation — an edited fit gets a new reference and simply misses the cache once.
 const _cmdBurstCache=new WeakMap();
-function hasCommandBursts(ship,fit){
+export function hasCommandBursts(ship,fit){
   if(_cmdBurstCache.has(fit))return _cmdBurstCache.get(fit);
   // Cheap necessary condition first: computeCommandBursts builds a whole Fit and runs the dogma
   // engine (~11 ms on a desktop). A fit carrying no Command Burst module cannot produce a burst, and
@@ -413,7 +413,7 @@ function hasCommandBursts(ship,fit){
 // Item art for the booster rows, matching the module browser. 301 of 311 boosters and 837 of 838
 // implants have BUNDLED icons (src/assets/icons), so this works offline; the handful without fall
 // back to the image server and are hidden by onError rather than showing a broken-image box.
-const BoosterIcon=({name,size=28})=>{
+export const BoosterIcon=({name,size=28})=>{
   const tid=tidByName(name);
   if(!tid)return null;
   return <img className="eve-icon" src={eveIcon(tid,32)} width={size} height={size} alt=""
@@ -451,7 +451,7 @@ const BOOSTER_LABELS={rangeSkillBonus:"Optimal Range",stasisWebRangeAdd:"Webifie
 // sign already says which way the number moves; the word could only agree with it or argue.
 const boosterLabel=k=>(BOOSTER_LABELS[k]??mutaLabel(k)).replace(/ (Bonus\d?|Penalty)$/,"");
 
-function boosterBonuses(b){
+export function boosterBonuses(b){
   const rec=TYPES[tidByName(b?.name)];
   const a=rec?.attrs??rec?.a??{};
   return Object.entries(a)
@@ -461,7 +461,7 @@ function boosterBonuses(b){
 
 // A booster's slot is CCP's `boosterness` (attr 1087). Read from the type rather than the saved
 // booster record, because a record restored from an older fit may predate the field entirely.
-function boosterSlotOf(b){
+export function boosterSlotOf(b){
   const rec=TYPES[tidByName(b?.name)];
   const a=rec?.attrs??rec?.a??{};
   const n=Number(a.boosterness??a['1087']);

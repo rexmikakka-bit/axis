@@ -20,6 +20,7 @@ import DeskBrowser from "./Browser.jsx";
 import { FirepowerPanel } from "./Firepower.jsx";
 import ExportDialog from "./ExportDialog.jsx";
 import CargoPanel from "./Cargo.jsx";
+import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
@@ -58,7 +59,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
   const cs = useFitStats(s, ship);
   const issues = useMemo(() => fitIssues(cs, s.slots, s.drones), [cs, s.slots, s.drones]);
   const stats = useDeskStats(s, {
-    snapshot: isOpen("cargo") || isOpen("drones") || isOpen("effects") || sheet === "shipinfo" || sheet === "snapshot",
+    snapshot: isOpen("cargo") || isOpen("drones") || isOpen("projected") || sheet === "shipinfo" || sheet === "snapshot",
     drones: isOpen("drones"),
   });
   const renderWindow = (id) => {
@@ -85,7 +86,10 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "cargo": return <CargoPanel s={s} capacity={cs?.cargoCapacity ?? stats.snapshot?.cargoCapacity ?? 0} />;
       case "drones": return <DronesWindow s={s} stats={stats} />;
       case "implants": return <ImplantsWindow s={s} />;
-      case "effects": return <EffectsWindow s={s} stats={stats} />;
+      case "projected": return <ProjectedPanel s={s} jamTarget={{ strength: cs?.sensorStrength ?? 0, type: cs?.sensorType ?? "", resist: s.projectedEffects?.ecmResist ?? 1 }} />;
+      case "command": return <CommandPanel s={s} />;
+      case "boosters": return <BoostersPanel s={s} />;
+      case "environment": return <EnvironmentPanel s={s} />;
       case "notes": return <NotesWindow s={s} />;
       default: return null;
     }

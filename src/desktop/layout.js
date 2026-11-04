@@ -17,12 +17,15 @@ export const TITLE_H = 28;
 export const RESCUE_STRIP = 48;
 
 // Chip and title order. `title` is the English key t() looks up.
-// Every phone screen has a home here: Effects is the phone's Effects tab (boosters, projected fits,
-// command links, environment), Graphs its Graph page, Validation the top card of its Stats page.
+// Every phone screen has a home here. The phone's Effects tab is four windows (Projected, Command
+// links, Boosters, Environment), Graphs its Graph page, Validation the top card of its Stats page.
 export const WINDOWS = [
   { id: 'browser', title: 'Browser' },
   { id: 'fitting', title: 'Fitting' },
-  { id: 'effects', title: 'Effects' },
+  { id: 'projected', title: 'Projected' },
+  { id: 'command', title: 'Command links' },
+  { id: 'boosters', title: 'Boosters' },
+  { id: 'environment', title: 'Environment' },
   { id: 'cargo', title: 'Cargo' },
   { id: 'resources', title: 'Resources' },
   { id: 'defense', title: 'Defense' },
@@ -51,23 +54,24 @@ export const WINDOW_IDS = WINDOWS.map(w => w.id);
 const STATS = { resources: [8, 128], defense: [144, 424], capacitor: [576, 152], targeting: [736, 248] };
 const column = (col, x, w) => Object.fromEntries(Object.entries(col).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
 const CLOSED_BY_DEFAULT = { drones: [296, 120, 400, 420, false], implants: [340, 160, 400, 480, false], notes: [380, 200, 320, 200, false],
+                            command: [300, 640, 356, 300, false], boosters: [340, 600, 380, 360, false], environment: [380, 660, 340, 140, false],
                             graphs: [256, 48, 720, 600, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false] };
 
 const PRESET_GEOMETRY = {
   default: {
     browser: [8, 8, 240, 560, true], cargo: [8, 576, 240, 408, true],
-    fitting: [256, 8, 720, 600, true], effects: [256, 616, 356, 368, true], firepower: [620, 616, 356, 368, true],
+    fitting: [256, 8, 720, 600, true], projected: [256, 616, 356, 368, true], firepower: [620, 616, 356, 368, true],
     ...column(STATS, 984, 448), ...CLOSED_BY_DEFAULT,
   },
   mirrored: {
     ...column(STATS, 8, 448),
-    fitting: [464, 8, 720, 600, true], effects: [464, 616, 356, 368, true], firepower: [828, 616, 356, 368, true],
+    fitting: [464, 8, 720, 600, true], projected: [464, 616, 356, 368, true], firepower: [828, 616, 356, 368, true],
     browser: [1192, 8, 240, 560, true], cargo: [1192, 576, 240, 408, true], ...CLOSED_BY_DEFAULT,
   },
   // No browser: the fit gets the room.
   focus: {
     browser: [8, 8, 240, 560, false], cargo: [8, 576, 240, 408, false],
-    fitting: [8, 8, 960, 600, true], effects: [8, 616, 476, 368, true], firepower: [492, 616, 476, 368, true],
+    fitting: [8, 8, 960, 600, true], projected: [8, 616, 476, 368, true], firepower: [492, 616, 476, 368, true],
     ...column(STATS, 976, 456), ...CLOSED_BY_DEFAULT,
   },
 };
