@@ -8843,6 +8843,62 @@ Nanofiber Internal Structure II
   try { slotsToEsiFitting(tid('Naga Navy Issue'), 'T', { ...EMPTY, high: [P('Cruise Missile Launcher II')], services: [] }, [], [], []); } catch { refused = 1; }
   check('navyabc', 'export to EVE refuses a pre-release hull', refused, 1, 0);
 }
+
+// -----------------------------------------------------------------------------
+// DESKTOP WINDOW MANAGER — src/desktop/layout.js. Not pyfa numbers: the geometry rules from
+// docs/desktop-handoff.md section 2, where a wrong rule loses a window off-screen or snaps it to the
+// wrong place. Pinned against the Default preset's own coordinates.
+// -----------------------------------------------------------------------------
+{
+  console.log('\nDESKTOP WINDOW MANAGER');
+  const D = await import('./desktop/layout.js');
+  const def = D.presetLayout('default');
+  check('desk', 'every window has a Default rect', D.WINDOW_IDS.every(id => def[id]) ? 1 : 0, 1, 0);
+  check('desk', 'Default: stat column at x 1028', def.defense.x, 1028, 0);
+  check('desk', 'Default: drones, implants, notes closed', [def.drones, def.implants, def.notes].some(w => w.open) ? 1 : 0, 0, 0);
+  check('desk', 'Mirrored: browser on the right', D.presetLayout('mirrored').browser.x, 1152, 0);
+  check('desk', 'Focus: stat column 636 wide', D.presetLayout('focus').capacitor.w, 636, 0);
+  check('desk', 'Focus: browser and cargo closed', D.presetLayout('focus').browser.open || D.presetLayout('focus').cargo.open ? 1 : 0, 0, 0);
+  const on = { grid: true, windows: true };
+  // Cargo nudged 5 right / 3 down: grid rounds to 752,664, then its left edge is 4 px from the
+  // Projected window's right edge + gutter (748) and snaps back flush.
+  const m1 = D.snapMove(def, 'cargo', 753, 667, on);
+  check('desk', 'move: grid then window snap lands flush', `${m1.x},${m1.y}`, '748,664');
+  check('desk', 'move: grid only', `${D.snapMove(def, 'cargo', 753, 667, { grid: true }).x}`, '752');
+  check('desk', 'move: no snapping', `${D.snapMove(def, 'cargo', 753, 667, {}).x}`, '753');
+  check('desk', 'move: no far clamp (drag into new space)', D.snapMove(def, 'notes', 5000, 4000, {}).x, 5000, 0);
+  check('desk', 'move: near clamp at 0', D.snapMove(def, 'notes', -40, -9, {}).y, 0, 0);
+  // Trailing edge: b's right edge at 195 is 3 px short of a.left − gutter (192), and its left edge is
+  // nowhere near anything, so the RIGHT edge decides and b lands at 92.
+  const two = { a: { x: 200, y: 0, w: 100, h: 100, open: true, detached: false, z: 1 }, b: { x: 0, y: 400, w: 100, h: 100, open: true, detached: false, z: 2 } };
+  check('desk', 'move: trailing edge snaps to the gutter', D.snapMove(two, 'b', 95, 400, { windows: true }).x, 92, 0);
+  check('desk', 'move: a detached window is not a target', D.snapMove({ ...two, a: { ...two.a, detached: true } }, 'b', 95, 400, { windows: true }).x, 95, 0);
+  // Resize from the left: the right edge stays fixed and the minimum width holds.
+  const f = def.fitting;
+  const rl = D.snapResize(def, 'fitting', f, 'l', 50, 0, {});
+  check('desk', 'resize left: right edge fixed', rl.x + rl.w, f.x + f.w, 0);
+  const rmin = D.snapResize(def, 'fitting', f, 'l', 5000, 0, {});
+  check('desk', 'resize left: min width', rmin.w, D.MIN_W, 0);
+  check('desk', 'resize bottom: only that edge moves', JSON.stringify(D.snapResize(def, 'fitting', f, 'b', 0, 40, on)), JSON.stringify({ x: 296, y: 8, w: 724, h: 688 }));
+  // Rescue: a window parked at x 4000 comes back far enough to grab; one in view is untouched.
+  const lost = { ...def, notes: { ...def.notes, open: true, x: 4000, y: 3000 } };
+  const r = D.rescue(lost, 1400, 900);
+  check('desk', 'rescue: lost window pulled back into reach', `${r.notes.x},${r.notes.y}`, `${1400 - D.RESCUE_STRIP},${900 - D.TITLE_H}`);
+  check('desk', 'rescue: nothing to do returns the same layout', D.rescue(def, 3000, 3000) === def ? 1 : 0, 1, 0);
+  check('desk', 'rescue: closed windows left alone', D.rescue({ ...def, notes: { ...def.notes, x: 9000 } }, 1400, 900).notes.x, 9000, 0);
+  // Persistence: a garbage or partial value falls back per field instead of crashing the workspace.
+  const store = (v) => ({ getItem: () => v });
+  check('desk', 'persist: unparseable value -> Default', D.readLayoutState(store('{nope')).windows.fitting.x, 296, 0);
+  check('desk', 'persist: wrong version -> Default', D.readLayoutState(store(JSON.stringify({ v: 99, windows: {} }))).preset, 'default');
+  const partial = D.readLayoutState(store(JSON.stringify({ v: D.LAYOUT_VERSION, windows: { fitting: { x: 40, y: 'x', w: 10 } }, locked: true })));
+  check('desk', 'persist: good fields kept, bad ones defaulted', `${partial.windows.fitting.x},${partial.windows.fitting.y},${partial.windows.fitting.w}`, '40,8,724');
+  check('desk', 'persist: flags read back', partial.locked && partial.snapGrid ? 1 : 0, 1, 0);
+  let saved = null;
+  D.writeLayoutState({ setItem: (k, v) => { saved = v; } }, D.defaultLayoutState());
+  check('desk', 'persist: round trip', JSON.stringify(D.readLayoutState(store(saved))), JSON.stringify(D.defaultLayoutState()));
+  check('desk', 'bring to front: already on top is a no-op', D.bringToFront(def, 'notes') === def ? 1 : 0, 1, 0);
+  check('desk', 'bring to front: raises above the rest', D.bringToFront(def, 'browser').browser.z, D.topZ(def) + 1, 0);
+}
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {
   console.log(`ALL ${passed} REGRESSION CHECKS PASSED`);
