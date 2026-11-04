@@ -1,11 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "The main window and every popped-out window (satellite-<id>): create, focus and close windows for pop-out",
   "windows": [
-    "main"
+    "main",
+    "satellite-*"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close",
+    "core:window:allow-set-focus"
   ]
 }

@@ -17,6 +17,7 @@ import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
 import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, Button } from "./Workspace.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
+import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, ResourcesWindow, BrowserWindow,
          CargoWindow, DronesWindow, ImplantsWindow, EffectsWindow, NotesWindow } from "./windows.jsx";
@@ -80,9 +81,7 @@ function SatelliteApp({ id }) {
   useEffect(() => { initKeyboardTracking(); }, []);
   useEffect(() => {
     sync.post({ type: "hello", id });
-    const bye = () => sync.post({ type: "closed", id });
-    window.addEventListener("beforeunload", bye);
-    return () => window.removeEventListener("beforeunload", bye);
+    return onThisWindowClosing(() => sync.post({ type: "closed", id }));
   }, [id]);   // eslint-disable-line react-hooks/exhaustive-deps
   const { renderWindow, windowTitle } = useWindowContents(s, (w) => w === id, null,
     { adderRef, remoteAdd: (secKey, mod) => sync.post({ type: "add", secKey, mod }) });
@@ -96,7 +95,7 @@ function SatelliteApp({ id }) {
                       borderBottom: `1px solid ${C.border}` }}>
           <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid }}>{title}</span>
           <span style={{ flex: 1 }} />
-          <TitleButton label={t("Dock")} onClick={() => { sync.post({ type: "closed", id }); window.close(); }}>⇲</TitleButton>
+          <TitleButton label={t("Dock")} onClick={() => { sync.post({ type: "closed", id }); closeThisWindow(); }}>⇲</TitleButton>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{renderWindow(id)}</div>
       </div>
@@ -132,11 +131,11 @@ function DesktopApp() {
       if (m.type === "closed" && WINDOWS.some(w => w.id === m.id)) { delete popups.current[m.id]; dockWindow(setLayoutState, m.id); }
     },
   });
-  const popOut = (id) => {
+  const popOut = async (id) => {
     const g = layoutState.windows[id];
-    const url = `${window.location.pathname}?satellite=${encodeURIComponent(id)}`;
-    const w = window.open(url, `axis-${id}`, `popup,width=${Math.round(g.w)},height=${Math.round(g.h)}`);
-    if (!w) { flash("none", t("Couldn't open a new window. Allow pop-ups for Axis and try again.")); return; }
+    const url = `/?satellite=${encodeURIComponent(id)}`;
+    const w = await openOsWindow(id, { url, width: Math.round(g.w), height: Math.round(g.h), title: `${windowTitle(id)} · Axis` });
+    if (!w) { flash("none", IS_TAURI ? t("Couldn't open a new window.") : t("Couldn't open a new window. Allow pop-ups for Axis and try again.")); return; }
     popups.current[id] = w;
     detachWindow(setLayoutState, id);
   };
