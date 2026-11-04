@@ -51,7 +51,7 @@ export const WINDOW_IDS = WINDOWS.map(w => w.id);
 // keeps each stat window short. The Fitting table is the mockup's ~720 px. Validation and Fit price
 // start closed: their headline (valid / N issues, the fit's total) rides on the Fitting window's
 // title bar instead, and either opens from the Windows menu.
-const STATS = { resources: [8, 128], defense: [144, 424], capacitor: [576, 152], targeting: [736, 248] };
+const STATS = { resources: [8, 184], defense: [200, 368], capacitor: [576, 152], targeting: [736, 248] };
 const column = (col, x, w) => Object.fromEntries(Object.entries(col).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
 const CLOSED_BY_DEFAULT = { drones: [296, 120, 400, 420, false], implants: [340, 160, 400, 480, false], notes: [380, 200, 320, 200, false],
                             command: [300, 640, 356, 300, false], boosters: [340, 600, 380, 360, false], environment: [380, 660, 340, 140, false],
