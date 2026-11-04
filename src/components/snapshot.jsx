@@ -70,8 +70,15 @@ const fmtK = (n) => (n == null || !Number.isFinite(n) ? "-"
   : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(Math.round(n)));
 const mmss = (s) => (s == null || !Number.isFinite(s) ? "-"
   : s >= 60 ? `${Math.floor(s / 60)}m ${Math.round(s % 60)}s` : `${Math.round(s)}s`);
-// EHP from raw HP + a layer's resist profile (0–100). Mirrors calc.js layerEHP.
-const ehpOf = (hp, res) => { if (!hp) return 0; const a = ((res?.em ?? 0) + (res?.th ?? 0) + (res?.kin ?? 0) + (res?.exp ?? 0)) / 4 / 100; return hp / Math.max(0.0001, 1 - a); };
+// EHP from raw HP + a layer's resist profile (0–100), weighted by the incoming damage profile `p`
+// ([em, th, kin, exp] shares). The Stats tab's ehpForProfile, so the card and the tab agree on any
+// profile; under uniform it is calc.js layerEHP exactly.
+const UNIFORM = [0.25, 0.25, 0.25, 0.25];
+const ehpOf = (hp, res, p = UNIFORM) => {
+  if (!hp) return 0;
+  const div = p[0] * (1 - (res?.em ?? 0) / 100) + p[1] * (1 - (res?.th ?? 0) / 100) + p[2] * (1 - (res?.kin ?? 0) / 100) + p[3] * (1 - (res?.exp ?? 0) / 100);
+  return hp / Math.max(1e-4, div);
+};
 
 const isReal = (m) => m && m.type !== "empty" && m.name && !/^\[Empty/.test(m.name);
 
@@ -295,7 +302,7 @@ function LoadoutRow({ k, children }) {
 // arithmetic — the resists are right there, so the number beside them should already have them
 // applied. Taken from calcFitStats' own per-layer EHP rather than recomputed here, so the card and
 // the Stats tab cannot disagree.
-function ResistRow({ name, ehp, res }) {
+function ResistRow({ name, ehp, res, p }) {
   if (!res) return null;
   return (
     <>
@@ -310,7 +317,7 @@ function ResistRow({ name, ehp, res }) {
           prints beside each layer, in the same green. */}
       <div style={{ textAlign: "right", lineHeight: 1.05 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{fmtK(ehp)}</div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: T.faction }}>{ehpOf(1, res).toFixed(2)}x</div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: T.faction }}>{ehpOf(1, res, p).toFixed(2)}x</div>
       </div>
     </>
   );
@@ -415,11 +422,18 @@ function Projected({ links, incoming }) {
 
 // The card renders off-screen at a fixed 1140px so the exported image is consistent regardless of the
 // phone's viewport. The two columns stretch to equal height, so a tall loadout grows the whole card.
-function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClass, slots, cs, drones, fighters, implants, boosters, cargoItems, projected, skillLabel,abyssalData }) {
+function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClass, slots, cs, drones, fighters, implants, boosters, cargoItems, projected, skillLabel, abyssalData, dmgProfile }) {
   const s = cs ?? {};
   const dmg = s.totalDps ?? {};
   const dmgTotal = (dmg.em ?? 0) + (dmg.th ?? 0) + (dmg.kin ?? 0) + (dmg.exp ?? 0);
-  const ehp = s.totalEHP ?? 0;
+  // EHP against the profile picked on the Stats tab, layer by layer, exactly as that tab sums it.
+  const prof = dmgProfile?.p?.length === 4 ? dmgProfile.p : UNIFORM;
+  const layerEhp = {
+    shield: ehpOf(s.shieldHP, s.resists?.shield, prof),
+    armor: ehpOf(s.armorHP, s.resists?.armor, prof),
+    hull: ehpOf(s.hullHP, s.resists?.hull, prof),
+  };
+  const ehp = layerEhp.shield + layerEhp.armor + layerEhp.hull;
   const capD = s.capDelta ?? 0;
   // Separated on saturation and brightness as well as hue, because the bar is 5px tall and the old set
   // (T.accent / T.faction / T.dim) was three mid-luminance, low-saturation colours — shield and armor
@@ -488,7 +502,7 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
   })();
 
   // Rep = local rep EHP/s + projected remote-rep EHP/s (folded in). Sustained stays local.
-  const projRep = ehpOf(proj.remoteReps?.shield, s.resists?.shield) + ehpOf(proj.remoteReps?.armor, s.resists?.armor) + ehpOf(proj.remoteReps?.hull, s.resists?.hull);
+  const projRep = ehpOf(proj.remoteReps?.shield, s.resists?.shield, prof) + ehpOf(proj.remoteReps?.armor, s.resists?.armor, prof) + ehpOf(proj.remoteReps?.hull, s.resists?.hull, prof);
   const rep = (s.armorRepEhpS ?? 0) + (s.shieldRepEhpS ?? 0) + projRep;
   const sust = (s.armorRepSustainedEhpS ?? 0) + (s.shieldRepSustainedEhpS ?? 0);
   // A loaded ancillary carries a one-shot POOL on top of the fit's EHP — you get it once per reload
@@ -654,14 +668,25 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
               {clip > 0
                 ? <span>{boldNum(t("w/ ancil. {v}"), { v: fmtK(ehp + clip) })}</span>
                 : <span>{boldNum(t("Sust {v}"), { v: fmt(sust) })}</span>}</>}
-            bars={ehp > 0 ? [["shield", s.shieldEHP], ["armor", s.armorEHP], ["hull", s.hullEHP]].map(([k, v]) => ({ w: ((v ?? 0) / ehp) * 100, c: layerColor[k] })) : []} />
+            bars={ehp > 0 ? [["shield", layerEhp.shield], ["armor", layerEhp.armor], ["hull", layerEhp.hull]].map(([k, v]) => ({ w: ((v ?? 0) / ehp) * 100, c: layerColor[k] })) : []} />
         </div>
 
         <div>
           {/* Every other caption on the card — the hero panels, the three blocks, the racks — is 11px
               uppercase with letterspacing. These two were 12px sentence case and read as a different
               rank of heading than the panels they label. */}
-          <div style={{ fontSize: 11, letterSpacing: ".5px", color: T.muted, fontWeight: 600, textTransform: "uppercase", marginBottom: 7 }}>{t("Resist Profile")}</div>
+          {/* The incoming profile every EHP on the card is weighted by, worded and dotted like the
+              Stats tab's "Incoming damage" row. The profile name is data and stays English. */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
+            <div style={{ fontSize: 11, letterSpacing: ".5px", color: T.muted, fontWeight: 600, textTransform: "uppercase" }}>{t("Resist Profile")}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11 }}>
+              <span style={{ color: T.dim, fontWeight: 600 }}>{t("Incoming damage")}</span>
+              <span style={{ display: "flex", gap: 3 }}>
+                {["em", "th", "kin", "exp"].map((k, i) => <span key={k} style={{ width: 6, height: 6, borderRadius: 99, background: DMG[k], opacity: prof[i] > 0.001 ? 0.4 + prof[i] * 0.6 : 0.12 }} />)}
+              </span>
+              <span style={{ color: T.accent, fontWeight: 700 }}>{dmgProfile?.name ?? "Uniform"}</span>
+            </div>
+          </div>
           <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 11, padding: "12px 14px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "50px repeat(4,1fr) 58px", gap: "6px 9px", alignItems: "center" }}>
               <div />
@@ -671,9 +696,9 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
               {/* EM/TH/KIN/EXP are CCP's damage-type abbreviations and stay as they are, like the
                   colour legend they head. EHP is the app's own term and translates. */}
               <div style={{ fontSize: 10.5, fontWeight: 600, textAlign: "center", color: T.dim }}>{t("EHP")}</div>
-              <ResistRow name={t("Shield")} ehp={s.shieldEHP} res={s.resists?.shield} />
-              <ResistRow name={t("Armor")} ehp={s.armorEHP} res={s.resists?.armor} />
-              <ResistRow name={t("Hull")} ehp={s.hullEHP} res={s.resists?.hull} />
+              <ResistRow name={t("Shield")} ehp={layerEhp.shield} res={s.resists?.shield} p={prof} />
+              <ResistRow name={t("Armor")} ehp={layerEhp.armor} res={s.resists?.armor} p={prof} />
+              <ResistRow name={t("Hull")} ehp={layerEhp.hull} res={s.resists?.hull} p={prof} />
             </div>
           </div>
         </div>
