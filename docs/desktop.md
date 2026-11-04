@@ -84,9 +84,10 @@ never passes.
 | Fitting | Native table (`FitTable.jsx`) through FitTab's `TableView` prop: CPU, PG, Cap/s, Range, Info and ISK columns, resizable. |
 | Resources, Capacitor, Targeting and mobility, Validation | Native (`stat-panels.jsx`), over ONE `useFitStats` call made with the phone Stats page's options. Validation's verdict also shows on the Fitting title bar. |
 | Firepower | Native (`Firepower.jsx`). The ammo ranking is an in-window table. |
-| Defense, Fit price | Still the phone's StatsTab sections. **Next:** native, with no redundant "Resistances" subtitle. |
-| Effects | Still the phone's EffectsScreen. **Next:** full redesign, probably split into Boosters / Projected / Command / Environment windows (Owen floated splitting it). |
-| Cargo, Drones, Implants, Graphs | Still the phone's screens. Cargo needs a native Item / Qty table (it is cramped at 240 px). |
+| Defense, Cargo | Native (`stat-panels.jsx` DefensePanel, `Cargo.jsx`). |
+| Projected, Command links, Boosters, Environment | Native (`Effects.jsx`): the phone's Effects tab split into four windows. The Projected window mirrors the phone card's arithmetic in `projectedLines`, so keep the two in step. |
+| Fit price, Drones, Implants, Graphs | Still the phone's components. |
+| Shortcuts | Ctrl+V pastes an EFT fit from anywhere; Ctrl+C opens the copy dialog (`ExportDialog.jsx`); Ctrl+D optimises price. The state dot: click on/off, right-click overheats, ctrl-click offlines. |
 
 Readability: native windows use `kit.jsx` sizes (12 px labels in textMid, 12–13 px values) and
 never textMute for anything that has to be read.
