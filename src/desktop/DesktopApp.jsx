@@ -19,6 +19,7 @@ import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
 import { FirepowerPanel } from "./Firepower.jsx";
 import ExportDialog from "./ExportDialog.jsx";
+import CargoPanel from "./Cargo.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
@@ -81,7 +82,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       );
       case "validation": return <ValidationPanel cs={cs} issues={issues} />;
       case "targeting": return <TargetingPanel s={s} cs={cs} />;
-      case "cargo": return <CargoWindow s={s} stats={stats} />;
+      case "cargo": return <CargoPanel s={s} capacity={cs?.cargoCapacity ?? stats.snapshot?.cargoCapacity ?? 0} />;
       case "drones": return <DronesWindow s={s} stats={stats} />;
       case "implants": return <ImplantsWindow s={s} />;
       case "effects": return <EffectsWindow s={s} stats={stats} />;
