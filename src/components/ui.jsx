@@ -726,7 +726,22 @@ function ModuleGroupRow({node,count,onOpen,wrapName=false}){
   </div>;
 }
 
-function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,resourceHeadroom,ship,slots,skills,implants,boosters,drones,factorInReload,dismissRequested}){
+// The same picker without the sheet around it, for the desktop's Browser window: header strip, then
+// the scrolling list, then the search box, in a plain column that fills its parent. No title (the
+// window has one) and no close.
+function InlineFrame({headerExtra,footerExtra,children}){
+  return(
+    <div style={{height:"100%",display:"flex",flexDirection:"column",minHeight:0}}>
+      {headerExtra}
+      <div style={{flex:1,minHeight:0,overflowY:"auto"}}>{children}</div>
+      {footerExtra}
+    </div>
+  );
+}
+
+// `inline` (desktop only): render as a panel rather than a bottom sheet. See InlineFrame.
+function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,resourceHeadroom,ship,slots,skills,implants,boosters,drones,factorInReload,dismissRequested,inline=false}){
+  const Frame=inline?InlineFrame:BottomSheet;
   const[search,setSearch]=useState("");
   const[library,setLibrary]=useState(false);
   const[libraryNav,setLibraryNav]=useState({slot:slotType,path:[]});
@@ -870,7 +885,9 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
                     rigs:t("Add Module - Rig Slot"),services:t("Add Module - Service Slot")};
   const searchInputRef=useRef(null);
   const[searchFocused,setSearchFocused]=useState(false);
-  useSuppressAccessoryBar({focusRef:searchInputRef});
+  // Inline (desktop) does not grab focus on mount: the panel is always there rather than opened on
+  // purpose, and focusing its search box scrolled the whole workspace to bring the box into view.
+  useSuppressAccessoryBar({focusRef:inline?null:searchInputRef});
   return(
     <>
     {/* height="100vh", not 88vh: with fillHeight the sheet's box is min(height,100%) where 100% is the
@@ -879,7 +896,7 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
         bottom-anchored sheet's top upward. 100vh is how a caller asks for the full-height treatment
         instead; BottomSheet gives that its own constant peek strip, measured off frame so no keyboard
         transition can move it. */}
-    <BottomSheet title={`${SLOT_TITLE[slotType]??t("Add Module")}${slotCount?` ${ordinal}/${slotCount}`:""}`} onClose={onClose} height="100vh" fillHeight dismissRequested={dismissRequested}
+    <Frame title={`${SLOT_TITLE[slotType]??t("Add Module")}${slotCount?` ${ordinal}/${slotCount}`:""}`} onClose={onClose} height="100vh" fillHeight dismissRequested={dismissRequested}
       headerExtra={
         // Header content, not scroller content: position:sticky here used to fight WebKit's handling
         // of sticky across a transformed ancestor (the sheet itself is always under a transform, for
@@ -967,7 +984,7 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
       )}
       </>}
       </div>
-    </BottomSheet>
+    </Frame>
     {infoItem&&<ItemInfoSheet typeID={infoItem.typeID} onClose={()=>setInfoItem(null)}/>}
     </>
   );

@@ -83,6 +83,29 @@ export function presetLayout(id) {
   return out;
 }
 
+// The height the presets are drawn for: the bottom edge of their tallest column.
+export const PRESET_HEIGHT = 984;
+
+/**
+ * A preset squeezed (never stretched) to a shorter workspace: every y and height scales by the same
+ * factor, rounded to the grid, so columns keep their 8 px gutters and still end at the bottom. A
+ * 1440x1000 window leaves ~850 px of workspace, where the unscaled Browser ran past the fold and hid
+ * its own search box. Content that no longer fits scrolls inside its window. Floored at two title
+ * bars rather than MIN_H: the Resources strip is drawn shorter than MIN_H to begin with, and lifting
+ * it to MIN_H here pushed it into the window below.
+ */
+export function fitToHeight(layout, viewH) {
+  if (!(viewH > 0) || viewH >= PRESET_HEIGHT + GRID) return layout;
+  const k = (viewH - GRID) / PRESET_HEIGHT;
+  const out = {};
+  for (const [id, w] of Object.entries(layout)) {
+    const top = Math.round((w.y - GRID) * k / GRID) * GRID + GRID;
+    const bottom = Math.round((w.y + w.h) * k / GRID) * GRID;
+    out[id] = { ...w, y: top, h: Math.max(TITLE_H * 2, bottom - top) };
+  }
+  return out;
+}
+
 export const topZ = (layout) => Math.max(0, ...Object.values(layout).map(w => w.z || 0));
 
 /** `id` brought to the front. Returns the same object when it already is, so React skips the render. */

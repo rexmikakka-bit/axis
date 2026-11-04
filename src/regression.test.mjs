@@ -8904,6 +8904,14 @@ Nanofiber Internal Structure II
   check('desk', 'persist: round trip', JSON.stringify(D.readLayoutState(store(saved))), JSON.stringify(D.defaultLayoutState()));
   check('desk', 'bring to front: already on top is a no-op', D.bringToFront(def, 'notes') === def ? 1 : 0, 1, 0);
   check('desk', 'bring to front: raises above the rest', D.bringToFront(def, 'browser').browser.z, D.topZ(def) + 1, 0);
+  // A preset on a shorter workspace: squeezed, never stretched, columns still end at the bottom
+  // and keep a gutter between rows.
+  const fit850 = D.fitToHeight(def, 850);
+  check('desk', 'fit to height: tallest column ends inside 850', Math.max(...D.WINDOW_IDS.filter(a => def[a].open).map(a => fit850[a].y + fit850[a].h)) <= 850 ? 1 : 0, 1, 0);
+  check('desk', 'fit to height: still no overlaps', D.WINDOW_IDS.filter(a => def[a].open).some(a => D.WINDOW_IDS.filter(b => b > a && def[b].open)
+    .some(b => fit850[a].x < fit850[b].x + fit850[b].w && fit850[b].x < fit850[a].x + fit850[a].w && fit850[a].y < fit850[b].y + fit850[b].h && fit850[b].y < fit850[a].y + fit850[a].h)) ? 1 : 0, 0, 0);
+  check('desk', 'fit to height: widths untouched', fit850.fitting.w, def.fitting.w, 0);
+  check('desk', 'fit to height: a tall workspace leaves it alone', D.fitToHeight(def, 1400) === def ? 1 : 0, 1, 0);
   // Pop-out sync sends only the hulls whose arrays changed. Built from the same reference contract
   // the IndexedDB writer uses: one edit replaces exactly one hull's array.
   const P = await import('./desktop/fits-patch.js');

@@ -45,7 +45,7 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd } = {}) {
   const ship = useActiveShip(s);
   const stats = useDeskStats(s, {
     snapshot: isOpen("cargo") || isOpen("drones") || isOpen("effects") || sheet === "shipinfo" || sheet === "snapshot",
@@ -54,8 +54,8 @@ function useWindowContents(s, isOpen, sheet) {
   const renderWindow = (id) => {
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
-      case "browser": return <BrowserWindow s={s} />;
-      case "fitting": return <FittingWindow s={s} ship={ship} />;
+      case "browser": return <BrowserWindow s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
+      case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} />;
       case "graphs": return <GraphsWindow s={s} ship={ship} />;
       case "resources": return <ResourcesWindow s={s} ship={ship} />;
       case "cargo": return <CargoWindow s={s} stats={stats} />;
@@ -75,7 +75,8 @@ function useWindowContents(s, isOpen, sheet) {
 function SatelliteApp({ id }) {
   const banner = useBanner();
   const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify });
-  const sync = useSessionSync(s);
+  const adderRef = useRef(null);
+  const sync = useSessionSync(s, { onMessage: (m) => { if (m.type === "add") adderRef.current?.(m.secKey, m.mod); } });
   useEffect(() => { initKeyboardTracking(); }, []);
   useEffect(() => {
     sync.post({ type: "hello", id });
@@ -83,7 +84,8 @@ function SatelliteApp({ id }) {
     window.addEventListener("beforeunload", bye);
     return () => window.removeEventListener("beforeunload", bye);
   }, [id]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const { renderWindow, windowTitle } = useWindowContents(s, (w) => w === id, null);
+  const { renderWindow, windowTitle } = useWindowContents(s, (w) => w === id, null,
+    { adderRef, remoteAdd: (secKey, mod) => sync.post({ type: "add", secKey, mod }) });
   const title = windowTitle(id);
   useEffect(() => { document.title = `${title} · Axis`; }, [title]);
   return (
@@ -120,13 +122,13 @@ function DesktopApp() {
   const [importInitial, setImportInitial] = useState(null);
   const close = () => setSheet(null);
 
-  const { ship, stats, renderWindow, windowTitle } = useWindowContents(s, isOpen, sheet);
-
   // ── Pop-out: a real OS window per detached window ─────────────────────────────────────────────
   const popups = useRef({});
+  const adderRef = useRef(null);
   const sync = useSessionSync(s, {
     onMessage: (m) => {
       if (m.type === "hello") sync.sendAll();
+      if (m.type === "add") adderRef.current?.(m.secKey, m.mod);
       if (m.type === "closed" && WINDOWS.some(w => w.id === m.id)) { delete popups.current[m.id]; dockWindow(setLayoutState, m.id); }
     },
   });
@@ -139,6 +141,14 @@ function DesktopApp() {
     detachWindow(setLayoutState, id);
   };
   const dock = (id) => { try { popups.current[id]?.close(); } catch { /* already gone */ } delete popups.current[id]; };
+  // The Browser's Market mode adds through the Fitting window. Docked here, that is adderRef;
+  // popped out, it is another OS window, so the add goes over the channel; closed, there is nothing
+  // to add into, and saying so beats a click that does nothing.
+  const remoteAdd = (secKey, mod) => {
+    if (layoutState.windows.fitting?.open && layoutState.windows.fitting?.detached) sync.post({ type: "add", secKey, mod });
+    else flash("none", t("Open the Fitting window to add modules."));
+  };
+  const { ship, stats, renderWindow, windowTitle } = useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const w of WINDOWS) if (layoutState.windows[w.id]?.detached) dockWindow(setLayoutState, w.id);

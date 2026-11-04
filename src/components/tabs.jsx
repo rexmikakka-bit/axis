@@ -336,7 +336,10 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
   background:"none",border:`1px solid ${depth?C.border:"transparent"}`,
   color:depth?C.textMid:C.textMute,opacity:depth?1:0.4,cursor:depth?"pointer":"default"});
 
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd}){
+// `adderRef` (desktop only): set to add(secKey, mod) -> count, which fits `mod` into the first empty
+// slot of that rack through the same addMod the module picker uses, so the desktop's Market browser
+// obeys every fitting rule the phone does (hardpoints, group limits, auto-fill, default charges).
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
   const _cs=(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{};
@@ -731,7 +734,15 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
     });
     return {count:1+fillIds.length,filledIds:[id,...fillIds]};
   };
-
+  useEffect(()=>{
+    if(!adderRef)return;
+    adderRef.current=(secKey,mod)=>{
+      const empty=(slots[secKey]??[]).find(s=>s.type==="empty");
+      if(!empty){showFitError(t("No empty slot for that module"));return 0;}
+      return addMod(secKey,empty.id,mod)?.count??0;
+    };
+    return()=>{if(adderRef)adderRef.current=null;};
+  });
   const getDisplayRows=(secKey)=>computeDisplayRows(slots[secKey]??[],secKey,grouped);
   const menuMod=moduleMenu?slots[moduleMenu.secKey].find(m=>m.id===moduleMenu.modId):null;
   // The row backing the open menu, purely to learn its groupIds/count — the menu opens on a single

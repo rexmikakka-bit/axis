@@ -98,5 +98,6 @@ Not done yet:
   - an Avg column in Defense (the window shows the phone's resist table, including its per-layer
     multiplier).
 - **App icon:** generated from the 256 px favicon; a 1024 px master would be sharper.
-- **Dev console:** a React key warning shows when opening the Fits list. It's pre-existing, from
-  `FittingsScreen`, also happens on mobile, and hasn't been found yet.
+
+Test fixture note: hand-built fits without an `id` make `FittingsScreen` warn about a missing React
+key (`key={fit.id}`). Real fits always get one when created or imported, so seed test data with ids.

@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { calcFitStats, TYPES, tidByName, isT3Cruiser, t3cSlotLayout } from "../calc.js";
+import { calcFitStats, computeFitCostRatios, TYPES, tidByName, isT3Cruiser, t3cSlotLayout } from "../calc.js";
 import { lookupShip } from "../lib/core.js";
 import { FitTab, StatsTab } from "../components/tabs.jsx";
 import { GraphTab } from "../components/GraphTab.jsx";
-import { ResourceStrip } from "../components/ui.jsx";
+import { ResourceStrip, ModuleBrowserSheet } from "../components/ui.jsx";
 import { FittingsScreen } from "../components/FittingsScreen.jsx";
 import { CargoScreen } from "../components/cargo.jsx";
 import { DronesScreen } from "../components/drones.jsx";
@@ -92,11 +92,11 @@ export function StatsWindow({ s, ship, sections, id }) {
   );
 }
 
-export function FittingWindow({ s, ship }) {
+export function FittingWindow({ s, ship, adderRef }) {
   if (!ship) return <NoFit />;
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <FitTab undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
+      <FitTab adderRef={adderRef} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
         skills={s.fitSkills} implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload}
         externalBursts={s.externalBursts} projectedEffects={s.projectedEffects} dmgProfile={s.dmgProfile} tgtProfile={s.tgtProfile}
         autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd} />
@@ -120,17 +120,87 @@ export function ResourcesWindow({ s, ship }) {
   return <ResourceStrip ship={ship} slots={s.slots} skills={s.fitSkills} implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload} />;
 }
 
+// Segmented control: the phone's FIT_SUBTABS bar in miniature (accent tint on the active segment).
+function Segmented({ value, onChange, options }) {
+  return (
+    <div role="tablist" style={{ display: "flex", margin: "8px 10px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 6, overflow: "hidden", flex: "none" }}>
+      {options.map(([id, label]) => (
+        <button key={id} type="button" role="tab" aria-selected={value === id} onClick={() => onChange(id)}
+          style={{ flex: 1, height: 28, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                   background: value === id ? C.accentLight : "transparent", color: value === id ? C.accent : C.textMid }}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+const MARKET_SLOTS = [["high", "High"], ["mid", "Mid"], ["low", "Low"], ["rigs", "Rig"]];
+
 /**
- * The phone's ship library and fit list. Its "active" view is the fit itself, which on the desktop
- * lives in the Fitting window, so opening a fit leaves this window where it was rather than turning
- * it into a second copy of the fit.
+ * The module side of the Browser: the phone's module picker, drawn inline, aimed at whichever rack
+ * the slot chips select. Picking a module fits it into the first empty slot of that rack through the
+ * Fitting window's own addMod (see FitTab's adderRef), so every fitting rule holds. With the Fitting
+ * window in another OS window, the add is sent to it over the sync channel instead.
  */
-export function BrowserWindow({ s }) {
+function MarketBrowser({ s, ship, adderRef, remoteAdd }) {
+  const isStructure = (TYPES[ship?.typeID]?.c ?? TYPES[ship?.typeID]?.category) === 65;
+  const racks = isStructure ? [...MARKET_SLOTS.filter(([k]) => k !== "rigs"), ["rigs", "Rig"], ["services", "Service"]] : MARKET_SLOTS;
+  const [slotType, setSlotType] = useState("high");
+  const cs = useMemo(() => {
+    if (!ship || !s.slots) return null;
+    try { return calcFitStats(ship, s.slots, s.drones ?? [], s.fitSkills, { implants: s.implants, boosters: s.boosters, externalBursts: s.externalBursts }); } catch { return null; }
+  }, [ship, s.slots, s.drones, s.fitSkills, s.implants, s.boosters, s.externalBursts]);
+  // FitTab's resourceHeadroom, the same three totals and the same lazy cost-ratio probe.
+  const ratioCache = useMemo(() => ({ val: null }), [ship, s.slots, s.fitSkills, s.implants, s.boosters]);
+  const headroom = {
+    pg: { used: cs?.pgUsed ?? 0, total: cs?.pgTotal ?? 0 },
+    cpu: { used: cs?.cpuUsed ?? 0, total: cs?.cpuTotal ?? 0 },
+    cal: { used: cs?.calUsed ?? 0, total: cs?.calTotal ?? 400 },
+    get ratios() {
+      if (!ratioCache.val) ratioCache.val = (ship && s.slots) ? computeFitCostRatios(ship, s.slots, s.fitSkills,
+        { implants: s.implants, boosters: s.boosters, pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity }) : new Map();
+      return ratioCache.val;
+    },
+  };
+  if (!ship) return <NoFit />;
+  const add = (mod) => {
+    if (adderRef.current) return adderRef.current(slotType, mod);
+    if (remoteAdd) { remoteAdd(slotType, mod); return 1; }
+    return 0;
+  };
+  return (
+    <>
+      <div style={{ display: "flex", gap: 6, padding: "8px 10px", flex: "none", flexWrap: "wrap" }}>
+        {racks.map(([k, label]) => (
+          <button key={k} type="button" aria-pressed={slotType === k} onClick={() => setSlotType(k)}
+            style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 11, cursor: "pointer",
+                     background: slotType === k ? C.accentLight : "transparent", border: `1px solid ${slotType === k ? C.accent : C.borderStrong}`,
+                     color: slotType === k ? C.accent : C.textMid }}>{t(label)}</button>
+        ))}
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <ModuleBrowserSheet key={slotType} inline slotType={slotType} isStructure={isStructure} hullRigSize={TYPES[ship?.typeID]?.a?.rigSize ?? null}
+          onSelect={add} onClose={() => {}} resourceHeadroom={headroom} ship={ship} slots={s.slots} skills={s.fitSkills}
+          implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload} />
+      </div>
+    </>
+  );
+}
+
+/**
+ * One browser, two modes, as in pyfa: Market (modules) and Ships (the phone's ship library and fit
+ * list). The fit list's "active" view is the fit itself, which on the desktop lives in the Fitting
+ * window, so opening a fit leaves this window where it was rather than turning it into a second copy.
+ */
+export function BrowserWindow({ s, ship, adderRef, remoteAdd }) {
+  const [mode, setMode] = useState("ships");
   const [view, setView] = useState("browse");
   const [newFitIntent, setNewFitIntent] = useState(false);
   const setBrowseView = (v) => { if (v !== "active") setView(v); };
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <Segmented value={mode} onChange={setMode} options={[["market", t("Market")], ["ships", t("Ships")]]} />
+      {mode === "market" ? <MarketBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} /> : <></>}
+      <div style={{ flex: 1, minHeight: 0, display: mode === "ships" ? "flex" : "none", flexDirection: "column" }}>
       <FittingsScreen recents={s.recentFits} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth}
         activeFit={s.activeFit} setActiveFit={s.setActiveFit} loadFit={s.loadFit} deleteFit={s.deleteFit} view={view} setView={setBrowseView}
         fitsDB={s.fitsDB} setFitsDB={s.setFitsDB} slots={s.slots} setSlots={s.setSlots} setDrones={s.setDrones} setFighters={s.setFighters}
@@ -142,6 +212,7 @@ export function BrowserWindow({ s }) {
         priceHub={s.priceHub} setPriceHub={s.setPriceHub} priceSource={s.priceSource} newFitIntent={newFitIntent} setNewFitIntent={setNewFitIntent}
         newTabIntent={s.newTabIntent} autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd}
         onOpenFit={s.openFitInNewTab} fitSubTab="Fit" setFitSubTab={s.setFitSubTab} />
+      </div>
     </div>
   );
 }

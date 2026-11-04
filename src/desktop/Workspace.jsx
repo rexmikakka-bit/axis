@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import DeskWindow from "./DeskWindow.jsx";
-import { WINDOWS, PRESETS, GRID, presetLayout, bringToFront, snapMove, snapResize, rescue, canvasSize,
+import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, rescue, canvasSize,
          readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H } from "./layout.js";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
@@ -71,7 +71,16 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     const el = wsRef.current; if (!el) return;
     setLayout(l => rescue(l, el.clientWidth, el.clientHeight));
   }, [setLayout]);
-  useLayoutEffect(() => { doRescue(); }, [doRescue]);
+  useLayoutEffect(() => {
+    // An untouched built-in preset (first launch, or nothing moved since) is fitted to this
+    // workspace's height; anything the user arranged is left exactly where they put it.
+    const el = wsRef.current;
+    if (el && PRESETS.some(p => p.id === state.preset) && JSON.stringify(state.windows) === JSON.stringify(presetLayout(state.preset)))
+      // From the preset itself, not s.windows: StrictMode runs this twice, and scaling the already
+      // scaled layout again squeezed it twice over.
+      setState(s => PRESETS.some(p => p.id === s.preset) ? { ...s, windows: fitToHeight(presetLayout(s.preset), el.clientHeight) } : s);
+    doRescue();
+  }, [doRescue]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     window.addEventListener("resize", doRescue);
     return () => window.removeEventListener("resize", doRescue);
@@ -117,7 +126,8 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   }, { preset: null }), [setLayout]);
 
   const applyPreset = (id) => {
-    setState(s => ({ ...s, windows: presetLayout(id), preset: id }));
+    const h = wsRef.current?.clientHeight;
+    setState(s => ({ ...s, windows: fitToHeight(presetLayout(id), h), preset: id }));
     requestAnimationFrame(doRescue);
   };
   const applyNamed = (name) => {
