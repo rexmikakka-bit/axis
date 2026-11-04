@@ -72,9 +72,6 @@ export function NoFit() {
 export const STAT_SECTIONS = {
   defense: ["resists", "recharge"],
   firepower: ["firepower", "remotereps", "mining"],
-  capacitor: ["cap"],
-  targeting: ["targeting:sensors"],
-  mobility: ["targeting:mobility"],
   price: ["fitvalue"],
   validation: ["validation"],
 };

@@ -14,12 +14,14 @@ import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
 import { SkillsProvider } from "../components/skill-mark.jsx";
 import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
-import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, Button } from "./Workspace.jsx";
+import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, Button } from "./Workspace.jsx";
+import Menu from "./Menu.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
-import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, ResourcesWindow, BrowserWindow,
+import { ResourcesPanel, CapacitorPanel, TargetingPanel, useFitStats } from "./stat-panels.jsx";
+import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, BrowserWindow,
          CargoWindow, DronesWindow, ImplantsWindow, EffectsWindow, NotesWindow } from "./windows.jsx";
 
 // The desktop app. The fit session (use-fit-session.js) is the phone's, so every edit, setting and
@@ -48,6 +50,8 @@ function useBanner() {
 /** What every window shows, for the main app and for a popped-out window alike. */
 function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd } = {}) {
   const ship = useActiveShip(s);
+  // One full calculation for every native stat window (stat-panels.jsx).
+  const cs = useFitStats(s, ship);
   const stats = useDeskStats(s, {
     snapshot: isOpen("cargo") || isOpen("drones") || isOpen("effects") || sheet === "shipinfo" || sheet === "snapshot",
     drones: isOpen("drones"),
@@ -58,7 +62,9 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd } = {}) {
       case "browser": return <BrowserWindow s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
       case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} />;
       case "graphs": return <GraphsWindow s={s} ship={ship} />;
-      case "resources": return <ResourcesWindow s={s} ship={ship} />;
+      case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
+      case "capacitor": return <CapacitorPanel cs={cs} />;
+      case "targeting": return <TargetingPanel s={s} cs={cs} />;
       case "cargo": return <CargoWindow s={s} stats={stats} />;
       case "drones": return <DronesWindow s={s} stats={stats} />;
       case "implants": return <ImplantsWindow s={s} />;
@@ -178,53 +184,59 @@ function DesktopApp() {
     <SkillsProvider value={s.fitSkills}>
       <style>{getGlobalCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.bg, color: C.text, fontSize: 13 }}>
-        <header style={{ height: 48, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 16px",
-                         background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: "auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 8 }}>
+        <header style={{ height: 44, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px",
+                         background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 12, flex: "none" }}>
             <span style={{ fontWeight: 700, letterSpacing: ".18em", fontSize: 14 }}>AXIS</span>
             {/* The app icon's turquoise/red split. Brand marks, so the same in every theme. */}
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22d3ee" }} />
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444" }} />
           </div>
-          {hasFit && <Button onClick={() => setSheet("shipinfo")}>{t("Ship info")}</Button>}
-          <span style={{ flex: 1 }} />
-          {/* The pilot this fit is flown with, and whether they can fly it — the phone header's skill mark. */}
+          {/* Open fits, in the header itself: same tab list and rules as the phone's strip
+              (lib/fit-tabs.js). The strip scrolls on its own when there are many. */}
+          <div role="tablist" aria-label={t("Open fits")} style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "flex-end", gap: 2, overflowX: "auto" }}>
+            {(s.openFitTabs.length ? s.openFitTabs : (hasFit ? [{ ship: s.activeFit.ship, name: s.activeFit.fitName, id: "current" }] : [])).map(tb => {
+              const on = tb.ship === s.activeFit?.ship && tb.name === s.activeFit?.fitName;
+              return (
+                <div key={`${tb.ship}:${tb.id}:${tb.name}`} role="tab" aria-selected={on}
+                  style={{ height: 32, display: "flex", alignItems: "center", gap: 8, padding: "0 10px 0 12px", borderRadius: "6px 6px 0 0",
+                           background: on ? C.bg : "transparent", border: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
+                           marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}
+                  onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: on ? C.text : C.textMid }}>{tb.ship}</span>
+                  <span style={{ fontSize: 12.5, color: C.textMid }}>{tb.name}</span>
+                  {s.openFitTabs.length > 0 && <button type="button" aria-label={t("Close tab")} title={t("Close tab")}
+                    onClick={(e) => { e.stopPropagation(); s.closeFitTab(tb); }}
+                    style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
+                </div>
+              );
+            })}
+            <button type="button" aria-label={t("Open a fit in a new tab")} title={t("Open a fit in a new tab")} onClick={newTab}
+              style={{ height: 32, width: 30, flex: "none", border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 16 }}>+</button>
+          </div>
+          {/* The two things changed all the time stay on the bar; everything else is in a menu. */}
           {hasFit && <Button onClick={() => setSheet("pilot")}>
-            {t("Pilot: {name}", { name: s.fitSkillLabel ?? t("All Skills V") })}
+            {s.fitSkillLabel ?? t("All Skills V")}
             {!s.skillCheck.ok && <span style={{ color: C.warning, marginLeft: 6 }}>{t({ one: "{n} missing", other: "{n} missing" }, { n: s.skillCheck.missing.length })}</span>}
           </Button>}
-          <Button onClick={() => setSheet("dmgprofile")}>{t("Damage profile: {name}", { name: s.dmgProfile?.name ?? "Uniform" })}</Button>
-          <Button onClick={() => setSheet("import")}>{t("Import")}</Button>
-          <Button onClick={() => setSheet("export")} disabled={!hasFit}>{t("Export")}</Button>
-          <Button onClick={() => s.optimizeFitPrice()} disabled={!hasFit}>{t("Optimize Fit Price")}</Button>
-          <Button onClick={() => setSheet("shopping")} disabled={!hasFit}>{t("Shopping List")}</Button>
-          <Button onClick={() => setSheet("feedback")}>{t("Send Feedback")}</Button>
-          <Button onClick={() => setSheet("settings")}>{t("Settings")}</Button>
-          <Button primary onClick={() => setSheet("snapshot")} disabled={!hasFit}>{t("Export Snapshot")}</Button>
+          <Button onClick={() => setSheet("dmgprofile")}>{s.dmgProfile?.name ?? "Uniform"}</Button>
+          <Menu label={<>{t("Windows")} <span aria-hidden="true" style={{ fontSize: 9 }}>▼</span></>} items={WINDOWS.map(w => ({
+            label: t(w.title), checked: !!(layoutState.windows[w.id]?.open),
+            hint: layoutState.windows[w.id]?.detached ? t("popped out") : undefined, onSelect: () => toggleWindow(setLayoutState, w.id),
+          }))} />
+          <Menu ariaLabel={t("Menu")} label={<span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>☰</span>} items={[
+            { heading: t("Fit") },
+            { label: t("Import Fit"), onSelect: () => setSheet("import") },
+            { label: t("Export Fit"), onSelect: () => setSheet("export"), disabled: !hasFit },
+            { label: t("Export Snapshot"), onSelect: () => setSheet("snapshot"), disabled: !hasFit },
+            { label: t("Ship info"), onSelect: () => setSheet("shipinfo"), disabled: !hasFit },
+            { label: t("Optimize Fit Price"), onSelect: () => s.optimizeFitPrice(), disabled: !hasFit },
+            { label: t("Shopping List"), onSelect: () => setSheet("shopping"), disabled: !hasFit },
+            { divider: true },
+            { label: t("Settings"), onSelect: () => setSheet("settings") },
+            { label: t("Send Feedback"), onSelect: () => setSheet("feedback") },
+          ]} />
         </header>
-
-        {/* Open fits. Same tab list and rules as the phone's strip (lib/fit-tabs.js). */}
-        <div role="tablist" style={{ height: 36, flex: "none", display: "flex", alignItems: "flex-end", gap: 2, padding: "0 12px",
-                                     background: C.bg, borderBottom: `1px solid ${C.border}`, overflowX: "auto" }}>
-          {(s.openFitTabs.length ? s.openFitTabs : (hasFit ? [{ ship: s.activeFit.ship, name: s.activeFit.fitName, id: "current" }] : [])).map(tb => {
-            const on = tb.ship === s.activeFit?.ship && tb.name === s.activeFit?.fitName;
-            return (
-              <div key={`${tb.ship}:${tb.id}:${tb.name}`} role="tab" aria-selected={on}
-                style={{ height: 30, display: "flex", alignItems: "center", gap: 8, padding: "0 10px 0 12px", borderRadius: "6px 6px 0 0",
-                         background: on ? C.surface : "transparent", border: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
-                         marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap" }}
-                onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: on ? C.text : C.textMid }}>{tb.ship}</span>
-                <span style={{ fontSize: 12, color: C.textMid }}>{tb.name}</span>
-                {s.openFitTabs.length > 0 && <button type="button" aria-label={t("Close tab")} title={t("Close tab")}
-                  onClick={(e) => { e.stopPropagation(); s.closeFitTab(tb); }}
-                  style={{ border: "none", background: "none", color: C.textMute, cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>}
-              </div>
-            );
-          })}
-          <button type="button" aria-label={t("Open a fit in a new tab")} title={t("Open a fit in a new tab")} onClick={newTab}
-            style={{ height: 30, width: 30, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 16 }}>+</button>
-        </div>
 
         <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle}
           onPopOut={popOut} onDock={dock} />

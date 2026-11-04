@@ -22,6 +22,13 @@ export const dockWindow = (setState, id) => setState(s => ({
 }));
 export const detachWindow = (setState, id) => setState(s => ({ ...s, windows: { ...s.windows, [id]: { ...s.windows[id], detached: true } } }));
 
+/** Open-and-raise a closed window, or close an open one (the header's Windows menu). */
+export const toggleWindow = (setState, id) => setState(s => {
+  const w = s.windows[id];
+  if (w.open && !w.detached) return { ...s, windows: { ...s.windows, [id]: { ...w, open: false } } };
+  return { ...s, windows: bringToFront({ ...s.windows, [id]: { ...w, open: true, detached: false } }, id) };
+});
+
 /** Open (and raise) a window from outside the workspace — e.g. the Browser when "+" starts a new tab. */
 export const openWindow = (setState, id) => setState(s => ({
   ...s, windows: bringToFront({ ...s.windows, [id]: { ...s.windows[id], open: true, detached: false } }, id),
@@ -153,25 +160,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
 
   return (
     <>
-      {/* Window chips */}
-      <div style={{ height: 36, flex: "none", display: "flex", alignItems: "center", gap: 6, padding: "0 12px",
-                    background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: "auto" }}>
-        <SectionLabel>{t("Windows")}</SectionLabel>
-        <span style={{ width: 4 }} />
-        {WINDOWS.map(w => <Chip key={w.id} on={layout[w.id].open && !layout[w.id].detached} onClick={() => toggle(w.id)}>{t(w.title)}</Chip>)}
-        <span style={{ flex: 1 }} />
-        {naming == null
-          ? <Button onClick={() => setNaming("")}>{t("Save layout as…")}</Button>
-          : <form onSubmit={(e) => { e.preventDefault(); saveNamed(); }} style={{ display: "flex", gap: 6 }}>
-              <input autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder={t("Layout name")}
-                onKeyDown={(e) => { if (e.key === "Escape") setNaming(null); }} aria-label={t("Layout name")}
-                style={{ height: 28, width: 160, boxSizing: "border-box", padding: "0 8px", borderRadius: 6, fontSize: 12,
-                         background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
-              <Button primary onClick={saveNamed}>{t("Save")}</Button>
-            </form>}
-      </div>
-
-      {/* Workspace */}
+      {/* Workspace. Which windows are open is the header's Windows menu (toggleWindow). */}
       <div ref={wsRef} style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative",
                                 backgroundImage: state.snapGrid ? `radial-gradient(${C.border} 1px, transparent 1px)` : "none",
                                 backgroundSize: `${GRID * 2}px ${GRID * 2}px`, backgroundAttachment: "local" }}>
@@ -196,7 +185,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
         <SectionLabel>{t("Detached")}</SectionLabel>
         {detached.length
           ? detached.map(w => <Chip key={w.id} pressed={false} onClick={() => dock(w.id)} title={t("Dock")}>{t(w.title)}</Chip>)
-          : <span style={{ fontSize: 11, color: C.textMute, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
+          : <span style={{ fontSize: 11.5, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>
         {PRESETS.map(p => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}>{t(p.title)}</Chip>)}
@@ -207,6 +196,15 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
               style={{ border: "none", background: "none", color: C.textMute, cursor: "pointer", fontSize: 13, padding: "0 2px" }}>×</button>
           </span>
         ))}
+        {naming == null
+          ? <Chip pressed={false} onClick={() => setNaming("")}>{t("Save layout as…")}</Chip>
+          : <form onSubmit={(e) => { e.preventDefault(); saveNamed(); }} style={{ display: "flex", gap: 6 }}>
+              <input autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder={t("Layout name")}
+                onKeyDown={(e) => { if (e.key === "Escape") setNaming(null); }} aria-label={t("Layout name")}
+                style={{ height: 22, width: 140, boxSizing: "border-box", padding: "0 8px", borderRadius: 11, fontSize: 11.5,
+                         background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
+              <Chip on onClick={saveNamed}>{t("Save")}</Chip>
+            </form>}
         <span style={{ width: 8 }} />
         <Chip on={state.locked} onClick={() => setFlag("locked")}>{t("Lock layout")}</Chip>
         <Chip on={state.snapWindows} onClick={() => setFlag("snapWindows")}>{t("Snap to windows")}</Chip>

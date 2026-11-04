@@ -28,8 +28,7 @@ export const WINDOWS = [
   { id: 'defense', title: 'Defense' },
   { id: 'firepower', title: 'Firepower' },
   { id: 'capacitor', title: 'Capacitor' },
-  { id: 'targeting', title: 'Targeting' },
-  { id: 'mobility', title: 'Mobility' },
+  { id: 'targeting', title: 'Targeting and mobility' },
   { id: 'price', title: 'Fit price' },
   { id: 'validation', title: 'Validation' },
   { id: 'graphs', title: 'Graphs' },
@@ -45,24 +44,28 @@ export const WINDOW_IDS = WINDOWS.map(w => w.id);
 // own stat cards, and at their real heights (measured on a battlecruiser: defense ~480 px of content,
 // fit value ~300) one column would need about 1,600 px. Heights are content + the 28 px title bar,
 // rounded to the grid.
-const STAT_A = { resources: [8, 72], defense: [88, 512], capacitor: [608, 144], cargo: [760, 224] };
-const STAT_B = { validation: [8, 112], firepower: [128, 272], targeting: [408, 184], mobility: [600, 184], price: [792, 192] };
+const STAT_A = { resources: [8, 176], defense: [192, 480], capacitor: [680, 304] };
+const STAT_B = { validation: [8, 88], firepower: [104, 272], targeting: [384, 360], price: [752, 232] };
 const column = (col, x, w = 320) => Object.fromEntries(Object.entries(col).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
 const CLOSED_BY_DEFAULT = { drones: [296, 120, 400, 420, false], implants: [340, 160, 400, 480, false], notes: [380, 200, 320, 200, false],
                             graphs: [296, 48, 724, 640, false] };
 
 const PRESET_GEOMETRY = {
+  // Effects and Cargo share the space under Fitting, as in the design concept.
   default: {
-    browser: [8, 8, 280, 976, true], fitting: [296, 8, 480, 640, true], effects: [296, 656, 480, 328, true],
+    browser: [8, 8, 280, 976, true], fitting: [296, 8, 480, 640, true],
+    effects: [296, 656, 236, 328, true], cargo: [540, 656, 236, 328, true],
     ...column(STAT_A, 784), ...column(STAT_B, 1112), ...CLOSED_BY_DEFAULT,
   },
   mirrored: {
-    browser: [1152, 8, 280, 976, true], fitting: [664, 8, 480, 640, true], effects: [664, 656, 480, 328, true],
+    browser: [1152, 8, 280, 976, true], fitting: [664, 8, 480, 640, true],
+    effects: [664, 656, 236, 328, true], cargo: [908, 656, 236, 328, true],
     ...column(STAT_B, 8), ...column(STAT_A, 336), ...CLOSED_BY_DEFAULT,
   },
   // No browser: the fit gets the room.
   focus: {
-    browser: [8, 8, 280, 976, false], fitting: [8, 8, 768, 640, true], effects: [8, 656, 768, 328, true],
+    browser: [8, 8, 280, 976, false], fitting: [8, 8, 768, 640, true],
+    effects: [8, 656, 380, 328, true], cargo: [396, 656, 380, 328, true],
     ...column(STAT_A, 784), ...column(STAT_B, 1112), ...CLOSED_BY_DEFAULT,
   },
 };

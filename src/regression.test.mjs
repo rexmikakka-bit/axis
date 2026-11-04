@@ -8863,12 +8863,12 @@ Nanofiber Internal Structure II
   check('desk', 'Focus: fitting takes the browser\'s room', D.presetLayout('focus').fitting.w, 768, 0);
   check('desk', 'Focus: browser closed', D.presetLayout('focus').browser.open ? 1 : 0, 0, 0);
   const on = { grid: true, windows: true };
-  // Cargo nudged 5 right / 3 down: grid rounds to 792,760, then its left edge is 8 px from the
-  // Fitting/Effects column's right edge + gutter (784) and snaps back flush.
-  const m1 = D.snapMove(def, 'cargo', 789, 763, on);
-  check('desk', 'move: grid then window snap lands flush', `${m1.x},${m1.y}`, '784,760');
-  check('desk', 'move: grid only', `${D.snapMove(def, 'cargo', 789, 763, { grid: true }).x}`, '792');
-  check('desk', 'move: no snapping', `${D.snapMove(def, 'cargo', 789, 763, {}).x}`, '789');
+  // Cargo nudged 5 right / 3 down: grid rounds to 544,656, then its left edge is 4 px from the
+  // Effects window's right edge + gutter (540) and snaps back flush.
+  const m1 = D.snapMove(def, 'cargo', 545, 659, on);
+  check('desk', 'move: grid then window snap lands flush', `${m1.x},${m1.y}`, '540,656');
+  check('desk', 'move: grid only', `${D.snapMove(def, 'cargo', 545, 659, { grid: true }).x}`, '544');
+  check('desk', 'move: no snapping', `${D.snapMove(def, 'cargo', 545, 659, {}).x}`, '545');
   check('desk', 'move: no far clamp (drag into new space)', D.snapMove(def, 'notes', 5000, 4000, {}).x, 5000, 0);
   check('desk', 'move: near clamp at 0', D.snapMove(def, 'notes', -40, -9, {}).y, 0, 0);
   // Trailing edge: b's right edge at 195 is 3 px short of a.left − gutter (192), and its left edge is
