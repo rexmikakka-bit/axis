@@ -308,9 +308,13 @@ function ResistRow({ name, ehp, res, p }) {
     <>
       <div style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>{name}</div>
       {["em", "th", "kin", "exp"].map((k) => (
-        <div key={k} style={{ position: "relative", height: 24, borderRadius: 5, background: "rgba(255,255,255,.045)", overflow: "hidden", display: "grid", placeItems: "center" }}>
-          <i style={{ position: "absolute", left: 0, bottom: 0, top: 0, width: `${Math.max(0, Math.min(100, res[k] ?? 0))}%`, background: DMG[k], opacity: 0.28 }} />
-          <span style={{ position: "relative", fontSize: 13, fontWeight: 600, color: T.text }}>{res[k] != null ? res[k].toFixed(1) : "-"}</span>
+        // The Stats tab's resist cell: a thin bar in the damage colour, the figure under it in the
+        // same colour. Easier to read than a figure printed over a tinted fill.
+        <div key={k} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+          <div style={{ width: "80%", height: 4, borderRadius: 99, background: "rgba(255,255,255,.075)", overflow: "hidden" }}>
+            <div style={{ width: `${Math.max(0, Math.min(100, res[k] ?? 0))}%`, height: "100%", borderRadius: 99, background: DMG[k] }} />
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: DMG[k] }}>{res[k] != null ? `${res[k].toFixed(1)}%` : "-"}</span>
         </div>
       ))}
       {/* The multiplier under it is HP × this = EHP, the same figure the Stats tab's resist table
@@ -675,12 +679,11 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
           {/* Every other caption on the card — the hero panels, the three blocks, the racks — is 11px
               uppercase with letterspacing. These two were 12px sentence case and read as a different
               rank of heading than the panels they label. */}
-          {/* The incoming profile every EHP on the card is weighted by, worded and dotted like the
-              Stats tab's "Incoming damage" row. The profile name is data and stays English. */}
+          {/* The incoming profile every EHP on the card is weighted by, dotted like the Stats tab's
+              "Incoming damage" row. The profile name is data and stays English. */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
             <div style={{ fontSize: 11, letterSpacing: ".5px", color: T.muted, fontWeight: 600, textTransform: "uppercase" }}>{t("Resist Profile")}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11 }}>
-              <span style={{ color: T.dim, fontWeight: 600 }}>{t("Incoming damage")}</span>
               <span style={{ display: "flex", gap: 3 }}>
                 {["em", "th", "kin", "exp"].map((k, i) => <span key={k} style={{ width: 6, height: 6, borderRadius: 99, background: DMG[k], opacity: prof[i] > 0.001 ? 0.4 + prof[i] * 0.6 : 0.12 }} />)}
               </span>
