@@ -8854,18 +8854,21 @@ Nanofiber Internal Structure II
   const D = await import('./desktop/layout.js');
   const def = D.presetLayout('default');
   check('desk', 'every window has a Default rect', D.WINDOW_IDS.every(id => def[id]) ? 1 : 0, 1, 0);
-  check('desk', 'Default: stat column at x 1028', def.defense.x, 1028, 0);
-  check('desk', 'Default: drones, implants, notes closed', [def.drones, def.implants, def.notes].some(w => w.open) ? 1 : 0, 0, 0);
+  check('desk', 'Default: first stat column at x 784', def.defense.x, 784, 0);
+  check('desk', 'Default: drones, implants, notes, graphs closed', [def.drones, def.implants, def.notes, def.graphs].some(w => w.open) ? 1 : 0, 0, 0);
+  check('desk', 'Default: no two open windows overlap', D.WINDOW_IDS.filter(a => def[a].open).some(a => D.WINDOW_IDS.filter(b => b > a && def[b].open)
+    .some(b => def[a].x < def[b].x + def[b].w && def[b].x < def[a].x + def[a].w && def[a].y < def[b].y + def[b].h && def[b].y < def[a].y + def[a].h)) ? 1 : 0, 0, 0);
+  check('desk', 'Default: fits the 1440 reference width', Math.max(...D.WINDOW_IDS.filter(a => def[a].open).map(a => def[a].x + def[a].w)), 1432, 0);
   check('desk', 'Mirrored: browser on the right', D.presetLayout('mirrored').browser.x, 1152, 0);
-  check('desk', 'Focus: stat column 636 wide', D.presetLayout('focus').capacitor.w, 636, 0);
-  check('desk', 'Focus: browser and cargo closed', D.presetLayout('focus').browser.open || D.presetLayout('focus').cargo.open ? 1 : 0, 0, 0);
+  check('desk', 'Focus: fitting takes the browser\'s room', D.presetLayout('focus').fitting.w, 768, 0);
+  check('desk', 'Focus: browser closed', D.presetLayout('focus').browser.open ? 1 : 0, 0, 0);
   const on = { grid: true, windows: true };
-  // Cargo nudged 5 right / 3 down: grid rounds to 752,664, then its left edge is 4 px from the
-  // Projected window's right edge + gutter (748) and snaps back flush.
-  const m1 = D.snapMove(def, 'cargo', 753, 667, on);
-  check('desk', 'move: grid then window snap lands flush', `${m1.x},${m1.y}`, '748,664');
-  check('desk', 'move: grid only', `${D.snapMove(def, 'cargo', 753, 667, { grid: true }).x}`, '752');
-  check('desk', 'move: no snapping', `${D.snapMove(def, 'cargo', 753, 667, {}).x}`, '753');
+  // Cargo nudged 5 right / 3 down: grid rounds to 792,760, then its left edge is 8 px from the
+  // Fitting/Effects column's right edge + gutter (784) and snaps back flush.
+  const m1 = D.snapMove(def, 'cargo', 789, 763, on);
+  check('desk', 'move: grid then window snap lands flush', `${m1.x},${m1.y}`, '784,760');
+  check('desk', 'move: grid only', `${D.snapMove(def, 'cargo', 789, 763, { grid: true }).x}`, '792');
+  check('desk', 'move: no snapping', `${D.snapMove(def, 'cargo', 789, 763, {}).x}`, '789');
   check('desk', 'move: no far clamp (drag into new space)', D.snapMove(def, 'notes', 5000, 4000, {}).x, 5000, 0);
   check('desk', 'move: near clamp at 0', D.snapMove(def, 'notes', -40, -9, {}).y, 0, 0);
   // Trailing edge: b's right edge at 195 is 3 px short of a.left − gutter (192), and its left edge is
@@ -8879,7 +8882,7 @@ Nanofiber Internal Structure II
   check('desk', 'resize left: right edge fixed', rl.x + rl.w, f.x + f.w, 0);
   const rmin = D.snapResize(def, 'fitting', f, 'l', 5000, 0, {});
   check('desk', 'resize left: min width', rmin.w, D.MIN_W, 0);
-  check('desk', 'resize bottom: only that edge moves', JSON.stringify(D.snapResize(def, 'fitting', f, 'b', 0, 40, on)), JSON.stringify({ x: 296, y: 8, w: 724, h: 688 }));
+  check('desk', 'resize bottom: only that edge moves', JSON.stringify(D.snapResize(def, 'fitting', f, 'b', 0, 40, on)), JSON.stringify({ x: 296, y: 8, w: 480, h: 680 }));
   // Rescue: a window parked at x 4000 comes back far enough to grab; one in view is untouched.
   const lost = { ...def, notes: { ...def.notes, open: true, x: 4000, y: 3000 } };
   const r = D.rescue(lost, 1400, 900);
@@ -8891,7 +8894,10 @@ Nanofiber Internal Structure II
   check('desk', 'persist: unparseable value -> Default', D.readLayoutState(store('{nope')).windows.fitting.x, 296, 0);
   check('desk', 'persist: wrong version -> Default', D.readLayoutState(store(JSON.stringify({ v: 99, windows: {} }))).preset, 'default');
   const partial = D.readLayoutState(store(JSON.stringify({ v: D.LAYOUT_VERSION, windows: { fitting: { x: 40, y: 'x', w: 10 } }, locked: true })));
-  check('desk', 'persist: good fields kept, bad ones defaulted', `${partial.windows.fitting.x},${partial.windows.fitting.y},${partial.windows.fitting.w}`, '40,8,724');
+  check('desk', 'persist: good fields kept, bad ones defaulted', `${partial.windows.fitting.x},${partial.windows.fitting.y},${partial.windows.fitting.w}`, '40,8,480');
+  // Facing edges snap to the gutter, never flush: b's left edge 3 px right of a's right edge (300)
+  // lands one gutter out at 308, not butted against it.
+  check('desk', 'move: facing edges keep the gutter', D.snapMove(two, 'b', 303, 400, { windows: true }).x, 308, 0);
   check('desk', 'persist: flags read back', partial.locked && partial.snapGrid ? 1 : 0, 1, 0);
   let saved = null;
   D.writeLayoutState({ setItem: (k, v) => { saved = v; } }, D.defaultLayoutState());

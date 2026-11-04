@@ -17,10 +17,12 @@ export const TITLE_H = 28;
 export const RESCUE_STRIP = 48;
 
 // Chip and title order. `title` is the English key t() looks up.
+// Every phone screen has a home here: Effects is the phone's Effects tab (boosters, projected fits,
+// command links, environment), Graphs its Graph page, Validation the top card of its Stats page.
 export const WINDOWS = [
   { id: 'browser', title: 'Browser' },
   { id: 'fitting', title: 'Fitting' },
-  { id: 'projected', title: 'Projected' },
+  { id: 'effects', title: 'Effects' },
   { id: 'cargo', title: 'Cargo' },
   { id: 'resources', title: 'Resources' },
   { id: 'defense', title: 'Defense' },
@@ -29,34 +31,39 @@ export const WINDOWS = [
   { id: 'targeting', title: 'Targeting' },
   { id: 'mobility', title: 'Mobility' },
   { id: 'price', title: 'Fit price' },
+  { id: 'validation', title: 'Validation' },
+  { id: 'graphs', title: 'Graphs' },
   { id: 'drones', title: 'Drones' },
-  { id: 'implants', title: 'Implants and boosters' },
+  { id: 'implants', title: 'Implants' },
   { id: 'notes', title: 'Notes' },
 ];
 export const WINDOW_IDS = WINDOWS.map(w => w.id);
 
-// [x, y, w, h, open]. Drawn at a 1440 px reference width; the stat column heights are sized to
-// their content with a little slack.
-const STAT_COLUMN = { resources: [8, 164], defense: [180, 270], firepower: [458, 104], capacitor: [570, 80],
-                      targeting: [658, 88], mobility: [754, 88], price: [850, 128] };
-const statColumn = (x, w) => Object.fromEntries(Object.entries(STAT_COLUMN).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
-const CLOSED_BY_DEFAULT = { drones: [300, 120, 300, 160, false], implants: [340, 160, 360, 340, false], notes: [380, 200, 320, 200, false] };
+// [x, y, w, h, open]. Drawn at a 1440 px reference width and ~990 px of workspace height.
+//
+// Two 320 px stat columns rather than the mockup's single 404 px one: the windows hold the phone's
+// own stat cards, and at their real heights (measured on a battlecruiser: defense ~480 px of content,
+// fit value ~300) one column would need about 1,600 px. Heights are content + the 28 px title bar,
+// rounded to the grid.
+const STAT_A = { resources: [8, 72], defense: [88, 512], capacitor: [608, 144], cargo: [760, 224] };
+const STAT_B = { validation: [8, 112], firepower: [128, 272], targeting: [408, 184], mobility: [600, 184], price: [792, 192] };
+const column = (col, x, w = 320) => Object.fromEntries(Object.entries(col).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
+const CLOSED_BY_DEFAULT = { drones: [296, 120, 400, 420, false], implants: [340, 160, 400, 480, false], notes: [380, 200, 320, 200, false],
+                            graphs: [296, 48, 724, 640, false] };
 
 const PRESET_GEOMETRY = {
   default: {
-    browser: [8, 8, 280, 970, true], fitting: [296, 8, 724, 648, true],
-    projected: [296, 664, 444, 314, true], cargo: [748, 664, 272, 314, true],
-    ...statColumn(1028, 404), ...CLOSED_BY_DEFAULT,
+    browser: [8, 8, 280, 976, true], fitting: [296, 8, 480, 640, true], effects: [296, 656, 480, 328, true],
+    ...column(STAT_A, 784), ...column(STAT_B, 1112), ...CLOSED_BY_DEFAULT,
   },
   mirrored: {
-    browser: [1152, 8, 280, 970, true], fitting: [420, 8, 724, 648, true],
-    projected: [420, 664, 444, 314, true], cargo: [872, 664, 272, 314, true],
-    ...statColumn(8, 404), ...CLOSED_BY_DEFAULT,
+    browser: [1152, 8, 280, 976, true], fitting: [664, 8, 480, 640, true], effects: [664, 656, 480, 328, true],
+    ...column(STAT_B, 8), ...column(STAT_A, 336), ...CLOSED_BY_DEFAULT,
   },
+  // No browser: the fit gets the room.
   focus: {
-    browser: [8, 8, 280, 970, false], fitting: [8, 8, 780, 648, true],
-    projected: [8, 664, 780, 314, true], cargo: [748, 664, 272, 314, false],
-    ...statColumn(796, 636), ...CLOSED_BY_DEFAULT,
+    browser: [8, 8, 280, 976, false], fitting: [8, 8, 768, 640, true], effects: [8, 656, 768, 328, true],
+    ...column(STAT_A, 784), ...column(STAT_B, 1112), ...CLOSED_BY_DEFAULT,
   },
 };
 export const PRESETS = [
@@ -87,15 +94,17 @@ export function bringToFront(layout, id) {
 
 const roundTo = (v, step) => Math.round(v / step) * step;
 
-// Snap targets an edge can catch on: the same edges of every other docked, open window, plus the
-// spot one gutter beyond them. `lead` is the edge facing away from the window (left/top), so its
-// gutter target sits past the other window's far edge, and vice versa for `trail`.
+// Snap targets an edge can catch on, from every other docked, open window: the SAME edge (left to
+// left, right to right — lining windows up), and one gutter past the facing edge (left edge to the
+// other's right + 8 — setting them side by side). `lead` is the left/top edge, `trail` the
+// right/bottom one. Deliberately no zero-gap target for facing edges: that would butt windows
+// together, and being nearer than the gutter target it would win.
 function targets(others, axis) {
   const lead = [], trail = [];
   for (const o of others) {
     const a = axis === 'x' ? o.x : o.y, b = axis === 'x' ? o.x + o.w : o.y + o.h;
-    lead.push(a, b, b + SNAP_GAP);
-    trail.push(a, b, a - SNAP_GAP);
+    lead.push(a, b + SNAP_GAP);
+    trail.push(b, a - SNAP_GAP);
   }
   return { lead, trail };
 }

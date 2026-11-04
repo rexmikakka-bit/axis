@@ -1422,8 +1422,16 @@ function AmmoAdvisor({ship,slots,setSlots,drones,skills,opts,onPickTarget}){
 }
 
 // ═══ STATS TAB ══════════════════════════════════════════════════
-function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,cargoItems,factorInReload,setFactorInReload,externalBursts,projectedReps,projectedEffects,dmgProfile,setDmgProfile,tgtProfile,setTgtProfile,priceHub,setPriceHub,priceSource}){
-  const _scroll=useScrollMemory("Stats");
+// The Targeting and Misc rows that are about locking, as opposed to moving and carrying.
+const SENSOR_ROWS=new Set(["targets","lockrange","scanres","sensor","dronerange"]);
+// `sections` (desktop only) renders just the named cards, so each desktop window can hold one part of
+// this panel: validation, resists, recharge, firepower, remotereps, mining, cap, targeting, fitvalue.
+// `targeting:sensors` / `targeting:mobility` split the Targeting and Misc grid into its two halves.
+// Absent, everything renders, which is the phone. `scrollKey` keeps several instances from sharing
+// one remembered scroll position.
+function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,cargoItems,factorInReload,setFactorInReload,externalBursts,projectedReps,projectedEffects,dmgProfile,setDmgProfile,tgtProfile,setTgtProfile,priceHub,setPriceHub,priceSource,sections,scrollKey="Stats"}){
+  const _scroll=useScrollMemory(scrollKey);
+  const show=(k)=>!sections||sections.includes(k)||(k==="targeting"&&sections.some(s=>s.startsWith("targeting:")));
   // Per-section collapse state — all open by default.
   // Everything on this page that you SET rather than read goes through useViewMemory, because this
   // panel unmounts on every tab swipe and plain state would come back at its default. The two
@@ -1614,7 +1622,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
   const fmtF=n=>n==null?"0.0":n>=100?n.toFixed(0):n.toFixed(2);
   const fmtDps=n=>n==null||n<0.05?"0":n>=100?n.toFixed(0):n.toFixed(1);
 
-  const card={background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:"hidden"};
+  // Inside a desktop window the window IS the card, so the sections sit flush, divided by a rule.
+  const card=sections
+    ?{background:C.surface,borderBottom:`1px solid ${C.border}`,overflow:"hidden"}
+    :{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:"hidden"};
   const hd={display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt};
   const Row=({label,value,color,last})=>(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 12px",borderBottom:last?"none":`1px solid ${C.border}`}}><span style={{fontSize:11,color:C.textMid}}>{label}</span><span style={{fontSize:11,fontWeight:600,color:color||C.text}}>{value}</span></div>);
   // Collapsible section header — click toggles open/closed; `right` is optional header-right content.
@@ -1711,12 +1722,12 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
     .filter(e=>(e.byType?.[cs.sensorType]??0)>0).map(e=>e.ship).filter(Boolean))].join(", ");
 
   return(
-    <div ref={_scroll} style={{flex:1,overflowY:"auto",padding:"10px 10px 20px"}}>
+    <div ref={_scroll} style={{flex:1,overflowY:"auto",padding:sections?0:"10px 10px 20px"}}>
       {showProfilePicker&&<DamageProfileSheet current={dmgProfile} onSelect={setDmgProfile} onClose={()=>setShowProfilePicker(false)}/>}
       {showTargetPicker&&<TargetProfileSheet current={tgtProfile} onSelect={setTgtProfile} onClose={()=>setShowTargetPicker(false)}/>}
 
       {/* Fit Validation */}
-      {(()=>{
+      {show("validation")&&(()=>{
         const fr=n=>Math.abs(n)>=100?String(Math.round(Math.abs(n))):Math.abs(n).toFixed(1);
         const issues=[];
         if((cs.cpuUsed??0)>(cs.cpuTotal??0)+0.01) issues.push({sev:"err",msg:t("CPU overloaded by {n} tf",{n:fr(cs.cpuUsed-cs.cpuTotal)})});
@@ -1766,7 +1777,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
       })()}
 
       {/* Resistances */}
-      <div style={card}>
+      {show("resists")&&<div style={card}>
         {/* stopPropagation: the whole header row collapses the section, and tapping the number for
             its exact value must not also close what you are reading. */}
         {/* The clip is shown as an ADDITION rather than merged straight in, because it is a pool you
@@ -1833,10 +1844,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
           </div>
         </div>);})}
         </>}
-      </div>
+      </div>}
 
       {/* Recharge Rates */}
-      <div style={card}>
+      {show("recharge")&&<div style={card}>
         <SectionHead id="recharge" title={t("Recharge Rates")}/>
         {isOpen("recharge")&&(() => {
             // Convert HP/s to EHP/s using the selected incoming damage profile.
@@ -1920,10 +1931,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
               </div>}
             </>);
           })()}
-      </div>
+      </div>}
 
       {/* Firepower */}
-      <div style={card}>
+      {show("firepower")&&<div style={card}>
         <SectionHead id="firepower" title={t("Firepower")} right={
           <span style={{display:"flex",alignItems:"center",gap:5}}>
             {/* Overload every gun at once. It sits here rather than only in the module menu for the
@@ -2000,10 +2011,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
         <AmmoAdvisor ship={ship} slots={dSlots} setSlots={setSlots} drones={drones??[]} skills={skills}
           opts={csOpts} onPickTarget={()=>setShowTargetPicker(true)}/>
         </>}
-      </div>
+      </div>}
 
       {/* Remote Reps — text labels, same style as other sections */}
-      {(cs.remoteRepModules?.length??0)>0&&(()=>{
+      {show("remotereps")&&(cs.remoteRepModules?.length??0)>0&&(()=>{
         // Triglavian logistics: a Mutadaptive remote armor repairer spools its rep amount.
         const spoolRep = (cs.remoteRepModules||[]).find(m=>(m.spoolFactor??1)>1);
         const armorMax = spoolRep ? (cs.remoteArmorPS??0) - (spoolRep.repPS??0) + (spoolRep.repPSMax??0) : (cs.remoteArmorPS??0);
@@ -2056,7 +2067,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
       })()}
 
       {/* Mining — only on fits that actually mine, so it never takes space on a combat ship. */}
-      {(cs.mining?.totalM3S??0)>0&&(()=>{
+      {show("mining")&&(cs.mining?.totalM3S??0)>0&&(()=>{
         const mn=cs.mining;
         const cols=[
           {key:"lasers",label:t("Lasers"),val:mn.moduleM3S,color:C.rig},
@@ -2085,7 +2096,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
       })()}
 
       {/* Cap */}
-      <div style={card}>
+      {show("cap")&&<div style={card}>
         <SectionHead id="cap" title={t("Capacitor")} right={(()=>{
           // h/m/s stay as they are: the same single-letter duration markers the EVE client uses.
           const fmtDur=(s)=>{if(s==null)return "?";s=Math.round(s);if(s<60)return s+"s";const m=Math.floor(s/60),sec=s%60;if(m<60)return sec?`${m}m ${sec}s`:`${m}m`;const h=Math.floor(m/60),mm=m%60;return mm?`${h}h ${mm}m`:`${h}h`;};
@@ -2123,10 +2134,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
           </div>
         </div>
         </>}
-      </div>
+      </div>}
 
       {/* Targeting & Misc */}
-      <div style={card}>
+      {show("targeting")&&<div style={card}>
         <SectionHead id="targeting" title={t("Targeting and Misc")}/>
         {/* Every figure here is rounded to stay legible in a 1fr column, and for one of them that
             rounding is dangerous: align time is quantised to whole server ticks, so a 4.003 s align
@@ -2171,7 +2182,9 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
               // multiplier — the same value feeding the align-time cell above it. Grouped digits
               // rather than decimals: kg fractions are noise, but "12.5M" hiding 250,000 kg is not.
               ["mass",     t("Mass"),      `${fmtN(cs.mass??0)} kg`,         cs.mass!=null?`${Math.round(cs.mass).toLocaleString()} kg`:null],
-            ];
+            ].filter(([id])=>!sections||sections.includes("targeting")
+              ||(sections.includes("targeting:sensors")&&SENSOR_ROWS.has(id))
+              ||(sections.includes("targeting:mobility")&&!SENSOR_ROWS.has(id)));
           })().map(([id,label,val,exact],i,arr)=>{
             const bb=arr.length>(i+2)?`1px solid ${C.border}`:"none";
             const br=(i%2===0)?`1px solid ${C.border}`:"none";
@@ -2194,10 +2207,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
             </div>);
           })}
         </div>}
-      </div>
+      </div>}
 
       {/* Fit Value */}
-      <div style={card}>
+      {show("fitvalue")&&<div style={card}>
         <SectionHead id="fitvalue" title={t("Fit Value")} right={
           <span style={{fontSize:11,fontWeight:700,display:"flex",alignItems:"baseline",gap:5}}>
             <span style={{color:C.rig}}>{priceLoading?'…':`${fmtISK(hullPrice)}${unknownAbyssals>0?' + ?':''}`}</span>
@@ -2239,7 +2252,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
             </div>);
           })}
         </>}
-      </div>
+      </div>}
     </div>
   );
 }
