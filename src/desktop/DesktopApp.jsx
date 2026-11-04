@@ -9,7 +9,7 @@ import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
 import { SettingsOverlay } from "../components/settings.jsx";
-import { ExportFitModal, ChooserSheet, PilotSheet } from "../components/layout.jsx";
+import { ChooserSheet, PilotSheet } from "../components/layout.jsx";
 import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
 import { SkillsProvider } from "../components/skill-mark.jsx";
@@ -18,6 +18,7 @@ import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggle
 import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
 import { FirepowerPanel } from "./Firepower.jsx";
+import ExportDialog from "./ExportDialog.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
@@ -184,6 +185,43 @@ function DesktopApp() {
 
   // Same golden path as the phone's "From EFT": read the clipboard and import straight away, falling
   // back to the paste sheet pre-filled with whatever was found.
+  // ── Keyboard shortcuts (pyfa's where it has one) ─────────────────────────────────────────────
+  //   Ctrl+V  paste an EFT fit from anywhere — no Import click first
+  //   Ctrl+C  copy the fit as EFT, through the include-what dialog
+  //   Ctrl+D  optimise the fit's price (pyfa's binding)
+  // All three stand down while a text field has focus, so they never steal that field's own copy,
+  // paste or typing; Ctrl+C also stands down while text on the page is selected. Ctrl+Z / Ctrl+Y are
+  // the session's own (use-fit-session.js).
+  const keysRef = useRef(null);
+  keysRef.current = { s, hasFit: !!s.activeFit?.ship, sheet };
+  useEffect(() => {
+    const typing = (el) => !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || typing(e.target)) return;
+      const { s: cur, hasFit, sheet: open } = keysRef.current;
+      const k = e.key.toLowerCase();
+      if (k === "d" && hasFit) { e.preventDefault(); cur.optimizeFitPrice(); }
+      if (k === "c" && hasFit && !open && !window.getSelection()?.toString()) { e.preventDefault(); setSheet("exporteft"); }
+    };
+    const onPaste = (e) => {
+      if (typing(e.target) || keysRef.current.sheet) return;
+      const text = e.clipboardData?.getData("text") ?? "";
+      if (!text.trim()) return;
+      const parsed = parseEFT(text);
+      if (parsed.error) {
+        // Only speak up when it looked like a fit: a stray paste of anything else stays silent.
+        if (/^\s*\[/.test(text)) flash("none", t("That isn't a fit Axis can read: {why}", { why: parsed.error }), 4000);
+        return;
+      }
+      e.preventDefault();
+      keysRef.current.s.importFit(parsed);
+      flash("success", t('Imported "{name}"', { name: parsed.fitName }));
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("paste", onPaste);
+    return () => { window.removeEventListener("keydown", onKey); document.removeEventListener("paste", onPaste); };
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const importFromClipboard = async () => {
     close();
     const { text, why } = await readClipboardText();
@@ -245,11 +283,11 @@ function DesktopApp() {
           }))} />
           <Menu ariaLabel={t("Menu")} label={<span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>☰</span>} items={[
             { heading: t("Fit") },
-            { label: t("Import Fit"), onSelect: () => setSheet("import") },
-            { label: t("Export Fit"), onSelect: () => setSheet("export"), disabled: !hasFit },
+            { label: t("Import Fit"), onSelect: () => setSheet("import"), hint: "Ctrl+V" },
+            { label: t("Export Fit"), onSelect: () => setSheet("export"), disabled: !hasFit, hint: "Ctrl+C" },
             { label: t("Export Snapshot"), onSelect: () => setSheet("snapshot"), disabled: !hasFit },
             { label: t("Ship info"), onSelect: () => setSheet("shipinfo"), disabled: !hasFit },
-            { label: t("Optimize Fit Price"), onSelect: () => s.optimizeFitPrice(), disabled: !hasFit },
+            { label: t("Optimize Fit Price"), onSelect: () => s.optimizeFitPrice(), disabled: !hasFit, hint: "Ctrl+D" },
             { label: t("Shopping List"), onSelect: () => setSheet("shopping"), disabled: !hasFit },
             { divider: true },
             { label: t("Settings"), onSelect: () => setSheet("settings") },
@@ -273,7 +311,7 @@ function DesktopApp() {
         { icon: IconCharacter, label: t("To EVE Character"), sub: t("Save into in-game fittings"), onSelect: () => setSheet("esiexport") },
       ]} />}
       {sheet === "importeft" && <ImportFitSheet onClose={() => { close(); setImportInitial(null); }} onImport={s.importFit} initialText={importInitial?.text} initialErr={importInitial?.err} />}
-      {sheet === "exporteft" && <ExportFitModal activeFit={s.activeFit} slots={s.slots} implants={s.implants} boosters={s.boosters} drones={s.drones} fighters={s.fighters} cargo={s.cargoItems} onClose={close} />}
+      {sheet === "exporteft" && <ExportDialog s={s} onClose={close} onCopied={(ok) => flash(ok ? "success" : "none", ok ? t("Fit copied to clipboard") : t("Couldn't copy to the clipboard"))} />}
       {sheet === "esiimport" && <EsiImportModal onClose={close} onImport={s.importFit} />}
       {sheet === "esiexport" && <EsiExportModal activeFit={s.activeFit} slots={s.slots} drones={s.drones} cargoItems={s.cargoItems} fighters={s.fighters} implants={s.implants} boosters={s.boosters} onClose={close} />}
       {sheet === "dmgprofile" && <DamageProfileSheet current={s.dmgProfile} onSelect={s.setDmgProfile} onClose={close} />}

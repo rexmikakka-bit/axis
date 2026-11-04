@@ -2,7 +2,7 @@ import { createContext, useContext, useRef } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
-import { DMG } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_LABELS } from "../lib/core.js";
 import { resourceColor } from "../components/ui.jsx";
 import { getCachedPrices } from "../prices.js";
 
@@ -55,9 +55,43 @@ function infoOf(e) {
 // made per render would remount the whole table on every edit.
 export const FitTableConfig = createContext({});
 
+/**
+ * The state dot, with pyfa's mouse bindings (Owen, 2026-11-04):
+ *   click        running <-> idle: active <-> online, or online <-> offline for a module that
+ *                cannot be activated
+ *   right-click  overheat (or cool back down to active)
+ *   ctrl-click   offline (or back online)
+ * Each only offers a state the module supports (validStatesFor), and goes through FitTab's own
+ * setRowState, so a grouped row changes every module in its group as the phone's dot does.
+ */
+function StateToggle({ row, states, onSet }) {
+  const has = (st) => states.includes(st);
+  const cur = row.state ?? "online";
+  const click = (e) => {
+    e.stopPropagation();
+    if (e.ctrlKey || e.metaKey) { if (has("offline")) onSet(cur === "offline" ? "online" : "offline"); return; }
+    if (has("active")) onSet(cur === "active" || cur === "overheated" ? "online" : "active");
+    else if (has("offline")) onSet(cur === "offline" ? "online" : "offline");
+  };
+  const context = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (has("overheated")) onSet(cur === "overheated" ? "active" : "overheated");
+  };
+  const color = STATE_COLORS[cur] ?? C.textMid;
+  return (
+    <button type="button" onClick={click} onContextMenu={context}
+      title={`${STATE_LABELS[cur]?.() ?? cur} — ${t("click: on/off · right-click: overheat · ctrl-click: offline")}`}
+      aria-label={STATE_LABELS[cur]?.() ?? cur}
+      style={{ width: 16, height: 16, padding: 0, border: "none", background: "transparent", cursor: "pointer", display: "grid", placeItems: "center" }}>
+      <span style={{ width: 9, height: 9, borderRadius: 99, background: cur === "offline" ? "transparent" : color,
+                     border: `1.5px solid ${color}`, boxShadow: cur === "overheated" ? `0 0 6px ${color}` : "none" }} />
+    </button>
+  );
+}
+
 export function FitTable({ api }) {
   const { hub, source, cols, setCols } = useContext(FitTableConfig);
-    const { SECS, getDisplayRows, slots, setSlots, cs, engineStatsBySlotID, StateDot, gestureMemory, validStatesFor,
+    const { SECS, getDisplayRows, slots, setSlots, cs, engineStatsBySlotID, validStatesFor,
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
     const widths = FIT_COLS.map(c => cols?.[c.id] ?? c.w);
@@ -155,7 +189,7 @@ export function FitTable({ api }) {
                       onMouseLeave={ev => { if (!row.orphan) ev.currentTarget.style.background = isDragOver ? C.accentLight : "transparent"; }}>
                       <span onClick={ev => ev.stopPropagation()} style={{ display: "flex", justifyContent: "center" }}>
                         {sec.key === "subsystems" ? null
-                          : <StateDot row={row} rack={sec.key} gestureMemory={gestureMemory} states={validStatesFor(row)} onSet={st => setRowState(sec.key, row, st)} />}
+                          : <StateToggle row={row} states={validStatesFor(row)} onSet={st => setRowState(sec.key, row, st)} />}
                       </span>
                       <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
                         {row.typeID && <img className="eve-icon" src={eveIcon(row.typeID, 32)} width={20} height={20} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}
