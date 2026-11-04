@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { calcFitStats, peakRegen, PEAK_REGEN_AT_PCT, TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
-import { cargoVolume } from "../lib/core.js";
+import { cargoVolume, canLoadCharge } from "../lib/core.js";
 import { resourceColor } from "../components/ui.jsx";
 import { KV, UsageBar, SectionLabel, Empty, TYPE } from "./kit.jsx";
 
@@ -131,6 +131,59 @@ export function TargetingPanel({ s, cs }) {
         [t("Mass"), `${fmtN(cs.mass ?? 0)} kg`, { title: cs.mass != null ? `${Math.round(cs.mass).toLocaleString()} kg` : undefined }],
       ]} />
     </>
+  );
+}
+
+/**
+ * The phone's Validation card's checks (tabs.jsx StatsTab), as a list of {sev, msg}. Same rules in
+ * the same order; keep the two in step.
+ */
+export function fitIssues(cs, slots, drones) {
+  if (!cs) return [];
+  const fr = (n) => Math.abs(n) >= 100 ? String(Math.round(Math.abs(n))) : Math.abs(n).toFixed(1);
+  const issues = [];
+  if ((cs.cpuUsed ?? 0) > (cs.cpuTotal ?? 0) + 0.01) issues.push({ sev: "err", msg: t("CPU overloaded by {n} tf", { n: fr(cs.cpuUsed - cs.cpuTotal) }) });
+  if ((cs.pgUsed ?? 0) > (cs.pgTotal ?? 0) + 0.01) issues.push({ sev: "err", msg: t("Powergrid overloaded by {n} MW", { n: fr(cs.pgUsed - cs.pgTotal) }) });
+  if ((cs.calUsed ?? 0) > (cs.calTotal ?? 0) + 0.01) issues.push({ sev: "err", msg: t("Calibration exceeded by {n} points", { n: fr(cs.calUsed - cs.calTotal) }) });
+  const d = droneUse(drones);
+  if ((cs.droneBay ?? 0) > 0 && d.bay > cs.droneBay + 0.01) issues.push({ sev: "err", msg: t("Drone bay over capacity by {n} m³", { n: fr(d.bay - cs.droneBay) }) });
+  if ((cs.droneBandwidth ?? 0) > 0 && d.bandwidth > cs.droneBandwidth + 0.01) issues.push({ sev: "err", msg: t("Drone bandwidth exceeded by {n} Mbit/s", { n: fr(d.bandwidth - cs.droneBandwidth) }) });
+  if ((cs.maxActiveDrones ?? 0) > 0 && d.inSpace > cs.maxActiveDrones) issues.push({ sev: "err", msg: t("{n} drones in space — only {cap} can be launched", { n: d.inSpace, cap: cs.maxActiveDrones }) });
+  for (const g of (cs.groupOverFitted ?? [])) issues.push({ sev: "err", msg: t("{count} {group} modules fitted — only {cap} allowed", { count: g.count, group: g.group, cap: g.cap === 1 ? t("one") : g.cap }) });
+  const bad = new Map();
+  for (const sec of ["high", "mid", "low", "rigs", "services"]) for (const m of (slots?.[sec] ?? [])) {
+    if (!m?.typeID || !m.ammo || m.type === "empty" || canLoadCharge(m.typeID, m.ammo)) continue;
+    const charge = String(m.ammo).replace(/\s*\(\d+\)$/, ""), key = `${m.name}\u0000${charge}`;
+    bad.set(key, { module: m.name, charge, n: (bad.get(key)?.n ?? 0) + 1 });
+  }
+  for (const b of bad.values()) issues.push({ sev: "err", msg: t("{module} can't load {charge}", { module: b.n > 1 ? `${b.n}× ${b.module}` : b.module, charge: b.charge }) });
+  return issues;
+}
+
+/** "Valid" or "N issues", for the Fitting window's title bar. Opens the Validation window. */
+export function ValidityBadge({ issues, onOpen }) {
+  const n = issues.length;
+  const color = n ? (issues.some(i => i.sev === "err") ? C.danger : C.warning) : C.success;
+  return (
+    <button type="button" onClick={onOpen} title={n ? issues.map(i => i.msg).join("\n") : t("No fitting issues detected.")}
+      style={{ height: 20, padding: "0 8px", borderRadius: 10, border: `1px solid ${color}`, background: "transparent", color,
+               fontSize: 11, fontWeight: 600, cursor: "pointer", marginRight: 4 }}>
+      {n ? t({ one: "{n} issue", other: "{n} issues" }, { n }) : t("Valid")}
+    </button>
+  );
+}
+
+export function ValidationPanel({ cs, issues }) {
+  if (!cs) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
+  if (!issues.length) return <div style={{ padding: "10px 12px", fontSize: TYPE.label, color: C.success }}>✓ {t("No fitting issues detected.")}</div>;
+  return (
+    <div style={{ padding: "6px 0" }}>
+      {issues.map((it, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", fontSize: TYPE.label, color: C.text }}>
+          <span style={{ width: 7, height: 7, borderRadius: 99, flex: "none", background: it.sev === "err" ? C.danger : C.warning }} />{it.msg}
+        </div>
+      ))}
+    </div>
   );
 }
 

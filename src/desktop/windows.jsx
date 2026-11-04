@@ -11,6 +11,7 @@ import { CargoScreen } from "../components/cargo.jsx";
 import { DronesScreen } from "../components/drones.jsx";
 import { ImplantsScreen } from "../components/implants.jsx";
 import { EffectsScreen } from "../components/effects.jsx";
+import { FitTable, FitTableConfig } from "./FitTable.jsx";
 
 // What goes inside each desktop window. Every window hosts the phone's own component for that job,
 // fed from the same fit session, so the two apps cannot disagree on a number or lack each other's
@@ -73,7 +74,6 @@ export const STAT_SECTIONS = {
   defense: ["resists", "recharge"],
   firepower: ["firepower", "remotereps", "mining"],
   price: ["fitvalue"],
-  validation: ["validation"],
 };
 
 export function StatsWindow({ s, ship, sections, id }) {
@@ -89,15 +89,17 @@ export function StatsWindow({ s, ship, sections, id }) {
   );
 }
 
-export function FittingWindow({ s, ship, adderRef }) {
+export function FittingWindow({ s, ship, adderRef, cols, setCols }) {
   if (!ship) return <NoFit />;
   return (
+    <FitTableConfig.Provider value={{ hub: s.priceHub, source: s.priceSource, cols, setCols }}>
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <FitTab dense adderRef={adderRef} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
+      <FitTab TableView={FitTable} adderRef={adderRef} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
         skills={s.fitSkills} implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload}
         externalBursts={s.externalBursts} projectedEffects={s.projectedEffects} dmgProfile={s.dmgProfile} tgtProfile={s.tgtProfile}
         autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd} />
     </div>
+    </FitTableConfig.Provider>
   );
 }
 

@@ -20,7 +20,7 @@ import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
-import { ResourcesPanel, CapacitorPanel, TargetingPanel, useFitStats } from "./stat-panels.jsx";
+import { ResourcesPanel, CapacitorPanel, TargetingPanel, ValidationPanel, ValidityBadge, fitIssues, useFitStats } from "./stat-panels.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, BrowserWindow,
          CargoWindow, DronesWindow, ImplantsWindow, EffectsWindow, NotesWindow } from "./windows.jsx";
 
@@ -48,10 +48,11 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
+  const issues = useMemo(() => fitIssues(cs, s.slots, s.drones), [cs, s.slots, s.drones]);
   const stats = useDeskStats(s, {
     snapshot: isOpen("cargo") || isOpen("drones") || isOpen("effects") || sheet === "shipinfo" || sheet === "snapshot",
     drones: isOpen("drones"),
@@ -60,10 +61,11 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd } = {}) {
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
       case "browser": return <BrowserWindow s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
-      case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} />;
+      case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} />;
       case "graphs": return <GraphsWindow s={s} ship={ship} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
+      case "validation": return <ValidationPanel cs={cs} issues={issues} />;
       case "targeting": return <TargetingPanel s={s} cs={cs} />;
       case "cargo": return <CargoWindow s={s} stats={stats} />;
       case "drones": return <DronesWindow s={s} stats={stats} />;
@@ -75,7 +77,10 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd } = {}) {
   };
   // "Fitting · Sleipnir": the window title says which hull you are editing.
   const windowTitle = (id) => id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : t(WINDOWS.find(w => w.id === id)?.title ?? id);
-  return { ship, stats, renderWindow, windowTitle };
+  // The Fitting window's title bar carries the fit's validity, so the Validation window can stay
+  // closed until there is something to read.
+  const windowExtra = (id) => id === "fitting" && cs ? <ValidityBadge issues={issues} onOpen={() => openValidation?.()} /> : null;
+  return { ship, stats, renderWindow, windowTitle, windowExtra };
 }
 
 /** One window, popped out into its own OS window. Closing it (or Dock) puts it back in the workspace. */
@@ -153,7 +158,9 @@ function DesktopApp() {
     if (layoutState.windows.fitting?.open && layoutState.windows.fitting?.detached) sync.post({ type: "add", secKey, mod });
     else flash("none", t("Open the Fitting window to add modules."));
   };
-  const { ship, stats, renderWindow, windowTitle } = useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd });
+  const setCols = (id, c) => setLayoutState(st => ({ ...st, cols: { ...st.cols, [id]: c } }));
+  const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
+    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation") });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const w of WINDOWS) if (layoutState.windows[w.id]?.detached) dockWindow(setLayoutState, w.id);
@@ -238,7 +245,7 @@ function DesktopApp() {
           ]} />
         </header>
 
-        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle}
+        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra}
           onPopOut={popOut} onDock={dock} />
       </div>
 

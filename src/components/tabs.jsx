@@ -341,7 +341,10 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 // obeys every fitting rule the phone does (hardpoints, group limits, auto-fill, default charges).
 // `dense` (desktop only): the same rows as a ruled table — one line per module, small icons, rack
 // header bands — for a mouse and a big screen. Every gesture and control is the phone's.
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false}){
+// `TableView` (desktop only): a component that draws the racks in place of this tab's own rows and
+// resource strip. It gets `api` — the rows and every handler they need — while this tab keeps ALL
+// the logic, menus and sheets, so the desktop table edits a fit exactly as the phone does.
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
   const _cs=(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{};
@@ -797,7 +800,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           was off-screen exactly when you wanted it. Passing them as children pins them without a
           second sticky box competing for top:0, and without measuring the strip's height (which
           varies: hardpoint dots only render on hulls that have them). */}
-      <ResourceStrip ship={ship} slots={slots} skills={skills} implants={implants} boosters={boosters} drones={drones} factorInReload={factorInReload}>
+      {!TableView&&<ResourceStrip ship={ship} slots={slots} skills={skills} implants={implants} boosters={boosters} drones={drones} factorInReload={factorInReload}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
           {/* Undo/Redo cover every edit to the fit (modules, charges, drones, cargo, implants,
               boosters, projected/command fits) because the history snapshots the same state App.jsx
@@ -818,7 +821,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           </div>
           <button onClick={()=>setGrouped(g=>!g)} style={{padding:"3px 10px",borderRadius:6,fontSize:10,fontWeight:700,background:grouped?C.accentLight:"none",border:`1px solid ${grouped?C.accentBorder:C.border}`,color:grouped?C.accent:C.textMute,cursor:"pointer"}}>{grouped?t("Grouped"):t("Ungrouped")}</button>
         </div>
-      </ResourceStrip>
+      </ResourceStrip>}
       {shipModes&&(
         <div style={{display:"flex",gap:6,padding:"8px 10px 4px"}}>
           {shipModes.map((mode)=>{
@@ -866,8 +869,13 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           </div>
         </div>
       )}
-      {/* Dense sets a relative line height: the root's 145% is a fixed 26px by the time it gets here
-          (see InlineFrame in ui.jsx), taller than a whole dense row. */}
+      {TableView?<TableView api={{SECS,getDisplayRows,slots,setSlots,ship,cs:_cs,engineStatsBySlotID,StateDot,gestureMemory,validStatesFor,
+          openMenu:(secKey,modId)=>setModuleMenu({secKey,modId}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),
+          openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
+          setRowState,removeMod,duplicateMod,duplicateRoom,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
+          undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
+      /* Dense sets a relative line height: the root's 145% is a fixed 26px by the time it gets here
+          (see InlineFrame in ui.jsx), taller than a whole dense row. */
       <div style={{flex:1,padding:dense?"0 0 8px":"0 10px 12px",lineHeight:dense?1.3:undefined}}>
         {SECS.map(sec=>{
           const rows=getDisplayRows(sec.key);
@@ -1131,7 +1139,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
             })}
           </div>);
         })}
-      </div>
+      </div>}
       {menuMod&&<ModuleMenu mod={menuMod} groupCount={menuRow?.count??1} onClose={()=>setModuleMenu(null)} onUpdateMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u)} onUpdateModLive={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,true)} onReplaceMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,false,true,menuRow?.groupIds)} onRemove={()=>removeMod(moduleMenu.secKey,moduleMenu.modId,menuRow?.groupIds)} onDuplicate={duplicateRoom(moduleMenu.secKey,menuMod)>0?n=>duplicateMod(moduleMenu.secKey,menuMod,n):null} fillCount={hardpointRoom(moduleMenu.secKey,menuMod)} onFillHardpoints={()=>fillHardpoints(moduleMenu.secKey,menuMod)} resourceHeadroom={resourceHeadroom} engineItem={_cs.fittedItems?.get(moduleMenu.modId)} chargeStats={_cs.fittedChargeStats?.get(moduleMenu.modId)} usedAbyssalIds={fittedAbyssalIds(slots,menuMod.id)}/>}
       {/* The single subsystem menu: description AND the rest of the family, with the Variations tab
           doing the swapping that used to need a separate picker. */}
