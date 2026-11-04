@@ -1,0 +1,178 @@
+import { useEffect, useMemo, useState } from "react";
+import { C } from "../theme.js";
+import { t } from "../lib/i18n.js";
+import { TYPES, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
+import { DMG, validStatesFor } from "../lib/core.js";
+import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
+import { TargetProfileSheet } from "../components/ui.jsx";
+import { KV, SectionLabel, Empty, TYPE } from "./kit.jsx";
+
+// The desktop Firepower window: the phone's Firepower card (tabs.jsx StatsTab) figure for figure —
+// resist-weighted when a target profile is set, spool ranges, clip damage only for weapons that
+// reload — with its ammo advisor as a compact table that scrolls inside the window instead of
+// growing the card. The ranking is the phone's own (lib/ammo-compare.js rankAmmo) and a click loads
+// the round into the whole rack, as the phone's does.
+
+const fmtDps = (n) => n == null || n < 0.05 ? "0" : n >= 100 ? n.toFixed(0) : n.toFixed(1);
+const fmtN = (n) => (n == null || n === 0) ? "0" : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
+const isWeapon = (tid) => { const e = TYPES[String(tid)]?.e; return usesTurretHardpoint(e) || usesLauncherHardpoint(e); };
+
+function Toggle({ on, onClick, color, children, title }) {
+  return (
+    <button type="button" aria-pressed={on} onClick={onClick} title={title}
+      style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 11.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+               background: on ? `${color}1f` : "transparent", border: `1px solid ${on ? color : C.borderStrong}`, color: on ? color : C.textMid }}>
+      <span style={{ width: 6, height: 6, borderRadius: 99, background: on ? color : C.textMid }} />{children}
+    </button>
+  );
+}
+
+function Spine({ dmg }) {
+  const parts = dmg ? [["em", dmg.em], ["th", dmg.th], ["kin", dmg.kin], ["exp", dmg.exp]].filter(([, v]) => v > 0.08) : [];
+  const total = parts.reduce((a, [, v]) => a + v, 0) || 1;
+  return (
+    <span style={{ width: 3, height: 16, borderRadius: 2, overflow: "hidden", display: "flex", flexDirection: "column", flex: "none", background: parts.length ? "transparent" : C.border }}>
+      {parts.map(([k, v]) => <span key={k} style={{ flex: v / total, background: DMG[k].color }} />)}
+    </span>
+  );
+}
+
+function AmmoTable({ s, ship, opts }) {
+  const racks = useMemo(() => weaponRacks(s.slots), [s.slots]);
+  const [rackIdx, setRackIdx] = useState(0);
+  const rack = racks[Math.min(rackIdx, Math.max(0, racks.length - 1))];
+  const [result, setResult] = useState(null);
+  const rackKey = rack ? `${rack.name}|${rack.mounts.length}|${rack.ammo}` : "";
+  useEffect(() => {
+    if (!rack) return;
+    let dead = false;
+    // Off the render, as the phone does: a sweep is a calculation per round.
+    const id = setTimeout(() => { if (!dead) setResult(rankAmmo(ship, s.slots, s.drones ?? [], s.fitSkills, opts, rack, false)); }, 0);
+    return () => { dead = true; clearTimeout(id); };
+  }, [ship, s.slots, s.drones, s.fitSkills, opts, rackKey]);   // eslint-disable-line react-hooks/exhaustive-deps
+  if (!racks.length) return null;
+  const rows = [...(result?.rows ?? [])].flatMap(r => (r.variants ?? [r]).filter(v => !v.unscored)).sort((a, b) => (b.dps ?? 0) - (a.dps ?? 0));
+  const best = rows[0];
+  const load = (row) => s.setSlots(prev => {
+    const next = { ...prev };
+    for (const { key } of rack.mounts) if (next[key] === prev[key]) next[key] = (prev[key] ?? []).slice();
+    for (const { key, index } of rack.mounts) next[key][index] = { ...next[key][index], ammo: row.name, charges: row.charges, maxCharges: row.charges };
+    return next;
+  });
+  const range = (r) => r.optimal == null ? "" : r.falloff > 0 ? `${Math.round(r.optimal)} + ${Math.round(r.falloff)} km` : `${Math.round(r.optimal)} km`;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+      <SectionLabel right={racks.length > 1 && (
+        <select value={rackIdx} onChange={e => setRackIdx(+e.target.value)} aria-label={t("Weapon")}
+          style={{ height: 22, fontSize: 11.5, background: C.bg, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 5 }}>
+          {racks.map((r, i) => <option key={r.name} value={i}>{r.mounts.length}× {r.name}</option>)}
+        </select>)}>
+        {t("Ammo")}{racks.length === 1 ? ` · ${rack.mounts.length}× ${rack.name}` : ""}
+      </SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "3px minmax(0,1fr) 52px 52px 92px", columnGap: 8, padding: "0 12px 3px",
+                    fontSize: 10.5, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
+        <span /><span>{t("Charge")}</span><span style={{ textAlign: "right" }}>{result?.targeted ? t("Applied") : t("DPS")}</span>
+        <span style={{ textAlign: "right" }}>{t("Volley")}</span><span style={{ textAlign: "right" }}>{t("Range")}</span>
+      </div>
+      <div style={{ flex: 1, minHeight: 60, overflowY: "auto" }}>
+        {!result && <div style={{ padding: "6px 12px", fontSize: TYPE.small, color: C.textMid }}>{t("Comparing ammo…")}</div>}
+        {rows.map(r => {
+          const loaded = r.name === rack.ammo;
+          return (
+            <div key={r.name} role="button" tabIndex={0} onClick={() => load(r)} onKeyDown={e => { if (e.key === "Enter") load(r); }}
+              title={loaded ? t("Loaded") : t("Load into every {name}", { name: rack.name })}
+              style={{ display: "grid", gridTemplateColumns: "3px minmax(0,1fr) 52px 52px 92px", columnGap: 8, alignItems: "center", minHeight: 24, padding: "0 12px",
+                       cursor: "pointer", fontSize: 12, fontVariantNumeric: "tabular-nums", background: loaded ? C.accentLight : "transparent",
+                       boxShadow: loaded ? `inset 2px 0 0 ${C.accent}` : "none" }}
+              onMouseEnter={e => { if (!loaded) e.currentTarget.style.background = C.surfaceAlt; }}
+              onMouseLeave={e => { if (!loaded) e.currentTarget.style.background = "transparent"; }}>
+              <Spine dmg={r.dmg} />
+              <span title={r.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: loaded ? C.accent : C.text, fontWeight: loaded ? 600 : 500 }}>
+                {r.label ?? r.name}{r === best && !loaded && <span style={{ color: C.success, fontSize: 10.5, marginLeft: 6 }}>{t("best")}</span>}
+              </span>
+              <span style={{ textAlign: "right", color: C.text }}>{fmtDps(r.dps)}</span>
+              <span style={{ textAlign: "right", color: C.textMid }}>{fmtN(r.volley)}</span>
+              <span style={{ textAlign: "right", color: C.rig, whiteSpace: "nowrap" }}>{range(r)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function FirepowerPanel({ s, ship, cs }) {
+  const [picker, setPicker] = useState(false);
+  const heatMounts = useMemo(() => {
+    const out = [];
+    for (const key of ["high", "mid", "low"]) (s.slots?.[key] ?? []).forEach((m, index) => {
+      if (!m?.typeID || m.name === "[Empty]" || !isWeapon(m.typeID) || !validStatesFor(m).includes("overheated")) return;
+      out.push({ key, index });
+    });
+    return out;
+  }, [s.slots]);
+  // The options the phone's Firepower card ranks ammo with (its csOpts).
+  const opts = useMemo(() => {
+    const pe = s.projectedEffects;
+    return { implants: s.implants, boosters: s.boosters, factorInReload: s.factorInReload, externalBursts: s.externalBursts,
+      projectedWebMult: pe?.webMult, projectedNeutGJs: pe?.neutGJs, projectedCapGJs: pe?.capGJs, projectedDebuffs: pe?.debuffs,
+      projectedBoosts: pe?.boosts, projectedEcm: pe?.ecm, damageProfile: s.dmgProfile?.p, targetResists: s.tgtProfile?.r,
+      pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity,
+      fighters: (s.fighters ?? []).map(f => ({ name: f.name, qty: f.qty ?? 1, active: f.active, abilities: f.abilities })) };
+  }, [s.implants, s.boosters, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile, s.slots, s.fighters]);
+  if (!ship || !cs) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
+
+  const allHot = heatMounts.length > 0 && heatMounts.every(({ key, index }) => s.slots[key][index].state === "overheated");
+  const toggleHeat = () => s.setSlots(prev => {
+    const next = { ...prev };
+    for (const { key } of heatMounts) if (next[key] === prev[key]) next[key] = (prev[key] ?? []).slice();
+    for (const { key, index } of heatMounts) next[key][index] = { ...next[key][index], state: allHot ? "active" : "overheated" };
+    return next;
+  });
+
+  const tgt = !!(s.tgtProfile?.r && s.tgtProfile.r.some(v => v > 0));
+  const eff = cs.effective ?? {};
+  const w = (tgt ? eff.weaponDps : cs.weaponDps) ?? {}, tot = (tgt ? eff.totalDps : cs.totalDps) ?? {}, vol = (tgt ? eff.totalVolley : cs.totalVolley) ?? {};
+  const d = tgt ? eff.droneDps : cs.droneDps, f = tgt ? eff.fighterDps : cs.fighterDps;
+  const spool = !!cs.hasSpoolWeapon;
+  const rangeOf = (lo, hi) => spool ? `${fmtDps(lo)}–${fmtDps(hi)}` : fmtDps(lo);
+  const clip = (tgt ? eff.clipVolley : cs.clipVolley) ?? {};
+  const hasClip = (cs.clipWeapons ?? 0) > 0 && (clip.total ?? 0) > 0;
+  const split = tot;
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px 2px", flexWrap: "wrap", flex: "none" }}>
+        {heatMounts.length > 0 && <Toggle on={allHot} onClick={toggleHeat} color={C.overheat} title={t("Overheat every gun")}>{t("Heat")}</Toggle>}
+        <Toggle on={!!s.factorInReload} onClick={() => s.setFactorInReload(v => !v)} color={C.accent} title={t("Average reload time into DPS")}>{t("Reload")}</Toggle>
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={() => setPicker(true)}
+          style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 11.5, cursor: "pointer", background: "transparent",
+                   border: `1px solid ${tgt ? C.accent : C.borderStrong}`, color: tgt ? C.accent : C.textMid }}>
+          {t("Target")}: {s.tgtProfile?.n ?? t("None (0%)")}
+        </button>
+      </div>
+      <div style={{ flex: "none" }}>
+        <KV min={150} rows={[
+          [t("Weapon DPS"), rangeOf(w.total ?? 0, (tgt ? eff.weaponDpsMax : cs.weaponDpsMax) ?? 0), { color: C.accent }],
+          [t("Drone DPS"), fmtDps((d?.total ?? 0) + (f?.total ?? 0))],
+          [t("Total DPS"), rangeOf(tot.total ?? 0, (tgt ? eff.totalDpsMax : cs.totalDpsMax) ?? 0), { weight: 700 }],
+          [t("Volley"), spool ? `${fmtDps(vol.total ?? 0)}–${fmtDps((tgt ? eff.totalVolleyMax : cs.totalVolleyMax) ?? 0)}` : fmtDps(vol.total ?? 0)],
+          hasClip && [t("Clip Dmg"), fmtN(clip.total ?? 0), { title: (clip.total ?? 0).toLocaleString() }],
+          hasClip && (cs.clipSeconds ?? 0) > 0 && [t("Clip Duration"), `${Math.round(cs.clipSeconds)}s${(cs.clipReloadSeconds ?? 0) > 0 ? ` (+${Math.round(cs.clipReloadSeconds)}s)` : ""}`],
+          spool && (cs.weaponSpoolTimeS ?? 0) > 0 && [t("Spool-up time"), `${cs.weaponSpoolTimeS.toFixed(1)}s`],
+        ]} />
+        {(split.total ?? 0) > 0 && (
+          <div style={{ display: "flex", gap: 12, padding: "0 12px 6px", fontSize: TYPE.small, flexWrap: "wrap" }}>
+            {[["EM", split.em, DMG.em.color], ["Thermal", split.th, DMG.th.color], ["Kinetic", split.kin, DMG.kin.color], ["Explosive", split.exp, DMG.exp.color]]
+              .filter(([, v]) => (v ?? 0) > 0.05).map(([l, v, c]) => (
+                <span key={l}><span style={{ color: c, fontWeight: 700 }}>{fmtDps(v)}</span> <span style={{ color: C.textMid }}>{l}</span></span>
+              ))}
+          </div>
+        )}
+      </div>
+      <AmmoTable s={s} ship={ship} opts={opts} />
+      {picker && <TargetProfileSheet current={s.tgtProfile} onSelect={s.setTgtProfile} onClose={() => setPicker(false)} />}
+    </div>
+  );
+}

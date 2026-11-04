@@ -17,6 +17,7 @@ import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
 import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, Button } from "./Workspace.jsx";
 import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
+import { FirepowerPanel } from "./Firepower.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
@@ -66,6 +67,16 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "graphs": return <GraphsWindow s={s} ship={ship} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
+      // Remote reps and mining sit under the firepower they belong with, only on fits that have them.
+      case "firepower": return (
+        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, minHeight: 0 }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>
+          {((cs?.remoteRepModules?.length ?? 0) > 0 || (cs?.mining?.totalM3S ?? 0) > 0) &&
+            <div style={{ flex: "none", maxHeight: "45%", overflowY: "auto", borderTop: `1px solid ${C.border}` }}>
+              <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS.repsmining} id="repsmining" />
+            </div>}
+        </div>
+      );
       case "validation": return <ValidationPanel cs={cs} issues={issues} />;
       case "targeting": return <TargetingPanel s={s} cs={cs} />;
       case "cargo": return <CargoWindow s={s} stats={stats} />;
