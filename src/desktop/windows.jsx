@@ -96,7 +96,7 @@ export function FittingWindow({ s, ship, adderRef }) {
   if (!ship) return <NoFit />;
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <FitTab adderRef={adderRef} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
+      <FitTab dense adderRef={adderRef} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
         skills={s.fitSkills} implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload}
         externalBursts={s.externalBursts} projectedEffects={s.projectedEffects} dmgProfile={s.dmgProfile} tgtProfile={s.tgtProfile}
         autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd} />

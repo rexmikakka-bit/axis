@@ -1,6 +1,6 @@
 // UI primitives, module/subsystem pickers, resource strip, damage-profile sheet.
 
-import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useRef, useMemo, useDeferredValue, createContext, useContext } from "react";
 import { AbyssalLibrary } from './abyssal-library.jsx';
 import { AttributeSort } from './attribute-sort.jsx';
 import { AbyssalInfo } from './abyssal-info.jsx';
@@ -649,11 +649,17 @@ function AbyssalBadge({grade}){
   return <span style={{...BADGE_STYLE,color:C.danger,background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.28)'}}>▲ {grade}</span>;
 }
 
+// Desktop density for the module picker's rows (ModRow, ModuleGroupRow): set by the picker's inline
+// mode, so the phone — which never provides it — keeps its touch-sized rows.
+export const DenseRows=createContext(false);
+
 function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badges,largeInfo=false}){
   const rowMeta=metaOf(mod.typeID,mod.meta);
   const grade=mod.mutations?abyssalGrade(mod.mutaplasmid):null;
+  const dense=useContext(DenseRows);
+  const ic=dense?20:28;
   return(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",padding:dense?"5px 10px":"12px 16px",borderBottom:`1px solid ${C.border}`}}>
       {/* preventDefault on mousedown keeps the keyboard up while you fill a rack. Blurring the
           focused input is the DEFAULT ACTION of pressing another element, so cancelling it holds
           focus in the search box and the click still fires normally. Without this, adding a module
@@ -665,12 +671,12 @@ function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badge
       <div role="button" title={disabled?undefined:t("Fit")} tabIndex={disabled?-1:0} aria-disabled={disabled} onKeyDown={e=>{if(!disabled&&(e.key==="Enter"||e.key===" ")){e.preventDefault();onAdd(mod);}}} onClick={()=>{if(!disabled)onAdd(mod);}} onMouseDown={e=>e.preventDefault()} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10,cursor:disabled?"default":"pointer"}}>
         {/* Fixed-size box, not a bare img: with `display:none` on a failed icon the text jumped
             left and rows stopped lining up with each other. */}
-        <div style={{width:28,height:28,flexShrink:0}}>
-          {mod.typeID&&<img className="eve-icon" src={eveIcon(mod.typeID,32)} width={28} height={28} alt="" onError={e=>{e.target.style.visibility="hidden";}}/>}
+        <div style={{width:ic,height:ic,flexShrink:0}}>
+          {mod.typeID&&<img className="eve-icon" src={eveIcon(mod.typeID,32)} width={ic} height={ic} alt="" onError={e=>{e.target.style.visibility="hidden";}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{mod.name}</div>
+            <div style={{fontSize:dense?12:14,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{mod.name}</div>
             {/* Beside the NAME, not down in the subtitle: these say why a row will not respond to a
                 tap, and an explanation you have to go looking for arrives after the confusion it
                 exists to prevent. They never shrink the name — it ellipses first. */}
@@ -712,17 +718,19 @@ function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badge
 // Shared category rows keep the owned library's market/container navigation in the
 // same visual and interaction pattern as the standard module browser.
 function ModuleGroupRow({node,count,onOpen,wrapName=false}){
+  const dense=useContext(DenseRows);
+  const ic=dense?18:28;
   return <div role="button" tabIndex={0} onClick={onOpen}
     onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onOpen();}}}
-    style={{display:'flex',alignItems:'center',gap:10,padding:'14px 16px',cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
-    <div style={{width:28,height:28,flexShrink:0}}>
-      {node.iconTid&&<img className="eve-icon" src={eveIcon(node.iconTid,32)} width={28} height={28} alt="" onError={e=>{e.target.style.visibility='hidden';}}/>}
+    style={{display:'flex',alignItems:'center',gap:10,padding:dense?'6px 10px':'14px 16px',cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
+    <div style={{width:ic,height:ic,flexShrink:0}}>
+      {node.iconTid&&<img className="eve-icon" src={eveIcon(node.iconTid,32)} width={ic} height={ic} alt="" onError={e=>{e.target.style.visibility='hidden';}}/>}
     </div>
     <div style={{flex:1,minWidth:0}}>
-      <div style={{fontSize:14,fontWeight:600,color:C.text,whiteSpace:wrapName?'normal':'nowrap',overflow:'hidden',textOverflow:'ellipsis',overflowWrap:'anywhere'}}>{node.name}</div>
+      <div style={{fontSize:dense?12:14,fontWeight:600,color:C.text,whiteSpace:wrapName?'normal':'nowrap',overflow:'hidden',textOverflow:'ellipsis',overflowWrap:'anywhere'}}>{node.name}</div>
       <div style={{fontSize:11,color:C.textMute,marginTop:2,overflowWrap:'anywhere'}}>{node.subtitle&&`${node.subtitle} · `}{t({one:'{n} module',other:'{n} modules'},{n:count})}</div>
     </div>
-    <span aria-hidden="true" style={{fontSize:20,color:C.textMute,flexShrink:0}}>{'>'}</span>
+    <span aria-hidden="true" style={{fontSize:dense?14:20,color:C.textMute,flexShrink:0}}>{'>'}</span>
   </div>;
 }
 
@@ -731,11 +739,15 @@ function ModuleGroupRow({node,count,onOpen,wrapName=false}){
 // window has one) and no close.
 function InlineFrame({headerExtra,footerExtra,children}){
   return(
-    <div style={{height:"100%",display:"flex",flexDirection:"column",minHeight:0}}>
-      {headerExtra}
-      <div style={{flex:1,minHeight:0,overflowY:"auto"}}>{children}</div>
-      {footerExtra}
-    </div>
+    <DenseRows.Provider value={true}>
+      {/* lineHeight: the root's 145% resolves against its 18px font to a FIXED 26px that every line
+          inherits whatever its own size, which alone made a two-line 12px row 54px tall. */}
+      <div style={{height:"100%",display:"flex",flexDirection:"column",minHeight:0,lineHeight:1.3}}>
+        {headerExtra}
+        <div style={{flex:1,minHeight:0,overflowY:"auto"}}>{children}</div>
+        {footerExtra}
+      </div>
+    </DenseRows.Provider>
   );
 }
 

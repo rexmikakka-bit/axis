@@ -109,7 +109,9 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, onFocu
         <TitleButton label={t("Pop out")} onClick={() => onPopOut(id)}><PopOutGlyph /></TitleButton>
         <TitleButton label={t("Close")} onClick={() => onClose(id)}>×</TitleButton>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto", borderRadius: "0 0 5px 5px" }}>{children}</div>
+      {/* lineHeight 1.3: the root's 145% is inherited as a fixed 26px, which made every line of the
+          phone components hosted here as tall as a touch target whatever its font size. */}
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto", borderRadius: "0 0 5px 5px", lineHeight: 1.3 }}>{children}</div>
       {!locked && HANDLES.map(h => (
         <div key={h.edges} aria-hidden="true" {...pointer("resize", h.edges)}
           style={{ position: "absolute", ...h.style, cursor: h.cursor, touchAction: "none" }} />

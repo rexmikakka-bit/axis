@@ -339,7 +339,9 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 // `adderRef` (desktop only): set to add(secKey, mod) -> count, which fits `mod` into the first empty
 // slot of that rack through the same addMod the module picker uses, so the desktop's Market browser
 // obeys every fitting rule the phone does (hardpoints, group limits, auto-fill, default charges).
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef}){
+// `dense` (desktop only): the same rows as a ruled table — one line per module, small icons, rack
+// header bands — for a mouse and a big screen. Every gesture and control is the phone's.
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
   const _cs=(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{};
@@ -864,16 +866,20 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           </div>
         </div>
       )}
-      <div style={{flex:1,padding:"0 10px 12px"}}>
+      {/* Dense sets a relative line height: the root's 145% is a fixed 26px by the time it gets here
+          (see InlineFrame in ui.jsx), taller than a whole dense row. */}
+      <div style={{flex:1,padding:dense?"0 0 8px":"0 10px 12px",lineHeight:dense?1.3:undefined}}>
         {SECS.map(sec=>{
           const rows=getDisplayRows(sec.key);
-          return(<div key={sec.key} style={{marginBottom:6}}>
+          return(<div key={sec.key} style={{marginBottom:dense?0:6}}>
             {/* A LABEL, not a control. Collapsing was removed: a slot section is three to eight
                 rows, so folding one buys almost no screen back, while a section left shut is
                 invisible — and not seeing a fitted module is the whole failure mode. Every row is
                 always rendered now, which also means drag-to-reorder and the scroll-into-view on
                 drop no longer have to care whether a section happens to be open. */}
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 4px"}}>
+            <div style={dense
+              ?{display:"flex",alignItems:"center",gap:8,padding:"3px 12px",background:C.surfaceAlt,borderBottom:`1px solid ${C.border}`,borderTop:`1px solid ${C.border}`}
+              :{display:"flex",alignItems:"center",gap:8,padding:"7px 4px"}}>
               <img src={(slotIcons??{})[sec.key==="rigs"?"rig":sec.key==="subsystems"?"subsystem":sec.key]} style={{width:12,height:12,objectFit:"contain",filter:"brightness(10)",marginRight:2}} alt=""/>
               <span style={{fontSize:12,fontWeight:700,color:C.text}}>{sec.label}</span>
               {/* Orphans excluded: the badge is how many slots the SHIP has, and a module stranded
@@ -884,9 +890,11 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
             </div>
             {rows.map((row,rowIdx)=>{
               if(row.type==="empty")return(
-                <div key={row.id} ref={el=>{rowRefs.current[sec.key+":"+rowIdx]=el;}} onClick={()=>setEmptySlot({secKey:sec.key,id:row.id})} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,background:C.surface,border:`1px dashed ${C.borderStrong}`,cursor:"pointer"}}>
-                  <div style={{width:30,height:30,borderRadius:7,background:C.surfaceAlt,border:`1px dashed ${C.borderStrong}`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:C.borderStrong,fontSize:20}}>+</span></div>
-                  <span style={{fontSize:13,color:C.textMute}}>{row.name}</span>
+                <div key={row.id} ref={el=>{rowRefs.current[sec.key+":"+rowIdx]=el;}} onClick={()=>setEmptySlot({secKey:sec.key,id:row.id})} style={dense
+                  ?{display:"flex",alignItems:"center",gap:8,padding:"2px 12px",background:C.surface,borderBottom:`1px solid ${C.border}99`,cursor:"pointer",minHeight:24}
+                  :{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,background:C.surface,border:`1px dashed ${C.borderStrong}`,cursor:"pointer"}}>
+                  <div style={{width:dense?18:30,height:dense?18:30,borderRadius:dense?4:7,background:C.surfaceAlt,border:`1px dashed ${C.borderStrong}`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:C.borderStrong,fontSize:dense?13:20}}>+</span></div>
+                  <span style={{fontSize:dense?12:13,color:C.textMute}}>{row.name}</span>
                   <span style={{marginLeft:"auto",fontSize:11,color:C.accent,fontWeight:600}}>{t("Add module")}</span>
                 </div>
               );
@@ -952,7 +960,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
                 ref={el=>{rowRefs.current[sec.key+":"+rowIdx]=el;}}
                 {...(swipeable?rowSwipe.swipeHandlers(rowKey):{})}
                 onClick={sec.key==="subsystems"?()=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}):rowSwipe.guardClick(rowKey,()=>setModuleMenu({secKey:sec.key,modId:row.id}))}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,cursor:"pointer",opacity:isDragSrc?0.45:1,position:"relative",zIndex:1,
+                style={{display:"flex",alignItems:"center",gap:dense?8:10,padding:dense?"2px 12px":"9px 12px",borderRadius:dense?0:8,marginBottom:dense?0:4,minHeight:dense?24:undefined,cursor:"pointer",opacity:isDragSrc?0.45:1,position:"relative",zIndex:1,
                         // pan-y, not "none": vertical scrolling still has to start from a row, since
                         // rows are most of the list. It claims the horizontal axis for the reveal
                         // gesture, so the browser stops treating a sideways drag as a pan of its own.
@@ -961,18 +969,22 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
                         // rather than deleted, and marked hard enough that it cannot be mistaken for
                         // a fitted module — it contributes nothing to any stat.
                         background:isDragOver?C.accentLight:row.orphan?`${C.danger}14`:C.surface,
-                        border:`1px solid ${isDragSrc?C.accent:isDragOver?C.accentBorder:row.orphan?C.danger:C.border}`,
+                        ...(dense
+                          ?{border:"none",borderBottom:`1px solid ${isDragSrc?C.accent:row.orphan?C.danger:`${C.border}99`}`}
+                          :{border:`1px solid ${isDragSrc?C.accent:isDragOver?C.accentBorder:row.orphan?C.danger:C.border}`}),
                         borderTop:isDragOver?`2px solid ${C.accent}`:undefined,transition:"opacity .15s ease, background-color .15s ease, border-color .15s ease"}}>
                   {/* Subsystems have no state to set — their row opens the subsystem sheet, not the
                       module menu — so they keep a plain dot. */}
                   {sec.key==="subsystems"
                     ?<div style={{width:6,height:6,borderRadius:99,flexShrink:0,background:STATE_COLORS[row.state]||C.textMid,boxShadow:(STATE_GLOW[row.state]??0)?`0 0 ${STATE_GLOW[row.state]}px ${STATE_COLORS[row.state]||C.textMid}`:"none"}}/>
                     :<StateDot row={row} rack={sec.key} gestureMemory={gestureMemory} states={validStatesFor(row)} onSet={s=>setRowState(sec.key,row,s)}/>}
-                  <div style={{width:30,height:30,borderRadius:7,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",background:`${sec.color}18`,border:`1px solid ${sec.color}35`,opacity:row.state==="offline"?0.4:1}}>
-                    {row.typeID?<img className="eve-icon" src={eveIcon(row.typeID,32)} width={28} height={28} alt="" onError={e=>{e.target.style.display="none";}}/>:<span style={{fontSize:14}}>{row.icon||"?"}</span>}
+                  <div style={{width:dense?18:30,height:dense?18:30,borderRadius:dense?3:7,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",background:dense?"transparent":`${sec.color}18`,border:dense?"none":`1px solid ${sec.color}35`,opacity:row.state==="offline"?0.4:1}}>
+                    {row.typeID?<img className="eve-icon" src={eveIcon(row.typeID,32)} width={dense?18:28} height={dense?18:28} alt="" onError={e=>{e.target.style.display="none";}}/>:<span style={{fontSize:14}}>{row.icon||"?"}</span>}
                   </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  {/* Dense: name, charge and figures share ONE line (the figures right-aligned in a
+                      fixed group), which is what makes it a table rather than a list of cards. */}
+                  <div style={dense?{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10}:{flex:1,minWidth:0}}>
+                    <div style={dense?{display:"flex",alignItems:"center",gap:5,minWidth:0,flex:"0 1 auto",maxWidth:"55%"}:{display:"flex",alignItems:"center",gap:5}}>
                       {row.count>1&&<span style={{fontSize:9,fontWeight:800,color:sec.color,background:`${sec.color}20`,borderRadius:4,padding:"1px 5px"}}>{row.count}x</span>}
                       {row.mutaplasmid&&<span title={t("Abyssal (mutated) module")} style={{fontSize:9,lineHeight:1,fontWeight:800,color:C.danger,background:`${C.danger}22`,border:`1px solid ${C.danger}`,borderRadius:4,padding:"2px 4px",flexShrink:0,display:"inline-flex",alignItems:"center"}}>▲</span>}
                       <span style={{fontSize:12,fontWeight:600,color:row.orphan?C.danger:row.state==="offline"?C.textMute:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sec.key==="subsystems"?(row.name||"").replace(/^.+?\s-\s/,""):row.name}</span>
@@ -994,7 +1006,9 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
                         amber is a weapon-or-EWAR figure, purple is a repair total. A turret's
                         tracking and an EWAR module's strength share the amber because no row ever
                         carries both — the same slot is either shooting or projecting an effect. */}
-                    <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",columnGap:8,rowGap:1,marginTop:2}}>
+                    <div style={dense
+                      ?{display:"flex",flexWrap:"nowrap",alignItems:"center",columnGap:10,flex:1,minWidth:0,justifyContent:"space-between",overflow:"hidden"}
+                      :{display:"flex",flexWrap:"wrap",alignItems:"center",columnGap:8,rowGap:1,marginTop:2}}>
                       {row.ammo&&<span style={{display:"inline-flex",alignItems:"center",maxWidth:"100%",minWidth:0}}>
                         <span style={{fontSize:11,color:C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(row.ammo||"").replace(/\s*\(\d+\)$/,"")} / {row.charges}/{row.maxCharges}</span>
                         <button title={row.count>1?t("Unload charge from all {n}",{n:row.count}):t("Unload charge")} onClick={e=>{e.stopPropagation();setSlots(prev=>{
@@ -2149,7 +2163,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
 
       {/* Targeting & Misc */}
       {show("targeting")&&<div style={card}>
-        <SectionHead id="targeting" title={t("Targeting and Misc")}/>
+        <SectionHead id="targeting" title={sections?.includes("targeting:mobility")?t("Mobility"):sections?.includes("targeting:sensors")?t("Targeting"):t("Targeting and Misc")}/>
         {/* Every figure here is rounded to stay legible in a 1fr column, and for one of them that
             rounding is dangerous: align time is quantised to whole server ticks, so a 4.003 s align
             displayed as "4.00" hides a fifth second of exposure and reads as already under the wire.
