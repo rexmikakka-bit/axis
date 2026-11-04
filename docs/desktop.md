@@ -68,6 +68,29 @@ the newly opened fit with the previous one's modules. A satellite never writes
 bad data falls back to the Default preset). It holds every window's geometry, open and detached
 state, z-order, the snap toggles, the lock, and named layouts.
 
+## The desktop redesign (Owen, 2026-11-04)
+
+Owen: "I want this to be its own thing, not just a cheap port of the mobile app to desktop", and
+"take any precautions to not unintentionally break anything on the mobile app". So windows are
+desktop-native components in `src/desktop/`, displaying the shared session and engine. Phone
+components are reused only for deep flows: the module menu, item info, the pickers, and the
+import/export and settings dialogs. A phone file only changes to gain an optional prop the phone
+never passes.
+
+| Window | State |
+| --- | --- |
+| Header | One row: fit tabs, the pilot, the damage profile, a Windows checklist menu, and ☰ for the phone's hamburger items. Save layout is in the status bar. |
+| Browser | Native (`Browser.jsx`): Market and Ships trees that expand in place; Market lists the selected category's modules below the tree. |
+| Fitting | Native table (`FitTable.jsx`) through FitTab's `TableView` prop: CPU, PG, Cap/s, Range, Info and ISK columns, resizable. |
+| Resources, Capacitor, Targeting and mobility, Validation | Native (`stat-panels.jsx`), over ONE `useFitStats` call made with the phone Stats page's options. Validation's verdict also shows on the Fitting title bar. |
+| Firepower | Native (`Firepower.jsx`). The ammo ranking is an in-window table. |
+| Defense, Fit price | Still the phone's StatsTab sections. **Next:** native, with no redundant "Resistances" subtitle. |
+| Effects | Still the phone's EffectsScreen. **Next:** full redesign, probably split into Boosters / Projected / Command / Environment windows (Owen floated splitting it). |
+| Cargo, Drones, Implants, Graphs | Still the phone's screens. Cargo needs a native Item / Qty table (it is cramped at 240 px). |
+
+Readability: native windows use `kit.jsx` sizes (12 px labels in textMid, 12–13 px values) and
+never textMute for anything that has to be read.
+
 ## Status
 
 Done:
