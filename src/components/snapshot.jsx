@@ -319,9 +319,10 @@ function ResistRow({ name, ehp, res, p }) {
       ))}
       {/* The multiplier under it is HP × this = EHP, the same figure the Stats tab's resist table
           prints beside each layer, in the same green. */}
-      <div style={{ textAlign: "right", lineHeight: 1.05 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{fmtK(ehp)}</div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: T.faction }}>{ehpOf(1, res, p).toFixed(2)}x</div>
+      {/* Centred under its "EHP" header, like the resist columns under theirs. */}
+      <div style={{ textAlign: "center", lineHeight: 1.1 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: T.text }}>{fmtK(ehp)}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.faction, marginTop: 2 }}>{ehpOf(1, res, p).toFixed(2)}x</div>
       </div>
     </>
   );
@@ -693,7 +694,7 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
             </div>
           </div>
           <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 11, padding: "12px 14px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "50px repeat(4,1fr) 58px", gap: "6px 9px", alignItems: "center" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "50px repeat(4,1fr) 62px", gap: "6px 9px", alignItems: "center" }}>
               <div />
               {[["EM", T.em], ["TH", T.th], ["KIN", T.kin], ["EXP", T.exp]].map(([l, c]) => (
                 <div key={l} style={{ fontSize: 10.5, letterSpacing: ".3px", fontWeight: 600, textAlign: "center", color: c }}>{l}</div>
