@@ -2,7 +2,7 @@ import { createContext, useContext, useRef } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
-import { DMG, STATE_COLORS, STATE_LABELS } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS } from "../lib/core.js";
 import { resourceColor } from "../components/ui.jsx";
 import { getCachedPrices } from "../prices.js";
 
@@ -77,14 +77,16 @@ function StateToggle({ row, states, onSet }) {
     e.preventDefault(); e.stopPropagation();
     if (has("overheated")) onSet(cur === "overheated" ? "active" : "overheated");
   };
-  const color = STATE_COLORS[cur] ?? C.textMid;
+  // The phone StateDot's light, not a plain circle: filled in the state colour with STATE_GLOW's
+  // halo, so a running module reads as a lamp that is on (Owen asked for that look back).
+  const color = STATE_COLORS[cur] ?? C.textMid, glow = STATE_GLOW[cur] ?? 0;
   return (
     <button type="button" onClick={click} onContextMenu={context}
       title={`${STATE_LABELS[cur]?.() ?? cur} — ${t("click: on/off · right-click: overheat · ctrl-click: offline")}`}
       aria-label={STATE_LABELS[cur]?.() ?? cur}
       style={{ width: 16, height: 16, padding: 0, border: "none", background: "transparent", cursor: "pointer", display: "grid", placeItems: "center" }}>
-      <span style={{ width: 9, height: 9, borderRadius: 99, background: cur === "offline" ? "transparent" : color,
-                     border: `1.5px solid ${color}`, boxShadow: cur === "overheated" ? `0 0 6px ${color}` : "none" }} />
+      <span style={{ width: 7, height: 7, borderRadius: 99, background: color, boxShadow: glow ? `0 0 ${glow}px ${color}` : "none",
+                     transition: "background-color .18s ease, box-shadow .18s ease" }} />
     </button>
   );
 }

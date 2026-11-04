@@ -23,7 +23,7 @@ import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
-import { ResourcesPanel, CapacitorPanel, TargetingPanel, ValidationPanel, ValidityBadge, fitIssues, useFitStats } from "./stat-panels.jsx";
+import { ResourcesPanel, CapacitorPanel, TargetingPanel, DefensePanel, ValidationPanel, ValidityBadge, fitIssues, useFitStats } from "./stat-panels.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, BrowserWindow,
          CargoWindow, DronesWindow, ImplantsWindow, EffectsWindow, NotesWindow } from "./windows.jsx";
 
@@ -51,7 +51,7 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
@@ -68,6 +68,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "graphs": return <GraphsWindow s={s} ship={ship} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
+      case "defense": return <DefensePanel s={s} cs={cs} onPickProfile={() => openProfilePicker?.()} />;
       // Remote reps and mining sit under the firepower they belong with, only on fits that have them.
       case "firepower": return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -173,7 +174,7 @@ function DesktopApp() {
   };
   const setCols = (id, c) => setLayoutState(st => ({ ...st, cols: { ...st.cols, [id]: c } }));
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
-    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation") });
+    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile") });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const w of WINDOWS) if (layoutState.windows[w.id]?.detached) dockWindow(setLayoutState, w.id);
