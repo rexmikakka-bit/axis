@@ -445,7 +445,9 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
   // vanish into its own track. Same reasoning theme.js records for the module state colours.
   // Shield stays CYAN rather than blue so it does not read as the em segment in the DPS bar beside it,
   // and armor stays green because no damage type is green; hull is neutral, which is also what it is.
-  const layerColor = { shield: "#37bdf0", armor: "#2ecc8b", hull: "#93a3b8" };
+  // Deepened and saturated on Owen's ask: the lighter pastel set, the armor green above all,
+  // washed out against the panel.
+  const layerColor = { shield: "#0a9fe0", armor: "#0b9b52", hull: "#6d7f99" };
   // ModRow's default when a module carries no state, so the legend has to agree on it.
   const statesUsed = new Set();
   for (const rack of ["subsystems", "high", "mid", "low", "rigs"])
