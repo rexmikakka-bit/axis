@@ -16,6 +16,7 @@ import { SkillsProvider } from "../components/skill-mark.jsx";
 import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
 import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, Button } from "./Workspace.jsx";
 import Menu from "./Menu.jsx";
+import DeskBrowser from "./Browser.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
@@ -60,7 +61,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
   const renderWindow = (id) => {
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
-      case "browser": return <BrowserWindow s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
+      case "browser": return <DeskBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
       case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} />;
       case "graphs": return <GraphsWindow s={s} ship={ship} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
