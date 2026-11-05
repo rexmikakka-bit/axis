@@ -86,7 +86,8 @@ never passes.
 | Firepower | Native (`Firepower.jsx`). The ammo ranking is an in-window table. |
 | Defense, Cargo | Native (`stat-panels.jsx` DefensePanel, `Cargo.jsx`). |
 | Projected, Command links, Boosters, Environment | Native (`Effects.jsx`): the phone's Effects tab split into four windows. The Projected window mirrors the phone card's arithmetic in `projectedLines`, so keep the two in step. |
-| Fit price, Drones, Implants, Graphs | Still the phone's components. |
+| Fit price, Implants, Drones | Native (`Price.jsx`, `Implants.jsx`, `Drones.jsx`). Price mirrors the phone Fit Value card's pricing rules, so keep the two in step. Carriers still get the phone's Drones screen (fighter tubes and abilities). |
+| Graphs | Native (`Graphs.jsx`), after pyfa's graph window: many fits × many targets, one line per pair through the phone's own generateCurve, and the Application profile (best ammo per range, stitched and coloured by round). Compact when narrow (controls fold away) or expanded; there is also a Graphs layout preset. |
 | Shortcuts | Ctrl+V pastes an EFT fit from anywhere; Ctrl+C opens the copy dialog (`ExportDialog.jsx`); Ctrl+D optimises price. The state dot: click on/off, right-click overheats, ctrl-click offlines. |
 
 Readability: native windows use `kit.jsx` sizes (12 px labels in textMid, 12–13 px values) and
