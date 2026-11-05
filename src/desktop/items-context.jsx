@@ -1,7 +1,7 @@
 import { createContext, useContext, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { currentDrag, draggedItem, isItemDrag } from "./items.js";
+import { currentDrag, draggedItem, isItemDrag, currentFitDrag, draggedFit, isFitDrag } from "./items.js";
 
 // The app's item operations (items.js addItem with this window's session, stats and Fitting
 // window wired in), for any window to add to or take drops for. Provided by DesktopApp's
@@ -42,6 +42,31 @@ export function useItemDrop(to, extra) {
       if (!it || !items.accepts(to, it)) return;
       e.preventDefault();
       items.add(it, to, extra);
+    },
+  };
+  return { props, over, ok: over && okFor() };
+}
+
+/**
+ * A drop target for saved fits dragged from the ship browser (Projected, Command). `accept(ship,
+ * fitName)` decides, `onDrop(ship, fitName)` adds. Same {props, over, ok} as useItemDrop, so the
+ * same DropHint draws it.
+ */
+export function useFitDrop(accept, onDrop) {
+  const [over, setOver] = useState(false);
+  const depth = useRef(0);
+  const okFor = () => { const f = currentFitDrag(); return !f || accept(f.ship, f.fitName); };
+  const props = {
+    onDragEnter: (e) => { if (!isFitDrag(e)) return; depth.current++; setOver(true); },
+    onDragLeave: (e) => { if (!isFitDrag(e)) return; depth.current = Math.max(0, depth.current - 1); if (!depth.current) setOver(false); },
+    onDragOver: (e) => { if (!isFitDrag(e)) return; if (okFor()) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } else e.dataTransfer.dropEffect = "none"; },
+    onDrop: (e) => {
+      depth.current = 0; setOver(false);
+      if (!isFitDrag(e)) return;
+      const f = draggedFit(e);
+      if (!f || !accept(f.ship, f.fitName)) return;
+      e.preventDefault();
+      onDrop(f.ship, f.fitName);
     },
   };
   return { props, over, ok: over && okFor() };

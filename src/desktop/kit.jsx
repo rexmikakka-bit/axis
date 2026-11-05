@@ -127,6 +127,11 @@ export const deskCss = () => `
   *:hover::-webkit-scrollbar-thumb { background-color: ${C.borderStrong}; }
   *::-webkit-scrollbar-thumb:hover { background-color: ${C.textMute}; }
   *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+  /* No text selection: a desktop app's clicks, drags and double-clicks kept painting stray
+     highlights across windows (Owen, 2026-11-05). Anything you type in still selects, and a
+     double-click still selects a word inside a text field. */
+  body { -webkit-user-select: none; user-select: none; }
+  input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
 ${PHONE_TYPE_CSS}`;
 
 // The phone panels an item window hosts (ItemInfoPanel and its modifier breakdowns, the charge and

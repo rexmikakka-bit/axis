@@ -223,5 +223,25 @@ export function dragProps(item) {
     },
   };
 }
+// A saved FIT, dragged from the ship browser onto Projected or Command: its own payload type, so a
+// fit is never offered to an item window or an item to a fit window. JSON {ship, fitName}.
+export const FIT_MIME = "application/x-axis-fit";
+let draggingFit = null;
+export const currentFitDrag = () => draggingFit;
+export function fitDragProps(ship, fitName) {
+  return {
+    draggable: true,
+    onDragEnd: () => { draggingFit = null; },
+    onDragStart: (e) => {
+      draggingFit = { ship, fitName };
+      e.dataTransfer.setData(FIT_MIME, JSON.stringify(draggingFit));
+      e.dataTransfer.setData("text/plain", `${ship} · ${fitName}`);
+      e.dataTransfer.effectAllowed = "copy";
+    },
+  };
+}
+export const draggedFit = (e) => { try { return JSON.parse(e.dataTransfer.getData(FIT_MIME) || "null"); } catch { return null; } };
+export const isFitDrag = (e) => Array.from(e.dataTransfer?.types ?? []).includes(FIT_MIME);
+
 export const draggedItem = (e) => { try { return JSON.parse(e.dataTransfer.getData(ITEM_MIME) || "null"); } catch { return null; } };
 export const isItemDrag = (e) => Array.from(e.dataTransfer?.types ?? []).includes(ITEM_MIME);

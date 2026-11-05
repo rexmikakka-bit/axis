@@ -17,7 +17,7 @@ import { ContextMenu, useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { useItems } from "./items-context.jsx";
-import { itemKind, defaultAction, dragProps } from "./items.js";
+import { itemKind, defaultAction, dragProps, fitDragProps } from "./items.js";
 
 // The desktop Browser (docs/desktop-handoff.md, "Browser"): one window, Market and Ships, as in
 // pyfa. Both are trees that EXPAND IN PLACE — a caret per category, children indented beneath it —
@@ -43,9 +43,10 @@ const Caret = ({ open }) => (
 
 // `iconSize`: market categories keep 16 px; hulls and fits draw their ship at 24, big enough to tell a
 // Rifter from a Breacher at a glance, with the row grown to suit.
-function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub, onClick, onContextMenu, title }) {
+// `drag`: props that make the row draggable (a saved fit onto Projected or Command).
+function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub, onClick, onContextMenu, title, drag }) {
   return (
-    <div role="treeitem" aria-expanded={leaf ? undefined : open} aria-selected={selected} onClick={onClick} onContextMenu={onContextMenu} title={title}
+    <div role="treeitem" aria-expanded={leaf ? undefined : open} aria-selected={selected} onClick={onClick} onContextMenu={onContextMenu} title={title} {...drag}
       style={{ display: "flex", alignItems: "center", gap: iconSize > 16 ? 8 : 6, minHeight: iconSize > 16 ? iconSize + 8 : 26, padding: `2px 10px 2px ${10 + depth * INDENT}px`, cursor: "pointer",
                background: selected ? C.surfaceAlt : "transparent", boxShadow: selected ? `inset 2px 0 0 ${C.accent}` : "none", fontSize: 13.5 }}
       onMouseEnter={e => { if (!selected) e.currentTarget.style.background = `${C.surfaceAlt}99`; }}
@@ -58,10 +59,17 @@ function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub,
   );
 }
 
+// With an ✕ to clear it once there is something in it; Escape in the box clears it too.
 const SearchBox = ({ value, onChange, placeholder }) => (
-  <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
-    style={{ height: 28, margin: "8px 10px 6px", boxSizing: "border-box", width: "calc(100% - 20px)", padding: "0 10px", borderRadius: 6, fontSize: 13.5,
-             background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none", flex: "none" }} />
+  <div style={{ position: "relative", margin: "8px 10px 6px", flex: "none" }}>
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+      onKeyDown={e => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange(""); } }}
+      style={{ height: 28, boxSizing: "border-box", width: "100%", padding: value ? "0 30px 0 10px" : "0 10px", borderRadius: 6, fontSize: 13.5,
+               background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
+    {value && <button type="button" onClick={() => onChange("")} aria-label={t("Clear search")} title={t("Clear search")}
+      style={{ position: "absolute", right: 4, top: 4, width: 20, height: 20, padding: 0, border: "none", borderRadius: 10, cursor: "pointer",
+               background: C.surfaceAlt, color: C.textMid, fontSize: 13, lineHeight: "20px" }}>✕</button>}
+  </div>
 );
 
 // ── Market ─────────────────────────────────────────────────────────────────────────────────────
@@ -278,7 +286,7 @@ function ShipsPane({ s }) {
       <div key={fit.id} style={{ display: "flex", alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <TreeRow depth={depth} leaf selected={on} label={fit.name} icon={eveIcon(tidByName(ship), 32)} iconSize={24} onClick={() => s.loadFit(ship, fit.name)}
-            onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more")} />
+            onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more · drag onto Projected or Command")} drag={fitDragProps(ship, fit.name)} />
         </div>
         <Menu label="⋯" ariaLabel={t("Fit actions")} buttonStyle={{ height: 22, padding: "0 6px", color: C.textMid }} items={actions} />
       </div>

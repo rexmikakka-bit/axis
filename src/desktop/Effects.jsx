@@ -11,7 +11,7 @@ import { useRowSelect } from "./ContextMenu.jsx";
 import { tabFits } from "./tab-fits.js";
 import { useInspect } from "./inspect-context.jsx";
 import { boosterTarget } from "./inspect.js";
-import { useItemDrop, DropHint } from "./items-context.jsx";
+import { useItemDrop, useFitDrop, DropHint } from "./items-context.jsx";
 
 // The phone's Effects screen, split into four desktop windows (Owen floated splitting it):
 // Boosters, Projected, Command links, Environment. Each edits the same session state the phone's
@@ -151,6 +151,11 @@ export function projectedLines(eff, rangeKm, assist, jamTarget) {
 
 export function ProjectedPanel({ s, jamTarget }) {
   const [picker, setPicker] = useState(false);
+  // A fit dragged from the ship browser projects onto this one, as if picked from the list. Not the
+  // fit being edited: a fit projecting onto itself is not an engagement.
+  const fitOf = (ship, name) => s.fitsDB?.[ship]?.find(f => f.name === name);
+  const drop = useFitDrop((ship, name) => !!fitOf(ship, name) && !(ship === s.activeFit?.ship && name === s.activeFit?.fitName),
+                          (ship, name) => add(ship, fitOf(ship, name)));
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = s.projFits ?? [];
   const update = (i, patch) => s.setProjFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, ...patch } : p));
@@ -162,7 +167,7 @@ export function ProjectedPanel({ s, jamTarget }) {
     s.setProjFits(prev => [...(prev ?? []), { ship, fitName: fit.name, rangeKm }]);
   };
   return (
-    <Shell>
+    <Shell drop={drop} dropLabel={t("Project onto this fit")}>
       <Header onAdd={() => setPicker(true)} addLabel={t("Fit")}>{t("Other fits projecting onto this one. Effects scale with range; each fit uses its own modules' states.")}</Header>
       <Body>
         {!list.length && <None>{t("No projected fits applied")}</None>}
@@ -213,10 +218,14 @@ export function ProjectedPanel({ s, jamTarget }) {
 // ── Command links ────────────────────────────────────────────────────────────────────────────
 export function CommandPanel({ s }) {
   const [picker, setPicker] = useState(false);
+  // A dragged fit is taken only if it actually has command bursts running, as the picker filters.
+  const fitOf = (ship, name) => s.fitsDB?.[ship]?.find(f => f.name === name);
+  const drop = useFitDrop((ship, name) => { const f = fitOf(ship, name); return !!f && hasCommandBursts(ship, f); },
+                          (ship, name) => s.setCmdFits(prev => [...(prev ?? []), { ship, fitName: name }]));
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = s.cmdFits ?? [];
   return (
-    <Shell>
+    <Shell drop={drop} dropLabel={t("Add command links")}>
       <Header onAdd={() => setPicker(true)} addLabel={t("Fit")}>{t("Command burst bonuses from a fleet support fit, using its modules, charges and active state.")}</Header>
       <Body>
         {!list.length && <None>{t("No command fits applied")}</None>}
