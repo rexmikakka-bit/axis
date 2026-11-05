@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window and every popped-out window (satellite-<id>): create, focus and close windows for pop-out; MutaMarket API requests from Rust (no CORS there); open web links in the system browser",
+  "description": "The main window and every popped-out window (satellite-<id>): create, focus and close windows for pop-out; MutaMarket and ceve-market API requests from Rust (neither sends CORS headers); open web links in the system browser",
   "windows": [
     "main",
     "satellite-*"
@@ -13,7 +13,7 @@
     "core:window:allow-set-focus",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "https://mutamarket.com/api/*" }]
+      "allow": [{ "url": "https://mutamarket.com/api/*" }, { "url": "https://www.ceve-market.org/api/*" }]
     },
     "opener:default"
   ]

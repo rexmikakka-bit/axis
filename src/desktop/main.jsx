@@ -7,6 +7,7 @@ import { migrateLocalStorage } from '../lib/storage-migrate.js'
 import { FITS_KEY, initFitsStore, replaceFitsDB } from '../lib/fits-store.js'
 import { initLocale } from '../lib/i18n.js'
 import { setMutaMarketFetch } from '../lib/mutamarket-client.js'
+import { setPriceFetch } from '../prices.js'
 import { IS_TAURI } from './os-window.js'
 
 // The desktop app's boot. Same order as src/main.jsx and for the same reasons (read there): the fit
@@ -34,9 +35,10 @@ const mount = () => createRoot(document.getElementById('root')).render(
   } catch (e) {
     console.error('boot: storage init failed', e)
   }
-  // MutaMarket sends no CORS headers; in the Tauri shell its requests go through the HTTP plugin.
+  // MutaMarket and ceve-market send no CORS headers; in the Tauri shell their requests go through
+  // the HTTP plugin (scoped to those two APIs in src-tauri/capabilities/default.json).
   if (IS_TAURI) {
-    try { setMutaMarketFetch((await import('@tauri-apps/plugin-http')).fetch) } catch (e) { console.error('boot: http plugin unavailable', e) }
+    try { const { fetch } = await import('@tauri-apps/plugin-http'); setMutaMarketFetch(fetch); setPriceFetch(fetch) } catch (e) { console.error('boot: http plugin unavailable', e) }
   }
   await initLocale()
   mount()

@@ -114,7 +114,9 @@ Done:
   requests go through `tauri-plugin-http` (scoped to `https://mutamarket.com/api/*` in
   `capabilities/default.json`), injected at boot by `setMutaMarketFetch` in `desktop/main.jsx`.
   The dev servers use Vite's `/mutamarket-api` proxy instead. Links out go through `tauri-plugin-opener`
-  (`openExternal` in `os-window.js`), since the webview refuses `window.open`.
+  (`openExternal` in `os-window.js`), since the webview refuses `window.open`. ceve-market prices
+  take the same route as MutaMarket (`setPriceFetch` in `prices.js`, `/ceve-api` proxy in dev); Fuzzwork
+  sends CORS headers and needs neither.
 
 Not done yet:
 - **Untested under Tauri:** pop-out. If Tauri doesn't honour `window.open`, switch it to
@@ -122,8 +124,8 @@ Not done yet:
   origin, one WebView2 environment).
 - **ESI login:** the phone gets its callback through Capacitor's deep link
   (`eveauth-visviva://`). Desktop needs Tauri's deep-link plugin for the same scheme, or a loopback
-  redirect. ceve-market prices and ESI calls need native HTTP too (Tauri's http plugin); in the
-  browser build they hit CORS exactly as on the phone's web build.
+  redirect. ESI's own API calls are fine: ESI sends CORS headers. (ceve-market prices are done, see
+  Tauri above.)
 - **Desktop-shaped layouts from the mockup:**
   - the Fitting column table with resizable columns;
   - the Market/Ships toggle in the Browser (today the Browser is the ship library, and modules are

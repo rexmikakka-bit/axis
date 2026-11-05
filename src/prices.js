@@ -13,7 +13,9 @@
 // shipped app because capacitor.config.json sets `CapacitorHttp.enabled: true`, which routes
 // fetch() through native networking, where CORS does not apply — the same mechanism that lets ESI
 // work without a backend. Verified with curl: both return 200 and real data; only Fuzzwork
-// carries the header. Practical upshot: test ceve ON DEVICE, not in `npm run dev`.
+// carries the header. The dev servers route ceve through vite.config.js's /ceve-api proxy, and the
+// desktop shell (Tauri), which has no CapacitorHttp, hands in its HTTP plugin's fetch
+// (setPriceFetch, from src/desktop/main.jsx) so the request is made from Rust. Fuzzwork needs neither.
 
 const HUBS = {
   Jita:    60003760,
@@ -69,13 +71,22 @@ function withDeadline(promise, ms, ctl) {
   return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
 }
 
-async function timedFetch(url, signal) {
+let nativeFetch = null;
+/** The desktop shell's native fetch, for the sources that send no CORS header (ceve). */
+export function setPriceFetch(fetcher) { nativeFetch = typeof fetcher === 'function' ? fetcher : null; }
+const CEVE_API = 'https://www.ceve-market.org/api';
+// isNativePlatform, not `window.Capacitor`: Capacitor's web runtime defines that global in a plain
+// browser too (the same trap mutamarket-client.js documents).
+const ceveBase = () => nativeFetch ? CEVE_API
+  : (import.meta.env?.DEV && typeof window !== 'undefined' && !window.Capacitor?.isNativePlatform?.()) ? '/ceve-api' : CEVE_API;
+
+async function timedFetch(url, signal, { native = false } = {}) {
   const ctl = new AbortController();
   const relay = () => ctl.abort();
   signal?.addEventListener('abort', relay, { once: true });
   const timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(url, { signal: ctl.signal });
+    return await ((native && nativeFetch) || fetch)(url, { signal: ctl.signal });
   } catch (e) {
     throw (e?.name === 'AbortError') ? offlineError('Price request timed out') : e;
   } finally {
@@ -159,7 +170,7 @@ export function pricesAreStale(asOf, now = Date.now()) {
 async function fetchCeve(ids, region, signal) {
   const out = new Map();
   await pooled(ids, 6, async (id) => {
-    const r = await timedFetch(`https://www.ceve-market.org/api/market/region/${region}/type/${id}.json`, signal);
+    const r = await timedFetch(`${ceveBase()}/market/region/${region}/type/${id}.json`, signal, { native: true });
     if (!r.ok) return;
     const d = await r.json();
     const p = Number(d?.sell?.min);

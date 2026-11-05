@@ -22,6 +22,12 @@ export default defineConfig({
     // asked-for contact string, duplicated from `MUTAMARKET_USER_AGENT` because importing it here
     // would pull the whole game-data bundle into the Vite config.
     proxy: {
+      // ceve-market sends no CORS header either (prices.js); same treatment, dev servers only.
+      '/ceve-api': {
+        target: 'https://www.ceve-market.org',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/ceve-api/, '/api'),
+      },
       '/mutamarket-api': {
         target: 'https://mutamarket.com',
         changeOrigin: true,
