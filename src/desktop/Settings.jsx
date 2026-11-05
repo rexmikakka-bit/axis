@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { C, THEMES, THEME_LABELS } from "../theme.js";
 import { availableLocales, t } from "../lib/i18n.js";
 import { SKILL_CATALOG } from "../calc.js";
 import { allPriceableTypeIDs } from "../lib/core.js";
 import { primePrices, getCachedPrices } from "../prices.js";
 import { SKILL_GROUPS, GROUP_COLORS, SKILL_PRESETS, PRESET_COLORS } from "../components/settings.jsx";
-import { BackupPanel } from "../components/backup.jsx";
-import { EsiSettingsPanel, EsiSkillAlignPanel } from "../components/esi-ui.jsx";
+import { useBackup, boldFill } from "../components/backup.jsx";
+import { isFallbackMode } from "../lib/fits-store.js";
+import * as esi from "../lib/esi.js";
+import { EsiSkillAlignPanel, useEsiCharacters, friendlyError } from "../components/esi-ui.jsx";
 import { PrereleaseSkillControl } from "../components/prerelease-skill.jsx";
 import { BackdropControls } from "./Backdrop.jsx";
 import { TYPE, WEIGHT } from "./kit.jsx";
@@ -16,9 +19,9 @@ import { TYPE, WEIGHT } from "./kit.jsx";
 // same session value the phone's Settings sheet does, from the same catalogues (SKILL_GROUPS,
 // SKILL_PRESETS, availableLocales, THEMES), so the two cannot offer different choices.
 //
-// Interface (with the workspace background), Market, Skills and About are drawn here. Backup and ESI host the phone's own
-// panels: they are file and login flows with their own careful states, and a second copy of those
-// is a second place for them to go wrong.
+// Every section is drawn here in desktop controls. Backup and ESI keep the phone's STATE and actions
+// (backup.jsx useBackup, esi-ui.jsx useEsiCharacters): file and login flows with careful states, and a
+// second copy of those would be a second place for them to go wrong. Only the drawing is the desktop's.
 
 const SECTIONS = [
   ["skills", "Skills"], ["interface", "Interface"], ["market", "Market"],
@@ -255,6 +258,192 @@ function SkillsSection({ s }) {
   );
 }
 
+// Backup and ESI in desktop controls. The state and every action are the phone's own (backup.jsx
+// useBackup; esi-ui.jsx useEsiCharacters, friendlyError, and lib/esi.js), so restore, merge, undo,
+// pyfa import, login and skill sync each exist once; only the drawing is new. Sentences are the
+// phone's keys, so they keep their translations.
+const card = () => ({ padding: "12px 14px", marginTop: 10, background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 8 });
+const danger = () => ({ ...button(false), color: C.danger, borderColor: `${C.danger}88` });
+const strong = { color: C.text, fontWeight: WEIGHT.value };
+
+function BackupSection() {
+  const b = useBackup();
+  const { status, pending, setPending, pasted, setPasted, fileRef, xmlPending, setXmlPending, xmlBusy, xmlRef, undo, busy, mine } = b;
+  return (
+    <>
+      {/* The phone's own overlay: every bulk write ends in a reload, and the page must not take a
+          second write while one is in flight. Portalled over everything, windows included. */}
+      {busy && createPortal(
+        <div style={{ position: "fixed", inset: 0, zIndex: 9000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, background: C.bg }}>
+          <span className="vv-spin" style={{ width: 30, height: 30, borderRadius: "50%", border: `3px solid ${C.border}`, borderTopColor: C.accent }} />
+          <div style={{ fontSize: TYPE.label, color: C.textMid }}>{busy}</div>
+          <div style={{ fontSize: TYPE.small, color: C.textMute }}>{t("Don't close the app.")}</div>
+        </div>, document.body)}
+
+      <Heading first>{t("Backup & Restore")}</Heading>
+      <div style={{ fontSize: TYPE.label, color: C.textMid }}>
+        {boldFill(t("{fitCount} across {shipCount} stored here.", {
+          fitCount: t({ one: "{fits} fit", other: "{fits} fits" }, { n: mine.fits }),
+          shipCount: t({ one: "{ships} ship", other: "{ships} ships" }, { n: mine.ships }) }), { fits: mine.fits.toLocaleString(), ships: mine.ships }, strong)}
+      </div>
+      <Note>{t("Your fits live only in this browser's storage. Clearing site data, switching browsers, or opening the app on a different port will lose them. Export a file to keep them safe or move them to another device.")}</Note>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button type="button" onClick={b.download} style={button(true)}>{t("Download backup")}</button>
+        <button type="button" onClick={b.copyJson} style={button(false)}>{t("Copy as JSON")}</button>
+      </div>
+
+      <Heading>{t("Restore")}</Heading>
+      {!pending ? (
+        <>
+          <input ref={fileRef} type="file" accept="application/json,.json" onChange={b.onFile} style={{ display: "none" }} />
+          <button type="button" onClick={() => fileRef.current?.click()} style={button(false)}>{t("Choose backup file…")}</button>
+          <Note>{t("…or paste the JSON:")}</Note>
+          <textarea value={pasted} onChange={e => setPasted(e.target.value)} placeholder='{"app":"axis",...}'
+            style={{ width: "100%", boxSizing: "border-box", minHeight: 72, marginTop: 6, padding: 8, borderRadius: 6, fontSize: 12.5, fontFamily: "monospace",
+                     background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, resize: "vertical", outline: "none" }} />
+          <button type="button" onClick={() => b.parseBackup(pasted)} disabled={!pasted.trim()} style={{ ...button(false), marginTop: 6, opacity: pasted.trim() ? 1 : 0.45 }}>{t("Load pasted backup")}</button>
+        </>
+      ) : (
+        <div style={{ ...card(), borderColor: C.accent }}>
+          <div style={{ fontSize: TYPE.label, color: C.text }}>
+            {boldFill(t("Backup contains {fitCount} across {shipCount}.", {
+              fitCount: t({ one: "{fits} fit", other: "{fits} fits" }, { n: pending.count.fits }),
+              shipCount: t({ one: "{ships} ship", other: "{ships} ships" }, { n: pending.count.ships }) }), { fits: pending.count.fits, ships: pending.count.ships }, strong)}
+          </div>
+          {pending.obj.exportedAt && <Note>{t("Exported {when}", { when: new Date(pending.obj.exportedAt).toLocaleString() })}</Note>}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            <button type="button" onClick={() => b.apply("merge")} style={button(true)}>{t("Merge (keep mine)")}</button>
+            <button type="button" style={danger()} onClick={() => {
+              if (window.confirm(t({ one: "Replace ALL {n} local fit and your settings with this backup? This cannot be undone.", other: "Replace ALL {n} local fits and your settings with this backup? This cannot be undone." }, { n: mine.fits }))) b.apply("replace"); }}>
+              {t("Replace everything")}</button>
+            <button type="button" onClick={() => { setPending(null); setPasted(""); }} style={button(false)}>{t("Cancel")}</button>
+          </div>
+          <Note>{boldFill(t("{merge} adds the imported fits alongside yours (duplicates get renamed, your skills and settings are untouched). {replace} wipes everything here first."),
+            { merge: t("Merge"), replace: t("Replace") }, strong)}</Note>
+        </div>
+      )}
+
+      {!pending && <>
+        <Heading>{t("Import from pyfa")}</Heading>
+        <Note>{boldFill(t("In pyfa, use {menu} to write an XML file, then choose it here. Your existing fits are kept — imported ones are added alongside them."),
+          { menu: "File → Backup All Fittings" }, strong)}</Note>
+        <input ref={xmlRef} type="file" accept=".xml,text/xml,application/xml" onChange={b.onXmlFile} style={{ display: "none" }} />
+        {!xmlPending && !xmlBusy && <button type="button" onClick={() => xmlRef.current?.click()} style={{ ...button(false), marginTop: 10 }}>{t("Choose pyfa XML file…")}</button>}
+        {xmlBusy && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: TYPE.small, color: C.textMid, marginBottom: 6 }}>
+              {t("Converting {done} / {total} fits…", { done: xmlBusy.done.toLocaleString(), total: xmlBusy.total.toLocaleString() })}</div>
+            <div style={{ height: 4, borderRadius: 2, background: C.surfaceAlt, overflow: "hidden" }}>
+              <div style={{ height: "100%", background: C.accent, width: `${xmlBusy.total ? (xmlBusy.done / xmlBusy.total) * 100 : 0}%` }} /></div>
+          </div>
+        )}
+        {xmlPending && (
+          <div style={{ ...card(), borderColor: C.accent }}>
+            <div style={{ fontSize: TYPE.label, color: C.text }}>
+              {boldFill(t("Ready to import {fitCount} across {shipCount}.", {
+                fitCount: t({ one: "{fits} fit", other: "{fits} fits" }, { n: xmlPending.fits }),
+                shipCount: t({ one: "{ships} ship", other: "{ships} ships" }, { n: xmlPending.ships }) }), { fits: xmlPending.fits.toLocaleString(), ships: xmlPending.ships.toLocaleString() }, strong)}
+            </div>
+            <Note>
+              {boldFill(t("A pyfa XML backup doesn't record implants, boosters, or which module each charge was loaded into — it lists all ammo together in the cargo hold. Ammo was put back into {modCount}; anything left over stays in cargo.", {
+                modCount: t({ one: "{mods} module", other: "{mods} modules" }, { n: xmlPending.reloaded }) }), { mods: xmlPending.reloaded.toLocaleString() }, strong)}
+              {xmlPending.skipped > 0 && <> {t({ one: "{n} fitting couldn't be read and was skipped.", other: "{n} fittings couldn't be read and were skipped." }, { n: xmlPending.skipped })}</>}
+              {xmlPending.unresolved.length > 0 && <> {t({ one: "{n} item name wasn't recognised (e.g. {names}) and was left out.", other: "{n} item names weren't recognised (e.g. {names}) and were left out." }, { n: xmlPending.unresolved.length, names: xmlPending.unresolved.slice(0, 3).join(", ") })}</>}
+            </Note>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button type="button" onClick={b.applyXml} style={button(true)}>{t({ one: "Add {fits} fit", other: "Add {fits} fits" }, { n: xmlPending.fits, fits: xmlPending.fits.toLocaleString() })}</button>
+              <button type="button" onClick={() => setXmlPending(null)} style={button(false)}>{t("Cancel")}</button>
+            </div>
+          </div>
+        )}
+
+        {undo && <>
+          <Heading>{t("Undo")}</Heading>
+          <div style={{ fontSize: TYPE.label, color: C.text }}>
+            {boldFill(t({ one: "Undo available — restores the {fits} fit you had before the {what}.", other: "Undo available — restores the {fits} fits you had before the {what}." },
+              { n: undo.fits, what: b.undoLabel(undo.label) }), { fits: undo.fits.toLocaleString() }, strong)}
+          </div>
+          <Note>{t("Taken {when}. Saved fits only — skills and settings aren't part of the copy. Replaced by the next import or reset.", { when: undo.at ? new Date(undo.at).toLocaleString() : t("earlier") })}</Note>
+          <button type="button" onClick={b.doUndo} style={{ ...button(false), marginTop: 10, color: C.accent, borderColor: C.accent }}>{t("Undo {what}", { what: b.undoLabel(undo.label) })}</button>
+        </>}
+
+        <Heading>{t("Clear fit library")}</Heading>
+        <Note>{t("Deletes every saved fit on this device. Skills, settings and tag colours are kept.")}{!isFallbackMode() && ` ${t("A copy is kept so you can undo it.")}`}</Note>
+        <button type="button" onClick={b.clearLibrary} disabled={mine.fits === 0} style={{ ...danger(), marginTop: 10, opacity: mine.fits === 0 ? 0.45 : 1 }}>
+          {t({ one: "Delete all {fits} fit", other: "Delete all {fits} fits" }, { n: mine.fits, fits: mine.fits.toLocaleString() })}</button>
+      </>}
+
+      {status && <div role="status" style={{ marginTop: 14, fontSize: TYPE.label, color: status.ok ? C.success : C.danger }}>{status.msg}</div>}
+    </>
+  );
+}
+
+function EsiSection({ s }) {
+  const { characters, activeId, loginError, refresh, switchActive, remove } = useEsiCharacters();
+  const [busy, setBusy] = useState(null);       // characterId being synced
+  const [error, setError] = useState(null);
+  const [synced, setSynced] = useState(null);   // {id, msg}
+  const [waiting, setWaiting] = useState(false);
+  // A login finishing (the eveauth-visviva link, esi-desktop.js) changes the characters: stop waiting.
+  useEffect(() => { setWaiting(false); }, [characters.length]);
+  useEffect(() => { esi.handleWebRedirectOnLoad().then(r => { if (r) refresh(); }).catch(e => setError(friendlyError(e))); }, [refresh]);
+  const connect = async () => {
+    setError(null);
+    try { await esi.beginLogin(); setWaiting(true); } catch (e) { setError(friendlyError(e)); }
+  };
+  // Same as the phone's: the FULL map (an untrained skill is absent from ESI's answer, and absent
+  // means V here), also cached per character for fits that name this pilot.
+  const sync = async (id) => {
+    setBusy(id); setError(null); setSynced(null);
+    try {
+      const full = esi.esiSkillsToFullSkillMap(await esi.getCharacterSkills(id));
+      s.setSkills(full); esi.storeCharacterSkills(id, full);
+      const trained = Object.values(full).filter(v => v > 0).length;
+      setSynced({ id, msg: t({ one: "Synced {n} trained skill.", other: "Synced {n} trained skills." }, { n: trained }) });
+    } catch (e) { setError(friendlyError(e)); } finally { setBusy(null); }
+  };
+  return (
+    <>
+      <Heading first>{t("EVE ESI Connection")}</Heading>
+      <Note>{t("Connect an EVE character to sync skills and import/export saved fits directly from the game.")}</Note>
+
+      <Heading>{t("Characters")}</Heading>
+      {!characters.length && <div style={{ fontSize: TYPE.label, color: C.textMid, padding: "6px 0" }}>{t("Not connected")}</div>}
+      {characters.map(c => {
+        const on = c.characterId === activeId;
+        return (
+          <div key={c.characterId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}88` }}>
+            <input type="radio" name="esi-active" checked={on} onChange={() => switchActive(c.characterId)} aria-label={t("Active character")} title={t("Active character")} style={{ accentColor: C.accent }} />
+            <img src={`https://images.evetech.net/characters/${c.characterId}/portrait?size=64`} width={32} height={32} alt="" style={{ borderRadius: 4, flex: "none" }}
+              onError={e => { e.target.style.visibility = "hidden"; }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: TYPE.label, color: on ? C.accent : C.text }}>{c.characterName}</div>
+              <div style={{ fontSize: TYPE.small, color: C.textMid }}>
+                {t({ one: "{n} scope granted", other: "{n} scopes granted" }, { n: c.scopes?.length ?? 0 })}
+                {synced?.id === c.characterId && <span style={{ color: C.success }}> · ✓ {synced.msg}</span>}
+              </div>
+            </div>
+            <button type="button" onClick={() => sync(c.characterId)} disabled={busy != null} style={{ ...button(false), opacity: busy != null && busy !== c.characterId ? 0.5 : 1 }}>
+              {busy === c.characterId ? t("Syncing…") : t("Sync skills")}</button>
+            <button type="button" onClick={() => remove(c.characterId)} style={danger()}>{t("Unlink")}</button>
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+        <button type="button" onClick={connect} style={button(!characters.length)}>{characters.length ? `+ ${t("Add character")}` : t("Connect with EVE SSO")}</button>
+        {waiting && <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t("Finish signing in in your browser; Axis picks it up when EVE sends you back.")}</span>}
+      </div>
+      {(error || loginError) && <div role="alert" style={{ marginTop: 10, fontSize: TYPE.label, color: C.danger, lineHeight: 1.45, wordBreak: "break-word" }}>{error || loginError}</div>}
+
+      <Heading>{t("Abyssal modules and market access")}</Heading>
+      <Note>{t('My Abyssals can read personal assets and item names with your permission. Choose which locations to import. It cannot move your items or read corporate assets.')}</Note>
+      <Note>{t('Imported rolls stay on this device and remain usable offline. Unlinking a character keeps its saved modules; forgetting them is a separate action. Library records and saved contracts are not included in fit backups.')}</Note>
+      <Note>{t('MutaMarket browsing needs no character login. Axis sends module types and filters, not your inventory. Public ESI lookups resolve contract locations; prices and availability can be delayed.')}</Note>
+      <Note>{t('Copy EVE contract links from the shopping list without logging in. Opening a contract in a running EVE client requires optional contract access.')}</Note>
+    </>
+  );
+}
+
 function AboutSection() {
   const [before, after] = t("Fitting calculations are validated against {pyfa}, and its environment-effect data is used with thanks. pyfa is licensed GPLv3.").split("{pyfa}");
   return (
@@ -288,8 +477,8 @@ export default function DeskSettings({ s, bd }) {
           {cur === "skills" && <SkillsSection s={s} />}
           {cur === "interface" && <InterfaceSection s={s} bd={bd} />}
           {cur === "market" && <MarketSection s={s} />}
-          {cur === "backup" && <BackupPanel />}
-          {cur === "esi" && <EsiSettingsPanel setSkills={s.setSkills} />}
+          {cur === "backup" && <BackupSection />}
+          {cur === "esi" && <EsiSection s={s} />}
           {cur === "about" && <AboutSection />}
         </div>
       </div>

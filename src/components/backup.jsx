@@ -39,7 +39,10 @@ const XML_CHUNK = 100;
 // Everything under the `pyfa-*` / `pyfa_*` keys is included, so it survives new settings being added
 // later without anyone remembering to update this list.
 
-function BackupPanel() {
+// The panel's state and every action, apart from how it is drawn: the phone's BackupPanel below and
+// the desktop's Settings > Backup (src/desktop/Settings.jsx) both draw from this one hook, so the
+// restore / merge / undo / pyfa-import rules exist once. Every bulk write still ends in a reload.
+function useBackup() {
   const [status, setStatus] = useState(null);       // {ok, msg}
   const [pending, setPending] = useState(null);     // parsed backup awaiting merge/replace choice
   const [pasted, setPasted] = useState("");
@@ -288,6 +291,14 @@ function BackupPanel() {
     "clear library": t("clear library"),
   }[l] ?? t("last change"));
 
+  return { status, setStatus, pending, setPending, pasted, setPasted, fileRef, xmlPending, setXmlPending, xmlBusy, xmlRef,
+           undo, busy, mine, download, copyJson, parseBackup, onFile, apply, onXmlFile, applyXml, clearLibrary, doUndo, undoLabel };
+}
+
+function BackupPanel() {
+  const { status, pending, setPending, pasted, setPasted, fileRef, xmlPending, setXmlPending, xmlBusy, xmlRef,
+          undo, busy, mine, download, copyJson, parseBackup, onFile, apply, onXmlFile, applyXml, clearLibrary, doUndo, undoLabel } = useBackup();
+
   const btn = (bg, border, color) => ({
     padding: "9px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
     background: bg, border: `1px solid ${border}`, color,
@@ -513,4 +524,4 @@ function BackupPanel() {
   );
 }
 
-export { BackupPanel };
+export { BackupPanel, useBackup, boldFill };

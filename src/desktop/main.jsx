@@ -9,6 +9,7 @@ import { initLocale } from '../lib/i18n.js'
 import { setMutaMarketFetch } from '../lib/mutamarket-client.js'
 import { setPriceFetch } from '../prices.js'
 import { IS_TAURI } from './os-window.js'
+import { initDesktopEsi } from './esi-desktop.js'
 
 // The desktop app's boot. Same order as src/main.jsx and for the same reasons (read there): the fit
 // library has to be in memory before the first render, migrations run with it injected, and the
@@ -40,6 +41,8 @@ const mount = () => createRoot(document.getElementById('root')).render(
   if (IS_TAURI) {
     try { const { fetch } = await import('@tauri-apps/plugin-http'); setMutaMarketFetch(fetch); setPriceFetch(fetch) } catch (e) { console.error('boot: http plugin unavailable', e) }
   }
+  // ESI login through the system browser and the eveauth-visviva:// link (esi-desktop.js).
+  try { await initDesktopEsi({ satellite: new URLSearchParams(window.location.search).has('satellite') }) } catch (e) { console.error('boot: ESI login setup failed', e) }
   await initLocale()
   mount()
 })()

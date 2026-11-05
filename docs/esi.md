@@ -17,6 +17,7 @@ answers over Capacitor's native networking. Nothing here is pending.
 | `src/lib/esi.js` | OAuth2+PKCE login, token storage/refresh, authenticated ESI GET/POST, skill-id → app-skill mapping. |
 | `src/lib/esi-fits.js` | ESI saved-fitting JSON ⇄ this app's slot model, both directions. |
 | `src/components/esi-ui.jsx` | Character login/switcher (Settings → ESI), Import-from-EVE and Export-to-EVE modals (hamburger menu). |
+| `src/desktop/esi-desktop.js` | The desktop (Tauri) login: the SAME `eveauth-visviva://auth-callback` as the phone, so nothing changed on the EVE application. Opens SSO in the system browser and exchanges the code through Tauri's HTTP plugin (`setEsiShell` in `esi.js`); the deep-link + single-instance plugins bring the callback back to the open window. |
 
 ## Why this needed no backend
 

@@ -16,7 +16,7 @@ import { t } from "../lib/i18n.js";
 // Friendlier text for the handful of failure modes the rest of this file needs to show inline.
 // A function, so its t() calls run at render and not at import — see the module-scope note in
 // lib/i18n.js. The fall-through returns ESI's own message, which arrives in English from CCP.
-function friendlyError(e) {
+export function friendlyError(e) {
   if (!ESI_CLIENT_ID) return t("ESI isn't configured yet — an application needs to be registered at developers.eveonline.com first (see src/esi-config.js).");
   if (e?.code === "ESI_REAUTH_REQUIRED") return t("Your EVE session expired — log in again.");
   if (e?.code === "ESI_NOT_LINKED") return t("That character isn't linked anymore.");
@@ -44,7 +44,7 @@ function CharacterPicker({ characters, activeId, onSwitch }) {
 
 // Reusable hook: tracks linked characters + active character, re-reading from esi.js's storage
 // whenever a login/logout happens in this component tree.
-function useEsiCharacters() {
+export function useEsiCharacters() {
   const [characters, setCharacters] = useState(() => esi.listCharacters());
   const [activeId, setActiveId] = useState(() => esi.getActiveCharacterId());
   const [loginError, setLoginError] = useState(() => esi.getLastLoginError());

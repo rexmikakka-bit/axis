@@ -117,15 +117,16 @@ Done:
   (`openExternal` in `os-window.js`), since the webview refuses `window.open`. ceve-market prices
   take the same route as MutaMarket (`setPriceFetch` in `prices.js`, `/ceve-api` proxy in dev); Fuzzwork
   sends CORS headers and needs neither.
+- **ESI login:** the phone's flow and the phone's registered callback, `eveauth-visviva://auth-callback`.
+  `desktop/esi-desktop.js` hands `lib/esi.js` the system browser and the HTTP plugin (`setEsiShell`);
+  Windows answers CCP's redirect by launching Axis with the link, `tauri-plugin-single-instance`
+  forwards it to the open window and `tauri-plugin-deep-link` delivers it (`src-tauri/src/lib.rs`,
+  which also re-registers the scheme to the running executable at startup). Only the main window
+  completes a login.
+- **Settings › Backup and ESI** are drawn in desktop controls over the phone's state and actions
+  (`useBackup` in `components/backup.jsx`, `useEsiCharacters` in `components/esi-ui.jsx`).
 
 Not done yet:
-- **Untested under Tauri:** pop-out. If Tauri doesn't honour `window.open`, switch it to
-  `@tauri-apps/api`'s `WebviewWindow`. BroadcastChannel should work across Tauri windows (one
-  origin, one WebView2 environment).
-- **ESI login:** the phone gets its callback through Capacitor's deep link
-  (`eveauth-visviva://`). Desktop needs Tauri's deep-link plugin for the same scheme, or a loopback
-  redirect. ESI's own API calls are fine: ESI sends CORS headers. (ceve-market prices are done, see
-  Tauri above.)
 - **Desktop-shaped layouts from the mockup:**
   - the Fitting column table with resizable columns;
   - the Market/Ships toggle in the Browser (today the Browser is the ship library, and modules are
