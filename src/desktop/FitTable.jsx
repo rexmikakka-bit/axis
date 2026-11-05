@@ -3,12 +3,13 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES, tidByName } from "../calc.js";
-import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser } from "../lib/core.js";
+import { metaOf } from "../lib/meta.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { moduleTarget, chargeTarget } from "./inspect.js";
 import { useItems, useItemDrop, DropHint } from "./items-context.jsx";
-import { currentDrag, draggedItem, isItemDrag, itemKind } from "./items.js";
+import { currentDrag, draggedItem, isItemDrag, itemKind, chargePatch } from "./items.js";
 import { resourceColor } from "../components/ui.jsx";
 import { getCachedPrices } from "../prices.js";
 
@@ -37,6 +38,29 @@ const isk = (n) => n == null ? "—" : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n
 const k = (v) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v));
 
 // The per-module figures the phone's row chips show, as the Range and Info cells.
+// pyfa's Charge menu (right-click a module): every round the module takes, by family — the phone
+// picker's own grouping (groupChargesForBrowser) — turret ammo LONG range at the top to SHORT at the
+// bottom, and each family's grades in a flyout from less damage to more (T1, then the faction and navy
+// versions). A family of one loads straight from the list. The loaded round is marked.
+const chargeDamage = (tid) => { const a = TYPES[tid]?.attrs ?? TYPES[String(tid)]?.attrs ?? {};
+  return (a.emDamage ?? 0) + (a.thermalDamage ?? 0) + (a.kineticDamage ?? 0) + (a.explosiveDamage ?? 0); };
+export function chargeMenuItems(mod, loaded, onLoad) {
+  const groups = groupChargesForBrowser(getCompatibleCharges(mod));
+  if (!groups.length) return [];
+  const turret = groups.some(g => g.range != null);
+  // Longest reach first; families with no range multiplier (missiles, by damage type) keep their order.
+  const ordered = turret ? [...groups].sort((a, b) => (b.range ?? -Infinity) - (a.range ?? -Infinity) || a.family.localeCompare(b.family)) : groups;
+  const item = (c) => ({ label: c.name, icon: eveIcon(c.typeID, 32), checked: c.name === loaded, onSelect: () => onLoad(c) });
+  const family = (g) => {
+    const grades = [...g.items].sort((a, b) => chargeDamage(a.typeID) - chargeDamage(b.typeID) || a.name.localeCompare(b.name));
+    if (grades.length === 1) return item(grades[0]);
+    const face = grades.find(v => metaOf(v.typeID, "T1") === "T1") ?? grades[0];
+    return { label: face.name, icon: eveIcon(face.typeID, 32), checked: grades.some(v => v.name === loaded),
+             submenu: [{ heading: t("Less damage") }, ...grades.map(item), { heading: t("More damage") }] };
+  };
+  return [turret && { heading: t("Long range") }, ...ordered.map(family), turret && { heading: t("Short range") }].filter(Boolean);
+}
+
 function rangeOf(e, row) {
   if (!e) return null;
   const opt = e.optimal, fal = e.falloff;
@@ -177,6 +201,12 @@ export function FitTable({ api }) {
       if ((e.key === "Delete" || e.key === "Backspace") && sel.size) { e.preventDefault(); removeSelected(); }
       if (e.key === "Escape") setSel(new Set());
     };
+    const bareAmmo = (a) => (a ? a.replace(/\s*\(\d+\)$/, "") : null);
+    // A round into this row's module, or every module of a grouped row (the phone charge tab's count rule).
+    const loadInto = (secKey, row, c) => { const ids = new Set(row.groupIds ?? [row.id]);
+      setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ...chargePatch(m, c) } : m) })); };
+    const unloadFrom = (secKey, row) => { const ids = new Set(row.groupIds ?? [row.id]);
+      setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); };
     const menuItems = (secKey, row) => {
       if (row.type === "empty") return [{ label: t("Add module…"), onSelect: () => openEmpty(secKey, row.id) }];
       if (secKey === "subsystems") return [{ label: t("Change subsystem…"), onSelect: () => openSubsystem(row) }];
@@ -191,10 +221,13 @@ export function FitTable({ api }) {
         ...ORDER.filter(st => states.includes(st)).map(st => ({ label: STATE_LABELS[st](), checked: (row.state ?? "online") === st,
           onSelect: () => setRowState(secKey, row, st), hint: st === "overheated" ? t("right-click dot") : st === "offline" ? t("ctrl-click dot") : undefined })),
         { divider: true },
-        takesCharges && { label: row.ammo ? t("Change charge…") : t("Load charge…"), onSelect: () => inspectRow(secKey, row, "charge") },
+        takesCharges && { label: t("Charge"), submenu: [
+          ...chargeMenuItems(row, bareAmmo(row.ammo), c => loadInto(secKey, row, c)),
+          { divider: true },
+          { label: t("Compare by DPS…"), onSelect: () => inspectRow(secKey, row, "charge") },
+          row.ammo && { label: t("Unload"), danger: true, onSelect: () => unloadFrom(secKey, row) },
+        ].filter(Boolean) },
         row.ammo && { label: t("Show charge info…"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, secKey, row.id), "info") },
-        row.ammo && { label: t("Unload charge"), onSelect: () => { const ids = new Set(row.groupIds ?? [row.id]);
-          setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); } },
         takesCharges && { divider: true },
         (TYPES[row.typeID] ?? TYPES[String(row.typeID)])?.gn === "Armor Resistance Shift Hardener" && { label: t("Adaptation…"), onSelect: () => inspectRow(secKey, row, "rah") },
         { label: t("Show info…"), onSelect: () => inspectRow(secKey, row, "info") },
@@ -266,8 +299,9 @@ export function FitTable({ api }) {
         </div>
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.secKey, menu.row)} onClose={() => setMenu(null)} />}
         {chargeMenu && <ContextMenu x={chargeMenu.x} y={chargeMenu.y} onClose={() => setChargeMenu(null)} items={[
-          { heading: chargeMenu.row.ammo?.replace(/\s*\(\d+\)$/, "") },
-          { label: t("Change charge…"), onSelect: () => inspectRow(chargeMenu.secKey, chargeMenu.row, "charge") },
+          ...chargeMenuItems(chargeMenu.row, bareAmmo(chargeMenu.row.ammo), c => loadInto(chargeMenu.secKey, chargeMenu.row, c)),
+          { divider: true },
+          { label: t("Compare by DPS…"), onSelect: () => inspectRow(chargeMenu.secKey, chargeMenu.row, "charge") },
           { label: t("Show charge info…"), hint: t("double-click"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, chargeMenu.secKey, chargeMenu.row.id), "info") },
           { divider: true },
           { label: chargeMenu.row.count > 1 ? t("Unload charge from all {n}", { n: chargeMenu.row.count }) : t("Unload charge"), danger: true, onSelect: () => chargeMenu.unload() },
