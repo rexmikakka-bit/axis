@@ -74,11 +74,20 @@ const PRESET_GEOMETRY = {
     fitting: [8, 8, 960, 600, true], projected: [8, 616, 476, 368, true], firepower: [492, 616, 476, 368, true],
     ...column(STATS, 976, 456), ...CLOSED_BY_DEFAULT,
   },
+  // Graph-centric: the Graphs window takes most of the screen, with the fit and its firepower beside
+  // it so a change to either redraws the curves in view. Everything else opens from the Windows menu.
+  graphs: {
+    ...column(STATS, 984, 448), ...CLOSED_BY_DEFAULT,
+    resources: [984, 8, 448, 184, false], defense: [984, 200, 448, 368, false], capacitor: [984, 576, 448, 152, false], targeting: [984, 736, 448, 248, false],
+    browser: [8, 8, 240, 560, false], cargo: [8, 576, 240, 408, false], projected: [256, 616, 356, 368, false],
+    fitting: [8, 8, 560, 584, true], firepower: [8, 600, 560, 384, true], graphs: [576, 8, 856, 976, true],
+  },
 };
 export const PRESETS = [
   { id: 'default', title: 'Default' },
   { id: 'mirrored', title: 'Mirrored' },
   { id: 'focus', title: 'Focus' },
+  { id: 'graphs', title: 'Graphs' },
 ];
 
 /** A fresh layout from a built-in preset, re-stacked in list order. */

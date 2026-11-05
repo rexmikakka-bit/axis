@@ -8862,6 +8862,9 @@ Nanofiber Internal Structure II
   check('desk', 'Mirrored: browser on the right', D.presetLayout('mirrored').browser.x, 1192, 0);
   check('desk', 'Focus: fitting takes the browser\'s room', D.presetLayout('focus').fitting.w, 960, 0);
   check('desk', 'Focus: browser closed', D.presetLayout('focus').browser.open ? 1 : 0, 0, 0);
+  const gp = D.presetLayout('graphs');
+  check('desk', 'Graphs preset: the graph, the fit and its firepower', D.WINDOW_IDS.filter(a => gp[a].open).sort().join(), 'firepower,fitting,graphs');
+  check('desk', 'Graphs preset: the graph takes most of the width', gp.graphs.w >= 800 ? 1 : 0, 1, 0);
   const on = { grid: true, windows: true };
   // Cargo nudged 5 right / 3 down: grid rounds to 16,576, then its left edge is 8 px from the
   // Browser's left edge above it (8) and lines back up with it; its top already sits one gutter
