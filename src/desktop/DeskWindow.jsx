@@ -40,9 +40,10 @@ export function TitleButton({ label, onClick, children }) {
   );
 }
 
-// A window's tab, for a window holding several (layout.js tab groups). Click shows it; drag it clear
-// of the title bar to make it a window of its own (or onto another window's title bar to move it
-// there); right-click for the same as a menu; × closes just that one.
+// A window's tab, for a window holding several (layout.js tab groups). Click shows it; drag it along
+// the strip to reorder; drag it clear of the title bar to make it a window of its own (or onto another
+// window's title bar to move it there); right-click for the same as a menu; × closes just that one.
+// Under Lock layout a tab still reorders — nothing moves or resizes — but it cannot be pulled out.
 const TEAR_PX = 8;
 function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide, onSlideEnd }) {
   const press = useRef(null);
@@ -54,7 +55,7 @@ function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide,
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* fine */ }
   };
   const move = (e) => {
-    const p = press.current; if (!p || locked) return;
+    const p = press.current; if (!p) return;
     if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) >= TEAR_PX) { p.moved = true; setTearing(true); }
     if (p.moved) onSlide?.(id, e.clientX, e.clientY);
   };
@@ -66,10 +67,10 @@ function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide,
     const bar = e.currentTarget.closest("[data-titlebar]")?.getBoundingClientRect();
     if (bar && e.clientX >= bar.left && e.clientX <= bar.right && e.clientY >= bar.top && e.clientY <= bar.bottom) { onSlideEnd?.(id, true); return; }
     onSlideEnd?.(id, false);
-    onOut(id, e.clientX, e.clientY);
+    if (!locked) onOut(id, e.clientX, e.clientY);
   };
   return (
-    <div role="tab" data-tab data-tabid={id} aria-selected={on} title={locked ? title : `${title} · ${t("drag out to separate")}`}
+    <div role="tab" data-tab data-tabid={id} aria-selected={on} title={locked ? `${title} · ${t("drag along the strip to reorder")}` : `${title} · ${t("drag to reorder, or out to separate")}`}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setTearing(false); }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onMenu(e, id); }}
       style={{ display: "flex", alignItems: "center", gap: 4, height: TITLE_H - 6, padding: "0 4px 0 9px", borderRadius: 5, minWidth: 0, flex: "0 1 auto",
