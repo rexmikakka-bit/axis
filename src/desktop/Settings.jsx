@@ -65,7 +65,7 @@ function Choice({ on, onClick, children, color = C.accent, lang, title }) {
 const Choices = ({ children }) => <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{children}</div>;
 const button = (primary) => ({ height: 28, padding: "0 12px", borderRadius: 6, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
   background: primary ? C.accent : C.surfaceAlt, border: `1px solid ${primary ? C.accent : C.borderStrong}`, color: primary ? C.bg : C.text });
-const input = { height: 28, boxSizing: "border-box", padding: "0 10px", borderRadius: 6, fontSize: 13, background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" };
+const input = () => ({ height: 28, boxSizing: "border-box", padding: "0 10px", borderRadius: 6, fontSize: 13, background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" });
 
 // ── Sections ───────────────────────────────────────────────────────────────────────────────────
 function InterfaceSection({ s, bd }) {
@@ -199,7 +199,7 @@ function SkillsSection({ s }) {
         <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: `1px solid ${C.border}88` }}>
           {renaming?.id === p.id
             ? <input autoFocus value={renaming.text} onChange={e => setRenaming(r => ({ ...r, text: e.target.value }))} onBlur={renameProfile}
-                onKeyDown={e => { if (e.key === "Enter") renameProfile(); if (e.key === "Escape") setRenaming(null); }} style={{ ...input, flex: 1 }} aria-label={t("Profile name...")} />
+                onKeyDown={e => { if (e.key === "Enter") renameProfile(); if (e.key === "Escape") setRenaming(null); }} style={{ ...input(), flex: 1 }} aria-label={t("Profile name...")} />
             : <span onDoubleClick={() => setRenaming({ id: p.id, text: p.name })} style={{ flex: 1, minWidth: 0, fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>}
           <span style={{ fontSize: TYPE.small, color: C.textMid, flex: "none" }}>{t({ one: "{n} trained skill", other: "{n} trained skills" }, { n: trainedIn(p.skills) })}</span>
           <button type="button" style={button(false)} onClick={() => setSkills({ ...p.skills })}>{t("Load")}</button>
@@ -212,7 +212,7 @@ function SkillsSection({ s }) {
           ? <button type="button" style={button(false)} onClick={() => setNaming("")}>{t("Save As Skill Profile…")}</button>
           : <>
               <input autoFocus value={naming} onChange={e => setNaming(e.target.value)} placeholder={t("Profile name...")} aria-label={t("Profile name...")}
-                onKeyDown={e => { if (e.key === "Enter") saveProfile(); if (e.key === "Escape") setNaming(null); }} style={{ ...input, width: 220 }} />
+                onKeyDown={e => { if (e.key === "Enter") saveProfile(); if (e.key === "Escape") setNaming(null); }} style={{ ...input(), width: 220 }} />
               <button type="button" style={button(true)} onClick={saveProfile}>{t("Save")}</button>
               <button type="button" style={button(false)} onClick={() => setNaming(null)}>{t("Cancel")}</button>
             </>}
@@ -220,7 +220,7 @@ function SkillsSection({ s }) {
       <Note>{t("A profile is a copy of the sheet: loading one replaces the sheet, and later edits do not write back.")}</Note>
 
       <Heading>{t("Skills")}</Heading>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("Search skills…")} aria-label={t("Search skills…")} style={{ ...input, width: "100%", marginBottom: 8 }} />
+      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("Search skills…")} aria-label={t("Search skills…")} style={{ ...input(), width: "100%", marginBottom: 8 }} />
       <div style={{ border: `1px solid ${C.border}`, borderRadius: 6, overflow: "hidden" }}>
         {groups.map(g => {
           const isOpen = !!q || !!open[g.label];

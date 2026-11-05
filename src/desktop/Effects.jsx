@@ -18,15 +18,17 @@ import { useItemDrop, useFitDrop, DropHint } from "./items-context.jsx";
 // tabs do (boosters, projFits, cmdFits, slots.environment) and reuses the phone's pickers, so a
 // change made here is the same change the phone would make.
 
-const rowStyle = { display: "flex", alignItems: "center", gap: 10, minHeight: 32, padding: "4px 12px", borderBottom: `1px solid ${C.border}99` };
-const btn = { height: 26, padding: "0 12px", borderRadius: 6, fontSize: 12.5, cursor: "pointer", background: C.surfaceAlt, border: `1px solid ${C.borderStrong}`, color: C.text };
-const smallBtn = { height: 22, padding: "0 8px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid };
+// Functions, not objects: a style built at module scope copies the theme's colours once, at load,
+// and kept them after a theme switch (the + Fit / + Booster buttons). C reads the current palette.
+const rowStyle = () => ({ display: "flex", alignItems: "center", gap: 10, minHeight: 32, padding: "4px 12px", borderBottom: `1px solid ${C.border}99` });
+const btn = () => ({ height: 26, padding: "0 12px", borderRadius: 6, fontSize: 12.5, cursor: "pointer", background: C.surfaceAlt, border: `1px solid ${C.borderStrong}`, color: C.text });
+const smallBtn = () => ({ height: 22, padding: "0 8px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid });
 
 function Header({ children, onAdd, addLabel }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
       <span style={{ fontSize: TYPE.small, color: C.textMid, flex: 1 }}>{children}</span>
-      {onAdd && <button type="button" style={btn} onClick={onAdd}>+ {addLabel}</button>}
+      {onAdd && <button type="button" style={btn()} onClick={onAdd}>+ {addLabel}</button>}
     </div>
   );
 }
@@ -81,7 +83,7 @@ export function BoostersPanel({ s }) {
           });
           return (
             <div key={b.id} {...rp} style={{ ...rp.style, borderBottom: `1px solid ${C.border}99`, opacity: b.active ? 1 : 0.6 }}>
-              <div style={{ ...rowStyle, borderBottom: "none" }}>
+              <div style={{ ...rowStyle(), borderBottom: "none" }}>
                 <Check on={!!b.active} onClick={() => toggle(b.id)} title={t("Active")} />
                 <BoosterIcon name={b.name} size={22} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -178,14 +180,14 @@ export function ProjectedPanel({ s, jamTarget }) {
           const lines = src ? projectedLines(projectedFitEffects(f.ship, src, s.fitsDB, s.sourceSkills), range, s.projectedEffects?.assist, jamTarget) : [];
           return (
             <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
-              <div style={{ ...rowStyle, borderBottom: "none" }}>
+              <div style={{ ...rowStyle(), borderBottom: "none" }}>
                 <Check on={on} onClick={() => update(i, { active: !on })} title={on ? t("Applied to this fit") : t("Ignored")} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: TYPE.label, color: C.text }}>{f.ship}</span>
                   <span style={{ fontSize: TYPE.label, color: C.textMid }}> · {f.fitName}</span>
                   {!src && <span style={{ fontSize: TYPE.small, color: C.warning }}> · {t("fit not found")}</span>}
                 </div>
-                {src && <button type="button" style={smallBtn} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
+                {src && <button type="button" style={smallBtn()} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
                 <Remove onClick={() => s.setProjFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px 4px 38px" }}>
@@ -235,13 +237,13 @@ export function CommandPanel({ s }) {
           const on = f.active !== false;
           return (
             <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
-              <div style={{ ...rowStyle, borderBottom: "none" }}>
+              <div style={{ ...rowStyle(), borderBottom: "none" }}>
                 <Check on={on} onClick={() => s.setCmdFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, active: !on } : p))} title={on ? t("Applied to this fit") : t("Ignored")} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: TYPE.label, color: C.text }}>{f.ship}</span>
                   <span style={{ fontSize: TYPE.label, color: C.textMid }}> · {f.fitName}</span>
                 </div>
-                {src && <button type="button" style={smallBtn} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
+                {src && <button type="button" style={smallBtn()} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
                 <Remove onClick={() => s.setCmdFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
               </div>
               <div style={{ padding: "0 12px 6px 38px" }}>
@@ -272,12 +274,12 @@ export function EnvironmentPanel({ s }) {
   return (
     <Shell>
       <Header>{t("The system this fit is sitting in. Wormhole effects and metaliminal storms change resists, reps, damage, speed and signature for everything in the system.")}</Header>
-      <div style={{ ...rowStyle, minHeight: 40 }}>
+      <div style={{ ...rowStyle(), minHeight: 40 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: TYPE.small, color: C.textMid }}>{t("Current system")}</div>
           <div style={{ fontSize: TYPE.value, color: env ? C.accent : C.textMid }}>{env ?? t("Normal space (no effects)")}</div>
         </div>
-        <button type="button" style={btn} onClick={() => setPicker(true)}>{t("Change…")}</button>
+        <button type="button" style={btn()} onClick={() => setPicker(true)}>{t("Change…")}</button>
         {env && <Remove onClick={() => setEnv(null)} label={t("Clear")} />}
       </div>
       {picker && <EnvironmentPickerSheet current={env} onSelect={n => { setEnv(n); setPicker(false); }} onClose={() => setPicker(false)} />}

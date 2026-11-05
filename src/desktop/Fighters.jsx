@@ -20,8 +20,10 @@ import { useItemDrop, DropHint } from "./items-context.jsx";
 // slot of its own class, else it waits in the bay, which is legal; the class limits count LAUNCHED
 // squadrons, as the tube count beside them does. The numbers are calcFitStats' fighterDetails.
 
-const CLASSES = [["Light", "light", C.rig], ["Heavy", "heavy", C.warning], ["Support", "support", C.accent]];
-const KIND_COLOR = { damage: C.high, speed: C.accent, tackle: C.warning };
+// Theme colours by NAME, resolved where they are drawn: a module-scope copy would keep the palette
+// the app started with after a theme switch.
+const CLASSES = [["Light", "light", "rig"], ["Heavy", "heavy", "warning"], ["Support", "support", "accent"]];
+const KIND_COLOR = { damage: "high", speed: "accent", tackle: "warning" };
 const attrsOf = fighterAttrs;
 const fmtK = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n ?? 0));
 
@@ -59,7 +61,7 @@ export default function FightersPanel({ s, stats, shipFighter }) {
         <UsageBar label={t("Fighter bay")} used={bayUsed} total={shipFighter.cap} unit="m³" fmt={fmtK} />
         <UsageBar label={t("Tubes")} used={tubesUsed} total={shipFighter.tubes} fmt={int} color={C.high} />
         {CLASSES.filter(([, k]) => (shipFighter[k] ?? 0) > 0).map(([cls, k, col]) => (
-          <UsageBar key={k} label={t(cls)} used={launched[cls]} total={shipFighter[k]} fmt={int} color={col} labelColor={col} />
+          <UsageBar key={k} label={t(cls)} used={launched[cls]} total={shipFighter[k]} fmt={int} color={C[col]} labelColor={C[col]} />
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", padding: "6px 12px", flex: "none", fontSize: TYPE.section,
@@ -73,7 +75,7 @@ export default function FightersPanel({ s, stats, shipFighter }) {
         {!fighters.length && <div style={{ padding: 12, fontSize: TYPE.label, color: C.textMid }}>{t("No fighter squadrons. Use + to add some.")}</div>}
         {fighters.map((f, i) => {
           const d = info[i] ?? {}, on = f.active !== false, tid = f.typeID ?? tidByName(f.name), cls = classOf(f, i);
-          const col = CLASSES.find(([c]) => c === cls)?.[2] ?? C.textMid;
+          const col = C[CLASSES.find(([c]) => c === cls)?.[2]] ?? C.textMid;
           const rp = rs.rowProps(f.id, {
             target: tid ? typeTarget(tid) : undefined,
             onOpen: tid ? () => insp.inspect(typeTarget(tid), "info") : undefined,
@@ -112,7 +114,7 @@ export default function FightersPanel({ s, stats, shipFighter }) {
               {(d.abilities ?? []).length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingLeft: 90, marginTop: 2 }}>
                   {d.abilities.map(ab => {
-                    const c = KIND_COLOR[ab.kind] ?? C.textMid;
+                    const c = C[KIND_COLOR[ab.kind]] ?? C.textMid;
                     return (
                       <button key={ab.key} type="button" aria-pressed={!!ab.active} onClick={e => { e.stopPropagation(); toggleAbility(f.id, ab.key, ab.active); }}
                         style={{ height: 22, padding: "0 9px", borderRadius: 11, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap",

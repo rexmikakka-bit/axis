@@ -242,7 +242,7 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) 
 
 // ── Controls ─────────────────────────────────────────────────────────────────────────────────
 const Label = ({ children }) => <div style={{ fontSize: TYPE.section, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid, margin: "12px 0 5px" }}>{children}</div>;
-const selectStyle = { width: "100%", height: 28, fontSize: 12.5, background: C.bg, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 5, padding: "0 6px" };
+const selectStyle = () => ({ width: "100%", height: 28, fontSize: 12.5, background: C.bg, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 5, padding: "0 6px" });
 function Slider({ label, value, onChange, min = 0, max = 100, unit = "%" }) {
   return (
     <label style={{ display: "grid", gridTemplateColumns: "82px minmax(0,1fr) 50px", alignItems: "center", gap: 6, fontSize: 12.5, color: C.textMid, minHeight: 26 }}>
@@ -258,9 +258,9 @@ const ListRow = ({ swatch, label, onRemove, children }) => (
     {onRemove && <button type="button" onClick={onRemove} aria-label={t("Remove")} style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
   </div>
 );
-const addBtn = { height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid };
-const fieldStyle = { width: 64, height: 24, boxSizing: "border-box", padding: "0 6px", borderRadius: 5, fontSize: 12.5, textAlign: "right",
-                     fontVariantNumeric: "tabular-nums", background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" };
+const addBtn = () => ({ height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid });
+const fieldStyle = () => ({ width: 64, height: 24, boxSizing: "border-box", padding: "0 6px", borderRadius: 5, fontSize: 12.5, textAlign: "right",
+                     fontVariantNumeric: "tabular-nums", background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" });
 
 // The phone's flight-vector wheel (GraphTab's VectorCompass, same drag, same double-click to park,
 // same frame: east is along the line between the ships), drawn larger and with the desktop's readout.
@@ -286,7 +286,7 @@ function NumField({ value, onChange, blank, anchor = 0, title, unit }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
       <ScrubField value={num(value) ? value : null} display={num(value) ? Math.round(value * 100) / 100 : ""} placeholder={blank} anchor={anchor} title={title}
-        onType={e => { const v = e.target.value; onChange(v === "" ? null : Math.max(0, Number(v))); }} onScrub={n => onChange(n)} style={fieldStyle} />
+        onType={e => { const v = e.target.value; onChange(v === "" ? null : Math.max(0, Number(v))); }} onScrub={n => onChange(n)} style={fieldStyle()} />
       {unit && <span style={{ fontSize: 11.5, color: C.textMid }}>{unit}</span>}
     </span>
   );
@@ -399,19 +399,19 @@ export default function GraphsPanel({ s }) {
     <div ref={rootRef} style={{ height: "100%", display: "flex", minHeight: 0 }}>
       {showPanel && <div style={{ width: rootW >= 1200 ? 290 : 250, flex: "none", overflowY: "auto", padding: "4px 12px 12px", borderRight: `1px solid ${C.border}` }}>
         <Label>{t("Graph")}</Label>
-        <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle} aria-label={t("Graph")}>
+        <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle()} aria-label={t("Graph")}>
           {GRAPH_TYPES.map(g => <option key={g.key} value={g.key}>{g.label()}</option>)}
         </select>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 }}>
-          <select value={y} onChange={e => setY(e.target.value)} style={selectStyle} aria-label={t("Y axis")}>{yAxes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
-          <select value={x} onChange={e => setX(e.target.value)} style={selectStyle} aria-label={t("X axis")}>{xAxes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
+          <select value={y} onChange={e => setY(e.target.value)} style={selectStyle()} aria-label={t("Y axis")}>{yAxes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
+          <select value={x} onChange={e => setX(e.target.value)} style={selectStyle()} aria-label={t("X axis")}>{xAxes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
         </div>
 
         <Label>{t("Fits")}</Label>
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
           onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
         {!srcList.length && <div style={{ fontSize: 12.5, color: C.textMid }}>{t("Open a fit, or add one.")}</div>}
-        <button type="button" style={{ ...addBtn, marginTop: 4 }} onClick={() => setPicker("source")}>+ {t("Add fit")}</button>
+        <button type="button" style={{ ...addBtn(), marginTop: 4 }} onClick={() => setPicker("source")}>+ {t("Add fit")}</button>
 
         {hasTargets && <>
           <Label>{t("Targets")}</Label>
@@ -422,10 +422,10 @@ export default function GraphsPanel({ s }) {
               <ListRow swatch={dashSwatch(j)} label={tg.kind === "fit" ? `${tg.ship} · ${tg.fitName}` : tg.kind === "custom" ? t("Custom") : P?.label() ?? tg.profile}
                 onRemove={targets.length > 1 ? () => setTargets(l => l.filter((_, k) => k !== j)) : undefined}>
                 {P?.mwdSig != null && <button type="button" aria-pressed={!!tg.mwd} onClick={() => setTarget(j, { mwd: !tg.mwd })}
-                  style={{ ...addBtn, height: 20, padding: "0 6px", color: tg.mwd ? C.accent : C.textMid, borderColor: tg.mwd ? C.accent : C.borderStrong }}>MWD</button>}
+                  style={{ ...addBtn(), height: 20, padding: "0 6px", color: tg.mwd ? C.accent : C.textMid, borderColor: tg.mwd ? C.accent : C.borderStrong }}>MWD</button>}
                 {P && <button type="button" title={t("Edit this target's signature and speed")} onClick={() => { const p = profileTarget(tg.profile, !!tg.mwd);
                     setTarget(j, { kind: "custom", sig: p.sig < IDEAL_SIG ? p.sig : null, vel: p.vel, profile: undefined, mwd: undefined }); }}
-                  style={{ ...addBtn, height: 20, padding: "0 6px" }}>{t("Edit")}</button>}
+                  style={{ ...addBtn(), height: 20, padding: "0 6px" }}>{t("Edit")}</button>}
               </ListRow>
               {tg.kind === "custom" && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", padding: "2px 0 6px 25px", fontSize: 12, color: C.textMid }}>
@@ -439,10 +439,10 @@ export default function GraphsPanel({ s }) {
             );
           })}
           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            <Menu label={`+ ${t("Profile")}`} align="left" buttonStyle={{ ...addBtn }} items={Object.keys(TARGET_PROFILES).map(k => ({
+            <Menu label={`+ ${t("Profile")}`} align="left" buttonStyle={{ ...addBtn() }} items={Object.keys(TARGET_PROFILES).map(k => ({
               label: TARGET_PROFILES[k].label(), onSelect: () => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }]) })).concat([
               { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
-            <button type="button" style={addBtn} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
+            <button type="button" style={addBtn()} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
           </div>
         </>}
 
@@ -464,7 +464,7 @@ export default function GraphsPanel({ s }) {
           <div style={{ display: "flex", gap: 4 }}>
             {[["t1", "T1"], ["navy", t("Navy")], ["all", t("All")]].map(([k, l]) => (
               <button key={k} type="button" aria-pressed={meta === k} onClick={() => setMeta(k)}
-                style={{ ...addBtn, flex: 1, color: meta === k ? C.accent : C.textMid, borderColor: meta === k ? C.accent : C.borderStrong, background: meta === k ? C.accentLight : "transparent" }}>{l}</button>
+                style={{ ...addBtn(), flex: 1, color: meta === k ? C.accent : C.textMid, borderColor: meta === k ? C.accent : C.borderStrong, background: meta === k ? C.accentLight : "transparent" }}>{l}</button>
             ))}
           </div>
         </>}
@@ -490,13 +490,13 @@ export default function GraphsPanel({ s }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, padding: "0 4px" }}>
           <button type="button" aria-pressed={showPanel} onClick={() => setPanelMode(showPanel ? "hidden" : "shown")}
             title={showPanel ? t("Hide the controls (compact graph)") : t("Show the controls")}
-            style={{ ...addBtn, height: 22, color: showPanel ? C.textMid : C.accent, borderColor: showPanel ? C.borderStrong : C.accent }}>
+            style={{ ...addBtn(), height: 22, color: showPanel ? C.textMid : C.accent, borderColor: showPanel ? C.borderStrong : C.accent }}>
             {showPanel ? "◧ " : "◨ "}{t("Controls")}
           </button>
           {!showPanel && <span style={{ fontSize: 12, color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {GRAPH_TYPES.find(g => g.key === cat)?.label()} · {yLabel}</span>}
           {panelMode !== "auto" && <button type="button" onClick={() => setPanelMode("auto")} title={t("Fold the controls away automatically when the window is narrow")}
-            style={{ ...addBtn, height: 22, padding: "0 6px", fontSize: 11.5 }}>{t("Auto")}</button>}
+            style={{ ...addBtn(), height: 22, padding: "0 6px", fontSize: 11.5 }}>{t("Auto")}</button>}
           <span style={{ flex: 1 }} />
           {busy && <span style={{ fontSize: 12.5, color: C.textMid }}>{t("Comparing ammo…")}</span>}
         </div>
