@@ -153,7 +153,7 @@ export function FitTable({ api }) {
                 {/* Rack header: one colour for every rack (the handoff's rule), with its sums. */}
                 <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 22, padding: "0 12px",
                               background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.textMid }}>
-                  <span style={{ gridColumn: "1 / 4", fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase" }}>
+                  <span style={{ gridColumn: "1 / 4", fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden" }}>
                     {sec.label} <span style={{ fontWeight: 500 }}>{fitted.length} / {total}</span>
                   </span>
                   {sec.key === "rigs"
