@@ -6,8 +6,8 @@ import { eveIcon } from "../lib/icons.js";
 import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS, MT_ALL_ITEMS,
          generateEmptySlots, lookupShip } from "../lib/core.js";
 import marketTreeData from "../data/market-tree.json";
-import { nameMatchesQuery, searchScore } from "../lib/jargon.js";
-import { metaOf, META_COLORS } from "../lib/meta.js";
+import { jargonSearch } from "../lib/jargon.js";
+import { metaOf, META_COLORS, compareForBrowser } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
 import { getCachedPrices } from "../prices.js";
@@ -166,10 +166,13 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
 
   const find = (nodes, id) => { for (const n of nodes) { if (n.id === id) return n; const f = find(n.children ?? [], id); if (f) return f; } return null; };
   const q = search.trim().toLowerCase();
+  // Ordered as on the phone (lib/meta.js compareForBrowser): T2 first, then T1, faction, deadspace,
+  // officer, each by meta level. A rack's tree is already built in that order (with its ancillary-first
+  // rule); the full market tree is stored A–Z, so its lists are sorted here. A search is the phone's
+  // own (jargon.js jargonSearch): blocked by module group, the best match first, meta order inside.
   const items = q
-    ? (rack ? allMods(tree).filter(m => m.name.toLowerCase().includes(q))
-            : allItems().filter(m => nameMatchesQuery(m.name, q)).sort((a, b) => searchScore(b.name, q) - searchScore(a.name, q) || a.name.localeCompare(b.name))).slice(0, 200)
-    : (selected ? find(tree, selected)?.mods ?? [] : []);
+    ? (jargonSearch(q, rack ? allMods(tree) : allItems()) ?? []).slice(0, 200)
+    : (selected ? (rack ? find(tree, selected)?.mods ?? [] : [...(find(tree, selected)?.mods ?? [])].sort(compareForBrowser)) : []);
 
   const fit = (mod) => {
     if (!ship) return;

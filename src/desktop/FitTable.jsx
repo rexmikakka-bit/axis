@@ -223,8 +223,7 @@ export function FitTable({ api }) {
         { divider: true },
         takesCharges && { label: t("Charge"), submenu: [
           ...chargeMenuItems(row, bareAmmo(row.ammo), c => loadInto(secKey, row, c)),
-          { divider: true },
-          { label: t("Compare by DPS…"), onSelect: () => inspectRow(secKey, row, "charge") },
+          row.ammo && { divider: true },
           row.ammo && { label: t("Unload"), danger: true, onSelect: () => unloadFrom(secKey, row) },
         ].filter(Boolean) },
         row.ammo && { label: t("Show charge info…"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, secKey, row.id), "info") },
@@ -301,7 +300,6 @@ export function FitTable({ api }) {
         {chargeMenu && <ContextMenu x={chargeMenu.x} y={chargeMenu.y} onClose={() => setChargeMenu(null)} items={[
           ...chargeMenuItems(chargeMenu.row, bareAmmo(chargeMenu.row.ammo), c => loadInto(chargeMenu.secKey, chargeMenu.row, c)),
           { divider: true },
-          { label: t("Compare by DPS…"), onSelect: () => inspectRow(chargeMenu.secKey, chargeMenu.row, "charge") },
           { label: t("Show charge info…"), hint: t("double-click"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, chargeMenu.secKey, chargeMenu.row.id), "info") },
           { divider: true },
           { label: chargeMenu.row.count > 1 ? t("Unload charge from all {n}", { n: chargeMenu.row.count }) : t("Unload charge"), danger: true, onSelect: () => chargeMenu.unload() },
