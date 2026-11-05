@@ -21,11 +21,11 @@ import { Empty, TYPE } from "./kit.jsx";
 // lib/fit-ops.js, the rules the phone's Fitting tab uses, so a window works with the Fitting window
 // closed, popped out, or showing a different fit.
 //
-// The State, Charge and Info tabs host the phone's own ModuleMenu tab bodies (`bare`, controlled
+// The Adaptation, Charge and Info tabs host the phone's own ModuleMenu tab bodies (`bare`, controlled
 // `tab`): the RAH pattern, the charge drill-down and the abyssal info all come with them unchanged.
 // Variations is the desktop table (Variations.jsx).
 
-export const TAB_LABELS = { state: "State", charge: "Charge", info: "Info", variations: "Variations", mutate: "Mutaplasmid" };
+export const TAB_LABELS = { rah: "Adaptation", charge: "Charge", info: "Info", variations: "Variations", mutate: "Mutaplasmid" };
 const SEC_LABELS = { high: "High slot", mid: "Mid slot", low: "Low slot", rigs: "Rig slot", services: "Service slot", subsystems: "Subsystem" };
 const Bare = ({ children }) => <>{children}</>;
 const noop = () => {};
@@ -57,7 +57,8 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
   const name = r.name ?? td?.n ?? t("Item");
   const mutable = (MUTA_BY_TYPE[typeID] ?? MUTA_BY_TYPE[String(typeID)] ?? []).length > 0;
   const takesCharges = target.kind === "module" && !!item && (item.type === "weapon" || item.type === "capbooster" || moduleTakesCharges(item.typeID, item.name));
-  const tabs = inspectorTabs(target, r, { mutable, takesCharges });
+  const rah = (td?.gn ?? td?.groupName) === "Armor Resistance Shift Hardener";
+  const tabs = inspectorTabs(target, r, { mutable, takesCharges, rah });
   const cur = only ?? (tabs.includes(tab) ? tab : tabs.includes("info") ? "info" : tabs[0]);
   const editable = r.status === "ok" && r.live;
   const showInfo = (tid) => inspect(typeTarget(tid), "info");
@@ -80,7 +81,7 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
 
   const body = () => {
     if (!typeID) return <Empty>{t("No information for this item.")}</Empty>;
-    if (cur === "state" || cur === "charge" || (cur === "info" && target.kind === "module" && editable && target.sec !== "subsystems")) {
+    if (cur === "rah" || cur === "charge" || (cur === "info" && target.kind === "module" && editable && target.sec !== "subsystems")) {
       if (!editable || target.kind !== "module") return <Empty>{t("Open the fit to change this module.")}</Empty>;
       return <ModuleMenu key={`${target.slot}:${cur}`} Frame={Bare} bare tab={cur} mod={item} groupCount={row?.count ?? 1} onClose={noop}
         onUpdateMod={u => updateMod(u)} onUpdateModLive={u => updateMod(u)} onReplaceMod={u => updateMod(u, { replace: true })}

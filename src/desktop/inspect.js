@@ -99,13 +99,16 @@ export function resolveTarget(t, s) {
 /**
  * Which tabs an inspector offers for a resolved target, in order. `info` always; Variations for
  * anything with a family; Mutate for a module or drone a mutaplasmid applies to (or already rolled);
- * State and Charge only for a fitted module, since they edit a slot.
+ * Adaptation (an RAH) and Charge only for a fitted module, since they edit a slot.
  */
-export function inspectorTabs(t, r, { mutable = false, takesCharges = false } = {}) {
+export function inspectorTabs(t, r, { mutable = false, takesCharges = false, rah = false } = {}) {
   if (!t || r.status === 'none') return [];
   const tabs = [];
   const editable = r.status === 'ok' && r.live;
-  if (t.kind === 'module' && editable && t.sec !== 'subsystems') { tabs.push('state'); if (takesCharges) tabs.push('charge'); }
+  // No State tab: the state dot and the row's menu already set it, and Remove / Fill / Duplicate are
+  // on the menu too (Owen, 2026-11-05). What only that tab had — a Reactive Armor Hardener's
+  // adaptation — keeps a tab of its own.
+  if (t.kind === 'module' && editable && t.sec !== 'subsystems') { if (rah) tabs.push('rah'); if (takesCharges) tabs.push('charge'); }
   tabs.push('info', 'variations');
   if ((t.kind === 'module' || t.kind === 'drone') && editable && (mutable || r.item?.mutaplasmid)) tabs.push('mutate');
   return tabs;

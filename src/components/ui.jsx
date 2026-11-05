@@ -2665,7 +2665,10 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
         {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:tab===tb?C.accent:C.textMute,borderBottom:tab===tb?`2px solid ${C.accent}`:"2px solid transparent"}}>{tabLabel[tb]}</button>)}
       </div>}
       <div onScroll={dismissKeyboardOnScroll} style={{padding:14,overflowY:'auto',maxHeight:bare?undefined:'60vh'}}>
-        {tab==="state"&&(<div>
+        {/* "rah" (desktop only): the Reactive Armor Hardener's adaptation picker on its own, without the
+            state row and slot buttons the desktop already has on the row and its menu. */}
+        {(tab==="state"||tab==="rah")&&(<div>
+          {tab==="state"&&<>
           <div style={{fontSize:11,color:C.textMute,marginBottom:10}}>{t("Module State")}</div>
           <div style={{display:"flex",gap:8,marginBottom:20}}>
             {states.map(s=>(<button key={s} className="press" onClick={()=>{if(mod.state!==s)haptic("medium");onUpdateMod({...mod,state:s});}} style={{flex:1,padding:"10px 0",borderRadius:8,border:`1px solid ${mod.state===s?STATE_COLORS[s]:C.border}`,background:mod.state===s?`${STATE_COLORS[s]}22`:"none",cursor:"pointer",transition:"background-color .18s ease, border-color .18s ease"}}>
@@ -2674,6 +2677,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
               <span style={{fontSize:10,fontWeight:700,color:mod.state===s?STATE_COLORS[s]:C.textMute}}>{STATE_LABELS[s]?.()}</span>
             </button>))}
           </div>
+          </>}
         {_isRAH&&(()=>{
           // mod.rahPattern: undefined/'fit' → Fit Pattern (follows Resistances-tab profile);
           // 'disable' → Do Not Adapt; {name,p} → adapt to a specific ammo/NPC damage split.
@@ -2725,6 +2729,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
               second name, and two buttons doing the same thing is worse than one. The count is in
               the label because the two limits it reconciles (free hardpoints, empty high slots)
               aren't both visible from here — an 8-high hull with 7 launchers reads "+6", not "+7". */}
+          {tab==="state"&&<>
           {onFillHardpoints&&fillCount>1&&<button onClick={()=>{haptic("medium");onFillHardpoints();onClose();}} style={{width:"100%",marginBottom:8,padding:"11px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("Fill Hardpoints (+{n})",{n:fillCount})}</button>}
           {/* One button, one slot — picking an exact count belongs to the row's swipe tray now, where
               you tap the copy button until the rack looks right instead of counting empty slots in
@@ -2736,6 +2741,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
               already act on the whole group. The label says so, since a "Remove Module" that quietly
               took out the whole rack would read like a bug. */}
           <button onClick={()=>{onRemove();onClose();}} style={{width:"100%",padding:"11px 0",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,color:C.danger,fontSize:13,fontWeight:700,cursor:"pointer"}}>{groupCount>1?t("Remove Module Group ({n})",{n:groupCount}):t("Remove Module")}</button>
+          </>}
         </div>)}
         {tab==="charge"&&(mod.type==="weapon"||mod.type==="capbooster"||_modTakesCharges)&&(()=>{
           const groups=groupChargesForBrowser(getCompatibleCharges(mod));

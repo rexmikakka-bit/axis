@@ -9000,7 +9000,8 @@ Nanofiber Internal Structure II
   const renamed = { ...s, fitsDB: { Rifter: [{ id: 7, name: 'renamed', slots }] }, activeFit: { ship: 'Rifter', fitName: 'renamed' } };
   check('insp', 'a renamed fit is still found by id', I.resolveTarget(tm, renamed).live ? 1 : 0, 1, 0);
   check('insp', 'a deleted fit says so', I.resolveTarget(tm, { ...s, fitsDB: {}, activeFit: { ship: 'Rifter', fitName: 'zzz' } }).status, 'nofit');
-  check('insp', 'tabs: a live module gets State, Charge and Mutaplasmid', I.inspectorTabs(tm, I.resolveTarget(tm, s), { mutable: true, takesCharges: true }).join(), 'state,charge,info,variations,mutate');
+  check('insp', 'tabs: a live module gets Charge and Mutaplasmid, no State', I.inspectorTabs(tm, I.resolveTarget(tm, s), { mutable: true, takesCharges: true }).join(), 'charge,info,variations,mutate');
+  check('insp', 'tabs: an RAH keeps its Adaptation tab', I.inspectorTabs(tm, I.resolveTarget(tm, s), { rah: true }).join(), 'rah,info,variations');
   check('insp', 'tabs: a read-only module edits nothing', I.inspectorTabs(other, I.resolveTarget(other, s), { mutable: true, takesCharges: true }).join(), 'info,variations');
   check('insp', 'clean: a garbled target is dropped', I.cleanTarget({ kind: 'module', ship: 'Rifter', sec: 'nope', slot: 1 }) === null ? 1 : 0, 1, 0);
   check('insp', 'clean: a type target round-trips', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(I.typeTarget(2873, 'high'))))), JSON.stringify(I.typeTarget(2873, 'high')));

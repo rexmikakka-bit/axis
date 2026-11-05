@@ -290,17 +290,19 @@ function PriceDownloadPanel({hub,source}){
   </div>);
 }
 
-export function SettingsOverlay({onClose,skills,setSkills,skillProfiles,setSkillProfiles,openInNewTab,setOpenInNewTab,priceHub,setPriceHub,priceSource,setPriceSource,themePref,setThemePref,autoFillHardpoints,setAutoFillHardpoints,closeBrowserOnAdd,setCloseBrowserOnAdd,locale,setLocale}){
+export function SettingsOverlay({onClose,skills,setSkills,skillProfiles,setSkillProfiles,openInNewTab,setOpenInNewTab,priceHub,setPriceHub,priceSource,setPriceSource,themePref,setThemePref,autoFillHardpoints,setAutoFillHardpoints,closeBrowserOnAdd,setCloseBrowserOnAdd,locale,setLocale,asWindow=false}){
   const[section,setSection]=useState("skills");
   const sheet=useSheetDrag(onClose);
   // Tap the dimmed strip above the sheet to close, the way every other sheet in the app already
   // does — this was the one that had only the x. Self-targeted clicks only, so nothing inside has
   // to stop propagation to be safe.
-  return(<div onClick={e=>{ if(e.target===e.currentTarget) sheet.dismiss(); }}
-    style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}>
-    <div ref={sheet.sheetRef} style={{width:"100%",maxWidth:430,background:C.surface,borderRadius:"16px 16px 0 0",maxHeight:"90vh",display:"flex",flexDirection:"column",overflow:"hidden",...sheetTransform(sheet)}}>
-      <SheetGrabber grabHandlers={sheet.grabHandlers} style={{padding:"10px 0 0"}}/>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 16px 12px",borderBottom:`1px solid ${C.border}`}}><span style={{fontSize:16,fontWeight:700,color:C.text}}>{t("Settings")}</span><button onClick={sheet.dismiss} style={{background:"none",border:"none",color:C.textMid,fontSize:20,cursor:"pointer",padding:"0 4px"}}>x</button></div>
+  // `asWindow` (desktop only): the same sections, filling a desktop window — no backdrop, no grabber,
+  // no close button of its own (the window has one). The phone never passes it.
+  return(<div onClick={asWindow?undefined:e=>{ if(e.target===e.currentTarget) sheet.dismiss(); }}
+    style={asWindow?{height:"100%",display:"flex",flexDirection:"column"}:{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:100,display:"flex",flexDirection:"column",justifyContent:"flex-end",alignItems:"center",opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}>
+    <div ref={sheet.sheetRef} style={asWindow?{flex:1,minHeight:0,width:"100%",background:C.surface,display:"flex",flexDirection:"column",overflow:"hidden"}:{width:"100%",maxWidth:430,background:C.surface,borderRadius:"16px 16px 0 0",maxHeight:"90vh",display:"flex",flexDirection:"column",overflow:"hidden",...sheetTransform(sheet)}}>
+      {!asWindow&&<SheetGrabber grabHandlers={sheet.grabHandlers} style={{padding:"10px 0 0"}}/>}
+      {!asWindow&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 16px 12px",borderBottom:`1px solid ${C.border}`}}><span style={{fontSize:16,fontWeight:700,color:C.text}}>{t("Settings")}</span><button onClick={sheet.dismiss} style={{background:"none",border:"none",color:C.textMid,fontSize:20,cursor:"pointer",padding:"0 4px"}}>x</button></div>}
       <div className="hs" style={{overflowX:"auto",display:"flex",gap:0,borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
         {/* "ESI" is CCP's own name for the API and is the same word in every client language. */}
         {[{key:"skills",label:t("Skills")},{key:"backup",label:t("Backup")},{key:"esi",label:"ESI"},{key:"market",label:t("Market")},{key:"interface",label:t("Interface")}].map(n=><button key={n.key} onClick={()=>setSection(n.key)} style={{flexShrink:0,padding:"9px 14px",fontSize:12,fontWeight:600,background:"none",border:"none",cursor:"pointer",color:section===n.key?C.accent:C.textMute,borderBottom:section===n.key?`2px solid ${C.accent}`:"2px solid transparent"}}>{n.label}</button>)}

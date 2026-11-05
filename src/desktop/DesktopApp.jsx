@@ -148,6 +148,12 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "boosters": return <BoostersPanel s={s} />;
       case "environment": return <EnvironmentPanel s={s} />;
       case "notes": return <NotesWindow s={s} />;
+      // Settings is an ordinary window here; its own close is the window's.
+      case "settings": return <SettingsOverlay asWindow onClose={() => {}} skills={s.skills} setSkills={s.setSkills} skillProfiles={s.skillProfiles}
+        setSkillProfiles={s.setSkillProfiles} openInNewTab={s.openInNewTab} setOpenInNewTab={s.setOpenInNewTab} priceHub={s.priceHub}
+        setPriceHub={s.setPriceHub} priceSource={s.priceSource} setPriceSource={s.setPriceSource} themePref={s.themePref} setThemePref={s.setThemePref}
+        autoFillHardpoints={s.autoFillHardpoints} setAutoFillHardpoints={s.setAutoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd}
+        setCloseBrowserOnAdd={s.setCloseBrowserOnAdd} locale={s.locale} setLocale={s.setLocale} />;
       default: return null;
     }
   };
@@ -383,7 +389,7 @@ function DesktopApp() {
             { label: t("Shopping List"), onSelect: () => setSheet("shopping"), disabled: !hasFit },
             { divider: true },
             { label: t("Workspace background…"), onSelect: () => setSheet("backdrop") },
-            { label: t("Settings"), onSelect: () => setSheet("settings") },
+            { label: t("Settings"), onSelect: () => openWindow(setLayoutState, "settings") },
             { label: t("Send Feedback"), onSelect: () => setSheet("feedback") },
           ]} />
         </header>
@@ -419,11 +425,6 @@ function DesktopApp() {
       {sheet === "backdrop" && <BackdropDialog bd={bd} onClose={close} />}
       {sheet === "feedback" && <FeedbackModal activeFit={s.activeFit} slots={s.slots} implants={s.implants} boosters={s.boosters} drones={s.drones}
         fighters={s.fighters} cargo={s.cargoItems} projFits={s.projFits} cmdFits={s.cmdFits} fitsDB={s.fitsDB} onClose={close} />}
-      {sheet === "settings" && <SettingsOverlay onClose={close} skills={s.skills} setSkills={s.setSkills} skillProfiles={s.skillProfiles}
-        setSkillProfiles={s.setSkillProfiles} openInNewTab={s.openInNewTab} setOpenInNewTab={s.setOpenInNewTab} priceHub={s.priceHub}
-        setPriceHub={s.setPriceHub} priceSource={s.priceSource} setPriceSource={s.setPriceSource} themePref={s.themePref} setThemePref={s.setThemePref}
-        autoFillHardpoints={s.autoFillHardpoints} setAutoFillHardpoints={s.setAutoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd}
-        setCloseBrowserOnAdd={s.setCloseBrowserOnAdd} locale={s.locale} setLocale={s.setLocale} />}
     </SkillsProvider></SheetFrame.Provider></InspectContext.Provider>
   );
 }

@@ -59,7 +59,7 @@ export function UsageBar({ label, labelColor, used, total, unit = "", fmt = (n) 
         <span style={{ fontSize: TYPE.label, fontWeight: WEIGHT.value, color: labelColor ?? C.textMid, whiteSpace: "nowrap" }}>
           {label}
           {showPct && total > 0 && <span style={{ marginLeft: 6, fontWeight: WEIGHT.text, color: over ? C.danger : C.textMid, fontVariantNumeric: "tabular-nums" }}>
-            {(used / total * 100).toFixed(used / total >= 0.995 && used / total < 1.1 ? 1 : 0)}%</span>}
+            {(used / total * 100).toFixed(2)}%</span>}
         </span>
         {remaining
           ? <span style={{ fontSize: TYPE.value, fontWeight: WEIGHT.value, color: over ? C.danger : C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>

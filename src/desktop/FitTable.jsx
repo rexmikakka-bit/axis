@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
+import { TYPES } from "../calc.js";
 import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges } from "../lib/core.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -147,6 +148,7 @@ export function FitTable({ api }) {
         row.ammo && { label: t("Unload charge"), onSelect: () => { const ids = new Set(row.groupIds ?? [row.id]);
           setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); } },
         takesCharges && { divider: true },
+        (TYPES[row.typeID] ?? TYPES[String(row.typeID)])?.gn === "Armor Resistance Shift Hardener" && { label: t("Adaptation…"), onSelect: () => inspectRow(secKey, row, "rah") },
         { label: t("Show info…"), hint: t("double-click"), onSelect: () => inspectRow(secKey, row, "info") },
         { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations") },
         mutable && { label: t("Mutate…"), onSelect: () => inspectRow(secKey, row, "mutate") },
