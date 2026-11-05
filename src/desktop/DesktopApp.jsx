@@ -390,6 +390,8 @@ function DesktopApp() {
           <Menu label={<>{t("Windows")} <span aria-hidden="true" style={{ fontSize: 9 }}>▼</span></>} items={WINDOWS.map(w => ({
             label: t(w.title), checked: !!(layoutState.windows[w.id]?.open),
             hint: layoutState.windows[w.id]?.detached ? t("popped out") : undefined, onSelect: () => toggleWindow(setLayoutState, w.id),
+            // Right-click: straight into its own OS window, open or not (as its title bar's pop-out button).
+            context: [{ label: layoutState.windows[w.id]?.detached ? t("Bring its window to the front") : t("Pop out"), onSelect: () => popOut(w.id) }],
           }))} />
           <Menu ariaLabel={t("Menu")} label={<span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>☰</span>} items={[
             { heading: t("Fit") },

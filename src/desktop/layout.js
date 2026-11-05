@@ -210,8 +210,10 @@ function nearest(v, list) {
 // Snap targets come from the window's own LAYER: a workspace window lines up with workspace windows,
 // a floating inspector with other inspectors. The two layers scroll differently (inspectors stay put
 // while the workspace scrolls under them), so an edge in one is not a place in the other.
+// A tab inside another window is not on screen, and a collapsed window is only its title bar.
 const dockedOthers = (layout, id) => Object.entries(layout)
-  .filter(([k, w]) => k !== id && w.open && !w.detached && !!w.float === !!layout[id]?.float).map(([, w]) => w);
+  .filter(([k, w]) => k !== id && w.open && !w.detached && !!w.float === !!layout[id]?.float && !isTabMember(layout, k) && !stackOf(layout, id).includes(k))
+  .map(([, w]) => (w.collapsed ? { ...w, h: TITLE_H } : w));
 
 /**
  * Where a window being DRAGGED lands. Grid snap first, then window snap: the window's leading and
@@ -292,6 +294,111 @@ export function rescue(layout, viewW, viewH) {
   return changed ? out : layout;
 }
 
+// ── Tab groups and collapse ────────────────────────────────────────────────────────────────────
+// Drag one window's title bar onto another's and they become ONE window with a tab each. The HOST
+// keeps the group's rect and lists the tabs in `stack` (host first) with `active` naming the one
+// shown; every other member records `in: hostId` and keeps its own rect, untouched, for when it is
+// pulled back out. Only docked workspace windows group: an inspector floats on its own layer.
+//
+// `collapsed` draws a window as its title bar only (double-click the title). The saved height stays,
+// and the windows around it do not move — the gap is the arrangement, kept (Owen, 2026-11-05).
+// Collapsing is not an arrangement change, so it works with Lock layout on.
+
+/** The window a tab is drawn in: its host, or itself. */
+export const hostOf = (layout, id) => (layout[id]?.in && layout[layout[id].in]?.stack?.includes(id) ? layout[id].in : id);
+/** Every tab of `id`'s window, host first; a lone window is a stack of one. */
+export const stackOf = (layout, id) => { const h = hostOf(layout, id); return layout[h]?.stack?.length > 1 ? layout[h].stack : [h]; };
+/** Whether `id` is drawn by another window (a tab that is not its group's host). */
+export const isTabMember = (layout, id) => hostOf(layout, id) !== id;
+/** The height a window takes on screen. */
+export const drawnHeight = (w) => (w?.collapsed ? TITLE_H : w?.h ?? 0);
+
+const stripGroup = ({ stack, active, ...w }) => w;   // eslint-disable-line no-unused-vars
+const stripMember = ({ in: _in, ...w }) => w;          // eslint-disable-line no-unused-vars
+
+/**
+ * `dragId`'s window joins `targetId`'s as tabs (a whole group dragged in brings every tab), shown on
+ * the one dragged. The target's place and size are the group's. Refused — the same layout back — for
+ * an inspector, a detached window, or two windows already in one group.
+ */
+export function combineWindows(layout, dragId, targetId) {
+  const host = hostOf(layout, targetId), from = hostOf(layout, dragId);
+  const a = layout[from], b = layout[host];
+  if (!a || !b || from === host || a.float || b.float || a.detached || b.detached) return layout;
+  const incoming = stackOf(layout, dragId), have = stackOf(layout, host);
+  const out = { ...layout };
+  for (const id of incoming) out[id] = { ...stripGroup(out[id]), in: host, open: true, detached: false, collapsed: false };
+  out[host] = { ...stripMember(out[host]), stack: [...have, ...incoming.filter(id => !have.includes(id))], active: dragId, open: true };
+  return bringToFront(out, host);
+}
+
+/** Show tab `id` in its window. */
+export function setActiveTab(layout, id) {
+  const host = hostOf(layout, id);
+  if (stackOf(layout, id).length < 2 || layout[host].active === id) return layout;
+  return { ...layout, [host]: { ...layout[host], active: id } };
+}
+
+/**
+ * Tab `id` out of its group, as a window of its own at `at` ({x, y}) or just off the group's corner.
+ * When the HOST leaves, the next tab takes over the group's place and size. A group left with one tab
+ * is an ordinary window again.
+ */
+export function ungroup(layout, id, at = null) {
+  const host = hostOf(layout, id), stack = stackOf(layout, id);
+  if (stack.length < 2) return layout;
+  const out = { ...layout }, g = layout[host];
+  const rest = stack.filter(x => x !== id);
+  const place = at ?? { x: g.x + 3 * GRID, y: g.y + 3 * GRID };
+  const active = g.active === id || !rest.includes(g.active) ? rest[0] : g.active;
+  if (id === host) {
+    const next = rest[0];
+    out[next] = { ...stripMember(out[next]), x: g.x, y: g.y, w: g.w, h: g.h, z: g.z, collapsed: !!g.collapsed,
+                  ...(rest.length > 1 ? { stack: rest, active } : {}) };
+    for (const m of rest.slice(1)) out[m] = { ...out[m], in: next };
+    out[id] = { ...stripGroup(g), ...place, collapsed: false };
+  } else {
+    out[id] = { ...stripMember(out[id]), ...place };
+    out[host] = rest.length > 1 ? { ...g, stack: rest, active } : stripGroup(g);
+  }
+  return bringToFront(out, id);
+}
+
+/** Close one tab: it leaves its group (where it would go back to its own spot) and hides. */
+export function closeTab(layout, id) {
+  const w = layout[id];
+  if (!w) return layout;
+  const out = stackOf(layout, id).length > 1 ? ungroup(layout, id, { x: w.x, y: w.y }) : layout;
+  return { ...out, [id]: { ...out[id], open: false } };
+}
+
+/** Close a whole window: every tab hides and the group dissolves, each back to its own spot. */
+export function closeGroup(layout, id) {
+  let out = layout;
+  for (const m of stackOf(layout, id)) out = closeTab(out, m);
+  return out;
+}
+
+export function toggleCollapsed(layout, id) {
+  const host = hostOf(layout, id);
+  if (!layout[host]) return layout;
+  return { ...layout, [host]: { ...layout[host], collapsed: !layout[host].collapsed } };
+}
+
+/** Group fields read back from storage: dropped unless every member and its host agree. */
+function cleanGroups(out) {
+  for (const [id, w] of Object.entries(out)) {
+    if (!Array.isArray(w.stack)) continue;
+    const ok = [...new Set(w.stack)].filter(m => out[m] && !out[m].float && (m === id || out[m].in === id));
+    if (ok[0] !== id || ok.length < 2 || w.float || w.detached) { out[id] = stripGroup(w); continue; }
+    out[id] = { ...w, stack: ok, active: ok.includes(w.active) ? w.active : ok[0] };
+  }
+  for (const [id, w] of Object.entries(out)) {
+    if (w.in != null && !out[w.in]?.stack?.includes(id)) out[id] = stripMember(w);
+  }
+  return out;
+}
+
 // ── Persistence ────────────────────────────────────────────────────────────────
 // Settings live in localStorage under axis_* keys, like every other preference. A new key with its
 // own version stamp rather than a storage-migrate.js entry: nothing older than this exists to migrate,
@@ -309,6 +416,10 @@ function cleanWindow(w, fallback) {
     open: typeof w.open === 'boolean' ? w.open : fallback.open,
     detached: w.detached === true,
     z: num(w.z, 0) ? w.z : fallback.z,
+    // Tab group and collapse fields ride along as read; cleanGroups (below) keeps only a consistent group.
+    ...(w.collapsed === true ? { collapsed: true } : {}),
+    ...(Array.isArray(w.stack) ? { stack: w.stack.filter(x => typeof x === 'string'), active: typeof w.active === 'string' ? w.active : null } : {}),
+    ...(typeof w.in === 'string' ? { in: w.in } : {}),
   };
 }
 /**
@@ -329,7 +440,7 @@ export function cleanLayout(raw) {
       out[id] = { ...g, open: true, detached: false, float: true, target, key: targetKey(target), tab: typeof w.tab === 'string' ? w.tab : 'info' };
     }
   }
-  return out;
+  return cleanGroups(out);
 }
 
 export function defaultLayoutState() {
@@ -372,7 +483,7 @@ export function writeLayoutState(storage, state) {
 /** How big the workspace's scrollable canvas must be to hold every docked window. */
 export function canvasSize(layout) {
   let w = 0, h = 0;
-  for (const win of Object.values(layout)) if (win.open && !win.detached && !win.float) { w = Math.max(w, win.x + win.w); h = Math.max(h, win.y + win.h); }
+  for (const [id, win] of Object.entries(layout)) if (win.open && !win.detached && !win.float && !isTabMember(layout, id)) { w = Math.max(w, win.x + win.w); h = Math.max(h, win.y + drawnHeight(win)); }
   return { w: w + GRID, h: h + GRID };
 }
 

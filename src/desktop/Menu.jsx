@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
+import { ContextMenu } from "./ContextMenu.jsx";
 
 // A header dropdown: a button that opens a list beneath it. Closes on a pick, an outside click or
 // Escape. Items are {label, onSelect, checked?, disabled?, hint?} or {divider:true} or {heading}.
 // Checkable items (the Windows list) leave the menu open, so several can be toggled in one visit.
+// An item's `context` ([{label, onSelect}]) is its right-click menu (the Windows list's "Pop out").
 
 export default function Menu({ label, items, align = "right", ariaLabel, buttonStyle }) {
   const [open, setOpen] = useState(false);
+  const [ctx, setCtx] = useState(null);   // {x, y, items}: an item's right-click menu
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -34,6 +37,7 @@ export default function Menu({ label, items, align = "right", ariaLabel, buttonS
             return (
               <button key={i} type="button" role={checkable ? "menuitemcheckbox" : "menuitem"} aria-checked={checkable ? !!it.checked : undefined}
                 disabled={it.disabled} onClick={() => { it.onSelect?.(); if (!checkable) setOpen(false); }}
+                onContextMenu={it.context ? (e) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, items: it.context.map(c => ({ ...c, onSelect: () => { setOpen(false); c.onSelect?.(); } })) }); } : undefined}
                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "none", borderRadius: 5,
                          background: "transparent", color: it.disabled ? C.textMute : C.text, fontSize: 13.5, textAlign: "left",
                          cursor: it.disabled ? "default" : "pointer" }}
@@ -47,6 +51,7 @@ export default function Menu({ label, items, align = "right", ariaLabel, buttonS
           })}
         </div>
       )}
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
     </div>
   );
 }

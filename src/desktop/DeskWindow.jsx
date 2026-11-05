@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TITLE_H, GRID } from "./layout.js";
@@ -40,8 +40,54 @@ export function TitleButton({ label, onClick, children }) {
   );
 }
 
+// A window's tab, for a window holding several (layout.js tab groups). Click shows it; drag it clear
+// of the title bar to make it a window of its own (or onto another window's title bar to move it
+// there); right-click for the same as a menu; × closes just that one.
+const TEAR_PX = 8;
+function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu }) {
+  const press = useRef(null);
+  const [tearing, setTearing] = useState(false);
+  const down = (e) => {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    e.stopPropagation();
+    press.current = { x: e.clientX, y: e.clientY, id: e.pointerId, moved: false };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* fine */ }
+  };
+  const move = (e) => {
+    const p = press.current; if (!p || locked) return;
+    if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) >= TEAR_PX) { p.moved = true; setTearing(true); }
+  };
+  const up = (e) => {
+    const p = press.current; press.current = null; setTearing(false);
+    if (!p) return;
+    if (!p.moved) { onSelect(id); return; }
+    // Released back on its own title bar: nothing to do. Anywhere else: out of the group.
+    const bar = e.currentTarget.closest("[data-titlebar]")?.getBoundingClientRect();
+    if (bar && e.clientX >= bar.left && e.clientX <= bar.right && e.clientY >= bar.top && e.clientY <= bar.bottom) return;
+    onOut(id, e.clientX, e.clientY);
+  };
+  return (
+    <div role="tab" data-tab aria-selected={on} title={locked ? title : `${title} · ${t("drag out to separate")}`}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setTearing(false); }}
+      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onMenu(e, id); }}
+      style={{ display: "flex", alignItems: "center", gap: 4, height: TITLE_H - 6, padding: "0 4px 0 9px", borderRadius: 5, minWidth: 0, flex: "0 1 auto",
+               cursor: locked ? "pointer" : tearing ? "grabbing" : "pointer", touchAction: "none",
+               background: on ? C.surface : "transparent", border: `1px solid ${on ? C.borderStrong : "transparent"}`,
+               outline: tearing ? `1px dashed ${C.accent}` : "none", opacity: tearing ? 0.7 : 1 }}>
+      <span style={{ fontSize: 12, letterSpacing: ".04em", textTransform: "uppercase", color: on ? C.text : C.textMid,
+                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+      <button type="button" aria-label={t("Close {title}", { title })} title={t("Close {title}", { title })} onClick={(e) => { e.stopPropagation(); onClose(id); }}
+        style={{ width: 16, height: 16, padding: 0, border: "none", borderRadius: 3, background: "transparent", color: C.textMute, cursor: "pointer", fontSize: 12, lineHeight: 1 }}>×</button>
+    </div>
+  );
+}
+
+// `tabs` ([{id, title}], two or more) draws a tab strip in place of the title; `activeTab` is the one
+// shown. `collapsed` draws the title bar alone. `dropTarget` lights the title bar while another
+// window is dragged over it (dropping there combines the two).
 export default function DeskWindow({ id, title, rect, z, focused, locked, floating = false, onFocus, onDragStart, onDrag, onDragEnd,
-                                     onDragCancel, onKeyNudge, onClose, onPopOut, extra, children }) {
+                                     onDragCancel, onKeyNudge, onClose, onPopOut, extra, children,
+                                     tabs = null, activeTab, onTab, onCloseTab, onTabOut, onTabMenu, collapsed = false, onToggleCollapse, dropTarget = false, ghost = false }) {
   const drag = useRef(null);
 
   // Escape cancels a drag in progress, putting the window back where the gesture started.
@@ -61,7 +107,7 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, floati
     onFocus(id);
     if (locked) return;
     // Buttons in the title bar (pop-out, close, "+ Add") must not start a drag.
-    if (kind === "move" && e.target.closest("button,input,select,textarea")) return;
+    if (kind === "move" && e.target.closest("button,input,select,textarea,[data-tab]")) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     drag.current = { kind, edges, px: e.clientX, py: e.clientY, pointerId: e.pointerId, el: e.currentTarget };
@@ -70,7 +116,7 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, floati
   const move = (e) => {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId) return;
-    onDrag(id, d.kind, d.edges, e.clientX - d.px, e.clientY - d.py);
+    onDrag(id, d.kind, d.edges, e.clientX - d.px, e.clientY - d.py, e.clientX, e.clientY);
   };
   const end = (e) => {
     const d = drag.current;
@@ -93,33 +139,47 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, floati
   const border = focused ? C.accent : C.borderStrong;
   return (
     <section role="group" aria-label={title} onPointerDownCapture={() => onFocus(id)}
-      style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z,
+      style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: collapsed ? TITLE_H : rect.h, zIndex: z,
                display: "flex", flexDirection: "column", boxSizing: "border-box", background: C.surface,
+               // See-through while held over another title bar, so the "drop to add as a tab" under it shows.
+               opacity: ghost ? 0.45 : 1,
                border: `1px solid ${border}`, borderRadius: 6,
                // An inspector floats over the workspace, and its shadow is what says so.
                boxShadow: floating ? "0 14px 40px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4)" : "0 4px 16px rgba(0,0,0,.45)" }}>
-      <div tabIndex={0} onKeyDown={onTitleKey} {...pointer("move", "")}
+      <div data-titlebar tabIndex={0} onKeyDown={onTitleKey} {...pointer("move", "")}
+        onDoubleClick={(e) => { if (!floating && onToggleCollapse && !e.target.closest("button,input,select,textarea,[data-tab]")) onToggleCollapse(id); }}
         aria-label={t("{title} window. Arrow keys move it, Shift and arrow keys resize it.", { title })}
         style={{ height: TITLE_H, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px",
-                 background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, borderRadius: "5px 5px 0 0",
+                 background: dropTarget ? C.accentLight : C.surfaceAlt, borderBottom: `1px solid ${dropTarget ? C.accent : C.border}`,
+                 borderRadius: collapsed ? 5 : "5px 5px 0 0", boxShadow: dropTarget ? `inset 0 0 0 1px ${C.accent}` : "none",
                  color: C.textMute, cursor: locked ? "default" : "grab", userSelect: "none", touchAction: "none", outline: "none" }}>
         <Grip />
-        {/* An inspector is titled with an item name, which reads as a name only in its own case. */}
-        <span style={floating ? { fontSize: 13, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
-                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+        {tabs?.length > 1
+          ? <div role="tablist" style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0, overflow: "hidden", flex: "0 1 auto" }}>
+              {tabs.map(tb => <Tab key={tb.id} id={tb.id} title={tb.title} on={tb.id === activeTab} locked={locked}
+                onSelect={onTab} onClose={onCloseTab} onOut={onTabOut} onMenu={onTabMenu} />)}
+            </div>
+          /* An inspector is titled with an item name, which reads as a name only in its own case. */
+          : <span style={floating ? { fontSize: 13, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
+                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>}
         <span style={{ flex: 1 }} />
+        {dropTarget && <span style={{ fontSize: 11.5, color: C.accent, whiteSpace: "nowrap" }}>{t("Drop to add as a tab")}</span>}
         {extra}
-        <TitleButton label={t("Pop out")} onClick={() => onPopOut(id)}><PopOutGlyph /></TitleButton>
+        {!floating && onToggleCollapse && <TitleButton label={collapsed ? t("Expand") : t("Collapse")} onClick={() => onToggleCollapse(id)}>
+          <span style={{ fontSize: 10, display: "inline-block", transform: collapsed ? "rotate(-90deg)" : "none" }}>▾</span></TitleButton>}
+        <TitleButton label={t("Pop out")} onClick={() => onPopOut(activeTab ?? id)}><PopOutGlyph /></TitleButton>
         <TitleButton label={t("Close")} onClick={() => onClose(id)}>×</TitleButton>
       </div>
       {/* lineHeight 1.3: the root's 145% is inherited as a fixed 26px, which made every line of the
           phone components hosted here as tall as a touch target whatever its font size. */}
-      <div style={{ flex: 1, minHeight: 0, overflow: "auto", borderRadius: "0 0 5px 5px", lineHeight: 1.3 }}>{children}</div>
-      {!locked && HANDLES.map(h => (
+      {/* Hidden, not unmounted, while collapsed: what the window holds (a scroll position, a half-typed
+          search) is still there when it opens again. */}
+      <div style={{ flex: 1, minHeight: 0, overflow: "auto", borderRadius: "0 0 5px 5px", lineHeight: 1.3, display: collapsed ? "none" : undefined }}>{children}</div>
+      {!locked && !collapsed && HANDLES.map(h => (
         <div key={h.edges} aria-hidden="true" {...pointer("resize", h.edges)}
           style={{ position: "absolute", ...h.style, cursor: h.cursor, touchAction: "none" }} />
       ))}
-      {!locked && (
+      {!locked && !collapsed && (
         <div aria-hidden="true" {...pointer("resize", "rb")}
           style={{ position: "absolute", right: 0, bottom: 0, width: CORNER, height: CORNER, cursor: "nwse-resize", touchAction: "none",
                    display: "grid", placeItems: "end", padding: 2, boxSizing: "border-box", color: C.textMute }}>

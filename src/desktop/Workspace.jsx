@@ -4,7 +4,8 @@ import { t } from "../lib/i18n.js";
 import DeskWindow from "./DeskWindow.jsx";
 import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, clampIntoView, canvasSize,
          readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat,
-         renameNamed, overwriteNamed, deleteNamed, setPresetHidden } from "./layout.js";
+         renameNamed, overwriteNamed, deleteNamed, setPresetHidden, TITLE_H, stackOf, isTabMember,
+         combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed } from "./layout.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
@@ -22,12 +23,16 @@ export function useLayoutState() {
 export const dockWindow = (setState, id) => setState(s => ({
   ...s, windows: bringToFront({ ...s.windows, [id]: { ...s.windows[id], open: true, detached: false } }, id),
 }));
-export const detachWindow = (setState, id) => setState(s => ({ ...s, windows: { ...s.windows, [id]: { ...s.windows[id], detached: true } } }));
+// A tab pops out on its own: it leaves its group first (back to its own spot for when it docks).
+export const detachWindow = (setState, id) => setState(s => {
+  const w = stackOf(s.windows, id).length > 1 ? ungroup(s.windows, id, { x: s.windows[id].x, y: s.windows[id].y }) : s.windows;
+  return { ...s, windows: { ...w, [id]: { ...w[id], open: true, detached: true } } };
+});
 
 /** Open-and-raise a closed window, or close an open one (the header's Windows menu). */
 export const toggleWindow = (setState, id) => setState(s => {
   const w = s.windows[id];
-  if (w.open && !w.detached) return { ...s, windows: { ...s.windows, [id]: { ...w, open: false } } };
+  if (w.open && !w.detached) return { ...s, windows: closeTab(s.windows, id) };
   return { ...s, windows: bringToFront({ ...s.windows, [id]: { ...w, open: true, detached: false } }, id) };
 });
 
@@ -115,8 +120,9 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     return bringToFront({ ...l, [id]: { ...w, open: true, detached: false } }, id);
   });
   // An inspector is made for one look at one item, so closing it forgets it; a workspace window only hides.
+  // A window holding tabs closes all of them (each goes back to its own spot for next time).
   const close = useCallback((id) => setLayout(l => {
-    if (!l[id]?.float) return { ...l, [id]: { ...l[id], open: false } };
+    if (!l[id]?.float) return closeGroup(l, id);
     const out = { ...l }; delete out[id]; return out;
   }), [setLayout]);
   const popOutLocal = useCallback((id) => setLayout(l => ({ ...l, [id]: { ...l[id], detached: true } })), [setLayout]);
@@ -134,7 +140,29 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   // An inspector is dragged from where it is DRAWN (clamped into view), not its saved spot off-screen.
   const onDragStart = useCallback((id) => { const w = layoutRef.current[id];
     dragStart.current[id] = w?.float ? { ...clampIntoView(w, viewRef.current.w, viewRef.current.h) } : { ...w }; }, []);
-  const onDrag = useCallback((id, kind, edges, dx, dy) => setLayout(l => {
+  // ── Tab groups: a title bar dragged onto another title bar ───────────────────────────────────
+  // The workspace window whose TITLE BAR is under the pointer (topmost), outside `exclude`. Docked
+  // windows only: they scroll with the canvas, so the pointer is mapped into canvas coordinates.
+  const titleBarAt = (cx, cy, exclude) => {
+    const el = wsRef.current; if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (cx < r.left || cx > r.right || cy < r.top || cy > r.bottom) return null;
+    const x = cx - r.left + el.scrollLeft, y = cy - r.top + el.scrollTop, l = layoutRef.current;
+    let best = null;
+    for (const [k, w] of Object.entries(l)) {
+      if (w.float || !w.open || w.detached || isTabMember(l, k) || exclude.includes(k)) continue;
+      if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + TITLE_H && (!best || w.z > l[best].z)) best = k;
+    }
+    return best;
+  };
+  const [dropTarget, setDropTarget] = useState(null);   // {id, from}: the title bar lit, and who is over it
+  const dropRef = useRef(null);
+  const aimAt = (target, from = null) => { if (dropRef.current !== target) { dropRef.current = target; setDropTarget(target ? { id: target, from } : null); } };
+  const onDrag = useCallback((id, kind, edges, dx, dy, cx, cy) => {
+    if (kind === "move" && !layoutRef.current[id]?.float && cx != null) aimAt(titleBarAt(cx, cy, stackOf(layoutRef.current, id)), id);
+    moveBy(id, kind, edges, dx, dy);
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+  const moveBy = useCallback((id, kind, edges, dx, dy) => setLayout(l => {
     const s = dragStart.current[id]; if (!s) return l;
     const r = kind === "move" ? { ...snapMove(l, id, s.x + dx, s.y + dy, optsRef.current), w: s.w, h: s.h }
                               : snapResize(l, id, s, edges, dx, dy, optsRef.current);
@@ -142,8 +170,28 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     if (r.x === w.x && r.y === w.y && r.w === w.w && r.h === w.h) return l;
     return { ...l, [id]: { ...w, ...r } };
   }, dockedEdit(id)), [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const onDragEnd = useCallback((id) => { delete dragStart.current[id]; }, []);
+  // Released on another title bar: back to where the drag began (its spot for when it is pulled out
+  // again), then into that window as a tab.
+  const onDragEnd = useCallback((id) => {
+    const start = dragStart.current[id], target = dropRef.current;
+    delete dragStart.current[id]; aimAt(null);
+    if (target) setLayout(l => combineWindows(start ? { ...l, [id]: { ...l[id], x: start.x, y: start.y } } : l, id, target), { preset: null });
+  }, [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // A tab dragged clear of its title bar: onto another window's title bar it moves there, anywhere
+  // else it becomes a window of its own under the pointer.
+  const onTabOut = useCallback((id, cx, cy) => setLayout(l => {
+    const target = titleBarAt(cx, cy, stackOf(l, id));
+    if (target) return combineWindows(ungroup(l, id), id, target);
+    const el = wsRef.current, r = el?.getBoundingClientRect();
+    const at = r ? { x: Math.max(0, Math.round(cx - r.left + el.scrollLeft - 60)), y: Math.max(0, Math.round(cy - r.top + el.scrollTop - TITLE_H / 2)) } : null;
+    return ungroup(l, id, at);
+  }, { preset: null }), [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const onTab = useCallback((id) => setLayout(l => setActiveTab(l, id)), [setLayout]);
+  const onCloseTab = useCallback((id) => setLayout(l => closeTab(l, id)), [setLayout]);
+  const onToggleCollapse = useCallback((id) => setLayout(l => toggleCollapsed(l, id)), [setLayout]);
+  const [tabMenu, setTabMenu] = useState(null);   // {x, y, id}
   const onDragCancel = useCallback((id) => {
+    aimAt(null);
     const s = dragStart.current[id]; delete dragStart.current[id];
     if (s) setLayout(l => ({ ...l, [id]: { ...l[id], x: s.x, y: s.y, w: s.w, h: s.h } }));
   }, [setLayout]);
@@ -198,13 +246,22 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   const size = canvasSize(layout);
   const floats = Object.entries(layout).filter(([, w]) => w.float);
   const detached = [...WINDOWS.map(w => w.id), ...floats.map(([id]) => id)].filter(id => layout[id].detached && layout[id].open);
-  const win = (id, g, isTop, title) => (
-    <DeskWindow key={id} id={id} title={title} rect={g} z={g.z} focused={isTop} locked={state.locked} floating={!!g.float}
-      onFocus={focus} onDragStart={onDragStart} onDrag={onDrag} onDragEnd={onDragEnd} onDragCancel={onDragCancel}
-      onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(id)}>
-      {renderWindow(id)}
-    </DeskWindow>
-  );
+  // A window with tabs is drawn by its host and shows its active tab; its other tabs draw nothing.
+  const win = (id, g, isTop, title) => {
+    const stack = g.float ? [id] : stackOf(layout, id);
+    const active = stack.length > 1 && stack.includes(g.active) ? g.active : id;
+    const titleOf = (x) => windowTitle?.(x) ?? t(WINDOWS.find(w => w.id === x)?.title ?? x);
+    return (
+      <DeskWindow key={id} id={id} title={stack.length > 1 ? titleOf(active) : title} rect={g} z={g.z} focused={isTop} locked={state.locked} floating={!!g.float}
+        onFocus={focus} onDragStart={onDragStart} onDrag={onDrag} onDragEnd={onDragEnd} onDragCancel={onDragCancel}
+        onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(active)}
+        tabs={stack.length > 1 ? stack.map(x => ({ id: x, title: titleOf(x) })) : null} activeTab={active}
+        onTab={onTab} onCloseTab={onCloseTab} onTabOut={onTabOut} onTabMenu={(e, x) => setTabMenu({ x: e.clientX, y: e.clientY, id: x })}
+        collapsed={!g.float && !!g.collapsed} onToggleCollapse={g.float ? undefined : onToggleCollapse} dropTarget={dropTarget?.id === id} ghost={dropTarget?.from === id}>
+        {renderWindow(active)}
+      </DeskWindow>
+    );
+  };
 
   return (
     <>
@@ -217,7 +274,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
                                   backgroundImage: state.snapGrid ? `radial-gradient(${C.border} 1px, transparent 1px)` : "none",
                                   backgroundSize: `${GRID * 2}px ${GRID * 2}px`, backgroundAttachment: "local" }}>
           <div style={{ position: "relative", width: size.w, height: size.h, minWidth: "100%", minHeight: "100%" }}>
-            {WINDOWS.map(w => { const g = layout[w.id]; return shown(g) ? win(w.id, g, g.z === top, windowTitle?.(w.id) ?? t(w.title)) : null; })}
+            {WINDOWS.map(w => { const g = layout[w.id]; return shown(g) && !isTabMember(layout, w.id) ? win(w.id, g, g.z === top, windowTitle?.(w.id) ?? t(w.title)) : null; })}
           </div>
         </div>
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 2 }}>
@@ -246,6 +303,12 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
           : <Chip key={name} on={state.preset === `named:${name}`} onClick={() => applyNamed(name)} title={t("Double-click to rename · right-click for options")}
               onDoubleClick={() => setRenaming({ from: name, text: name })} onContextMenu={(e) => openChipMenu(e, namedMenu(name))}>{name}</Chip>)}
         {chipMenu && <ContextMenu x={chipMenu.x} y={chipMenu.y} items={chipMenu.items} onClose={() => setChipMenu(null)} />}
+        {tabMenu && <ContextMenu x={tabMenu.x} y={tabMenu.y} onClose={() => setTabMenu(null)} items={[
+          { label: t("Move out of group"), disabled: state.locked, onSelect: () => setLayout(l => ungroup(l, tabMenu.id), { preset: null }) },
+          { label: t("Pop out"), onSelect: () => popOut(tabMenu.id) },
+          { divider: true },
+          { label: t("Close"), onSelect: () => onCloseTab(tabMenu.id) },
+        ]} />}
         {naming == null
           ? <Chip pressed={false} onClick={() => setNaming("")}>{t("Save layout as…")}</Chip>
           : <form onSubmit={(e) => { e.preventDefault(); saveNamed(); }} style={{ display: "flex", gap: 6 }}>

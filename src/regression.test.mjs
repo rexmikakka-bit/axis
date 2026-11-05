@@ -9042,6 +9042,33 @@ Nanofiber Internal Structure II
   check('insp', 'layouts: a taken name is refused', L.renameNamed(st0, 'B', 'A') === st0 ? 1 : 0, 1, 0);
   check('insp', 'layouts: a blank name is refused', L.renameNamed(st0, 'B', '   ') === st0 ? 1 : 0, 1, 0);
   check('insp', 'layouts: update leaves the inspectors out', Object.keys(L.floatsOf(L.overwriteNamed(st0, 'A').named.A)).length, 0, 0);
+  // Tab groups: a title bar dropped on another makes one window; tabs come back out where they were.
+  const g0 = L.presetLayout('default');
+  const g1 = L.combineWindows(g0, 'targeting', 'capacitor');
+  check('insp', 'tabs: combining keeps the target\'s place and lists both', `${g1.capacitor.x},${g1.capacitor.y}|${g1.capacitor.stack.join(',')}`, `${g0.capacitor.x},${g0.capacitor.y}|capacitor,targeting`);
+  check('insp', 'tabs: the dropped window is the one shown', g1.capacitor.active, 'targeting');
+  check('insp', 'tabs: a tab draws nothing of its own', L.isTabMember(g1, 'targeting') ? 1 : 0, 1, 0);
+  check('insp', 'tabs: a tab keeps its own rect for later', `${g1.targeting.x},${g1.targeting.y},${g1.targeting.w},${g1.targeting.h}`, `${g0.targeting.x},${g0.targeting.y},${g0.targeting.w},${g0.targeting.h}`);
+  const g2 = L.combineWindows(L.combineWindows(g0, 'targeting', 'capacitor'), 'defense', 'targeting');
+  check('insp', 'tabs: dropping on a tab joins its window', g2.capacitor.stack.join(','), 'capacitor,targeting,defense');
+  const gBack = L.cleanLayout(JSON.parse(JSON.stringify(g2)));
+  check('insp', 'tabs: a group survives the saved layout', `${gBack.capacitor.stack.join(',')}|${gBack.defense.in}`, 'capacitor,targeting,defense|capacitor');
+  const gBad = L.cleanLayout({ ...g2, capacitor: { ...g2.capacitor, stack: ['capacitor', 'nope'] } });
+  check('insp', 'tabs: a broken group reads back as plain windows', `${gBad.capacitor.stack ?? 'none'}|${gBad.targeting.in ?? 'none'}`, 'none|none');
+  const gOut = L.ungroup(g2, 'capacitor');
+  check('insp', 'tabs: the host leaving hands its place to the next tab', `${gOut.targeting.x},${gOut.targeting.y}|${gOut.targeting.stack.join(',')}|${gOut.defense.in}`, `${g0.capacitor.x},${g0.capacitor.y}|targeting,defense|targeting`);
+  check('insp', 'tabs: the last two apart are plain windows', L.ungroup(g1, 'targeting').capacitor.stack ?? 'none', 'none');
+  const gClosed = L.closeGroup(g2, 'targeting');
+  check('insp', 'tabs: closing the window closes every tab and dissolves it', `${['capacitor', 'targeting', 'defense'].map(k => gClosed[k].open).join(',')}|${gClosed.capacitor.stack ?? 'none'}`, 'false,false,false|none');
+  check('insp', 'tabs: an inspector never groups', L.combineWindows(c.layout, a.id, 'fitting') === c.layout ? 1 : 0, 1, 0);
+  // Only the hidden tab's edges are near: a tab is not on screen, so nothing may snap to where it was.
+  const gS = { a: { x: 0, y: 0, w: 200, h: 200, open: true, z: 1 }, b: { x: 1000, y: 0, w: 200, h: 200, open: true, z: 2, stack: ['b', 'c'], active: 'b' }, c: { x: 500, y: 500, w: 200, h: 200, open: true, z: 3, in: 'b' } };
+  check('insp', 'tabs: a tab is not a snap target', L.snapMove(gS, 'a', 503, 503, { windows: true }).x, 503, 0);
+  // Collapse: the title bar alone, the saved height kept, the canvas measured by what is drawn.
+  const gC = L.toggleCollapsed(g0, 'cargo');
+  check('insp', 'collapse: the saved height is kept', `${gC.cargo.collapsed}|${gC.cargo.h}`, `true|${g0.cargo.h}`);
+  check('insp', 'collapse: survives the saved layout', L.cleanLayout(JSON.parse(JSON.stringify(gC))).cargo.collapsed ? 1 : 0, 1, 0);
+  check('insp', 'collapse: drawn as its title bar', L.drawnHeight(gC.cargo), L.TITLE_H, 0);
   const del = L.deleteNamed(st0, 'B');
   check('insp', 'layouts: delete drops it and the active mark', `${Object.keys(del.named).join()}:${del.preset}`, 'A,C:null');
   const hid = L.setPresetHidden(st0, 'focus', true);
