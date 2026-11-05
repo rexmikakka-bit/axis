@@ -125,3 +125,42 @@ Not done yet:
 
 Test fixture note: hand-built fits without an `id` make `FittingsScreen` warn about a missing React
 key (`key={fit.id}`). Real fits always get one when created or imported, so seed test data with ids.
+
+## Next: the Graphs window, modelled on pyfa's (Owen, 2026-11-04)
+
+Owen wants pyfa's graph functionality, which mobile never had room for. Researched in
+`Pyfa-master/graphs/`:
+- **Graph types:** Damage Stats, Application Profile, Mobility, Capacitor, Warp, Lock time, Shield
+  regen, Remote reps, EWAR (`graphs/data/*`).
+- **Many lines at once:** a list of SOURCE fits, each with a colour, and a list of TARGETS (fits or
+  target profiles), each with a line style. Every source × target pair is a line
+  (`graphs/gui/lists.py`).
+- **Controls** (`graphs/gui/ctrlPanel.py`):
+  - X and Y axis choices, input ranges, and attacker/target speed-and-angle vectors;
+  - "ignore resists", show legend, and "always show Y = 0".
+- **Application Profile** (`graphs/data/fitApplicationProfile/`): for the dominant weapon group,
+  each valid charge's DPS against distance. The plot is the upper envelope, stitched into segments
+  coloured by the winning ammo (AMMO_COLORS by base name), with an ammo-meta filter of T1 / Navy /
+  All.
+
+Plan for Axis (not started beyond the exports):
+- `src/desktop/Graphs.jsx` calls the mobile graph's own `generateCurve(cat, y, x, params)` once per
+  source × target pair, so every line matches what mobile draws.
+- Helpers it needs are now exported from `GraphTab.jsx`: TARGET_PROFILES, TARGET_FIT, profileTarget,
+  interpCurveAt, defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S.
+- For each source fit, compute `cs` with calcFitStats plus that fit's own buildExternalBursts and
+  buildProjectedEffects, and `ownProj` with computeProjectedReps.
+- Targets:
+  - a profile gives `profileTarget(key, mwd)`;
+  - a fit goes through `targetFitProfile` (lib/graph-target.js), which gives sig, vel, scrammed and
+    incoming.
+- The window: a control panel (type, axes, sources, targets, vectors, range or time window,
+  legend) and an SVG plot with a hover crosshair that reads off every series.
+- The Application Profile, per source and target:
+  - pick the first `weaponRacks` rack, then `getCompatibleCharges`, keeping damaging charges that
+    pass the meta filter;
+  - load each charge into the rack's mounts and compute its cs and its damage-vs-distance curve;
+  - sample a common grid, then build the envelope and its segments wherever the winner changes;
+  - compute in chunks off the render, because one sweep is a whole-fit calculation per charge.
+
+Also still phone components and due for a desktop redesign: Fit price, Drones, Implants.

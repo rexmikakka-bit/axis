@@ -1518,4 +1518,4 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
 }
 
 // ═══ ACTIVE FIT BAR ════════════════════════════════════════════
-export { GraphTab, GRAPH_CONFIG, generateCurve };
+export { GraphTab, GRAPH_CONFIG, generateCurve, TARGET_PROFILES, TARGET_FIT, profileTarget, interpCurveAt, defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S };
