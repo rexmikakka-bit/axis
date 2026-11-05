@@ -113,7 +113,8 @@ Done:
 - **Tauri:** the shell builds and runs (`src-tauri/`). MutaMarket sends no CORS headers, so its
   requests go through `tauri-plugin-http` (scoped to `https://mutamarket.com/api/*` in
   `capabilities/default.json`), injected at boot by `setMutaMarketFetch` in `desktop/main.jsx`.
-  The dev servers use Vite's `/mutamarket-api` proxy instead.
+  The dev servers use Vite's `/mutamarket-api` proxy instead. Links out go through `tauri-plugin-opener`
+  (`openExternal` in `os-window.js`), since the webview refuses `window.open`.
 
 Not done yet:
 - **Untested under Tauri:** pop-out. If Tauri doesn't honour `window.open`, switch it to

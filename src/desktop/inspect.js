@@ -27,7 +27,19 @@ export const moduleTarget = (fitRef, sec, slot, typeID) => ({ kind: 'module', ..
 export const droneTarget = (fitRef, id, typeID) => ({ kind: 'drone', ...fitOf(fitRef), id, typeID: typeID ?? null });
 export const implantTarget = (fitRef, slot, typeID) => ({ kind: 'implant', ...fitOf(fitRef), slot, typeID: typeID ?? null });
 export const boosterTarget = (fitRef, id, typeID) => ({ kind: 'booster', ...fitOf(fitRef), id, typeID: typeID ?? null });
-export const typeTarget = (typeID, rack) => ({ kind: 'type', typeID: Number(typeID), ...(rack ? { rack } : {}) });
+// `roll` is an abyssal module that is not fitted anywhere (a saved roll, a MutaMarket contract, as the
+// Variations list shows them): {name, mutaplasmid, mutations, abyssalItemId}. Its window shows THAT
+// roll's numbers through the phone's abyssal info path, not the base module's.
+export const typeTarget = (typeID, rack, roll) => ({ kind: 'type', typeID: Number(typeID), ...(rack ? { rack } : {}), ...(roll ? { roll } : {}) });
+function cleanRoll(r) {
+  if (!r || typeof r !== 'object' || !r.mutations || typeof r.mutations !== 'object') return null;
+  const mutations = {};
+  for (const [k, v] of Object.entries(r.mutations)) if (typeof v === 'number' && Number.isFinite(v)) mutations[k] = v;
+  if (!Object.keys(mutations).length) return null;
+  return { name: typeof r.name === 'string' ? r.name : null, mutaplasmid: typeof r.mutaplasmid === 'string' ? r.mutaplasmid : null,
+           mutations, abyssalItemId: r.abyssalItemId ?? null };
+}
+const rollKey = (r) => r.abyssalItemId != null ? String(r.abyssalItemId) : Object.entries(r.mutations).sort().map(([k, v]) => `${k}=${v}`).join(',');
 
 /** The active fit's identity: ship, the saved record's id, and its name. */
 export function activeFitRef(fitsDB, activeFit) {
@@ -45,7 +57,7 @@ export function targetKey(t) {
     case 'drone': return `d:${fit}:${t.id}`;
     case 'implant': return `i:${fit}:${t.slot}`;
     case 'booster': return `b:${fit}:${t.id}`;
-    case 'type': return `t:${t.typeID}`;
+    case 'type': return t.roll ? `t:${t.typeID}:r:${rollKey(t.roll)}` : `t:${t.typeID}`;
     default: return '';
   }
 }
@@ -55,7 +67,7 @@ export function cleanTarget(raw) {
   if (!raw || typeof raw !== 'object' || !KINDS.includes(raw.kind)) return null;
   const tid = raw.typeID == null ? null : Number(raw.typeID);
   if (tid != null && !Number.isFinite(tid)) return null;
-  if (raw.kind === 'type') return tid ? typeTarget(tid, typeof raw.rack === 'string' ? raw.rack : undefined) : null;
+  if (raw.kind === 'type') return tid ? typeTarget(tid, typeof raw.rack === 'string' ? raw.rack : undefined, cleanRoll(raw.roll) ?? undefined) : null;
   if (typeof raw.ship !== 'string' || !raw.ship) return null;
   const fit = { ship: raw.ship, fitId: raw.fitId ?? null, fitName: typeof raw.fitName === 'string' ? raw.fitName : null };
   if (raw.kind === 'module') return SECS.includes(raw.sec) && raw.slot != null ? moduleTarget(fit, raw.sec, raw.slot, tid) : null;
@@ -80,7 +92,10 @@ function fitRecord(fitsDB, t) {
  */
 export function resolveTarget(t, s) {
   if (!t) return { status: 'none', item: null, typeID: null, name: null, live: false };
-  if (t.kind === 'type') return { status: 'ok', item: null, typeID: t.typeID, name: null, live: false };
+  if (t.kind === 'type') {
+    const roll = t.roll ? { typeID: t.typeID, name: t.roll.name, mutaplasmid: t.roll.mutaplasmid, mutations: t.roll.mutations, abyssalItemId: t.roll.abyssalItemId } : null;
+    return { status: 'ok', item: roll, typeID: t.typeID, name: roll?.name ?? null, live: false };
+  }
   const rec = fitRecord(s.fitsDB, t);
   const live = !!(s.activeFit && s.activeFit.ship === t.ship && (rec ? rec.name === s.activeFit.fitName : t.fitName === s.activeFit.fitName));
   if (!rec && !live) return { status: 'nofit', item: null, typeID: t.typeID, name: null, live: false };

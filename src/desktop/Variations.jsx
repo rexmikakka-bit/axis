@@ -20,6 +20,7 @@ import { AbyssalSources } from "../components/abyssal-sources.jsx";
 import { AbyssalBadge, PgGlyph, fitCostParts, fmtMutaVal, fmtMutaDisplay, mutaToDisplay, mutaLabel } from "../components/ui.jsx";
 import { ContextMenu, DialogFrame } from "./ContextMenu.jsx";
 import Menu from "./Menu.jsx";
+import { openExternal } from "./os-window.js";
 import { TYPE } from "./kit.jsx";
 
 // The desktop Variations window: every variant of an item — the meta family, your own abyssal rolls,
@@ -234,8 +235,10 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
       { label: t("Compare against this"), disabled: r.key === ref?.key, onSelect: () => setRefKey(r.key) },
       refKey !== "fitted" && { label: fitted ? t("Compare against the fitted one") : t("Compare against the reference"), onSelect: () => setRefKey("fitted") },
       { divider: true },
-      onInspect && { label: t("Show info"), onSelect: () => onInspect(r.typeID) },
-      url && { label: t("Open on MutaMarket"), onSelect: () => window.open(url, "_blank", "noopener") },
+      // A rolled module opens as that roll, not as its base type.
+      onInspect && { label: t("Show info"), onSelect: () => onInspect(r.typeID, r.mod.mutations ? { name: r.record?.label || r.mod.name, mutaplasmid: r.mod.mutaplasmid ?? null,
+        mutations: r.mod.mutations, abyssalItemId: r.mod.abyssalItemId ?? null } : undefined) },
+      url && { label: t("Open on MutaMarket"), onSelect: () => openExternal(url) },
       r.record && r.record.source !== MARKET_SOURCE && { label: r.record.favorite ? t("Remove from favorites") : t("Add to favorites"), onSelect: () => favorite(r.record) },
       { label: t("Copy name"), onSelect: () => navigator.clipboard?.writeText(r.record?.label || r.mod.name).catch(() => {}) },
     ] });

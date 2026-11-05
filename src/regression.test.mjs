@@ -9005,6 +9005,10 @@ Nanofiber Internal Structure II
   check('insp', 'tabs: a read-only module edits nothing', I.inspectorTabs(other, I.resolveTarget(other, s), { mutable: true, takesCharges: true }).join(), 'info,variations');
   check('insp', 'clean: a garbled target is dropped', I.cleanTarget({ kind: 'module', ship: 'Rifter', sec: 'nope', slot: 1 }) === null ? 1 : 0, 1, 0);
   check('insp', 'clean: a type target round-trips', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(I.typeTarget(2873, 'high'))))), JSON.stringify(I.typeTarget(2873, 'high')));
+  const rolled = I.typeTarget(527, undefined, { name: 'Stasis Webifier II', mutaplasmid: 'Decayed Stasis Webifier Mutaplasmid', mutations: { speedFactor: -61.2 }, abyssalItemId: 1056358224174 });
+  check('insp', 'roll: an abyssal roll survives a restart', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(rolled)))), JSON.stringify(rolled));
+  check('insp', 'roll: it gets a window apart from the base type', I.targetKey(rolled) !== I.targetKey(I.typeTarget(527)) ? 1 : 0, 1, 0);
+  check('insp', 'roll: it resolves to the rolled item', I.resolveTarget(rolled, {}).item?.mutations?.speedFactor, -61.2);
   const base = L.presetLayout('default');
   const a = L.openFloat(base, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 1 });
   check('insp', 'float: opens raised above every window', a.layout[a.id].z, L.topZ(base) + 1, 0);

@@ -61,7 +61,7 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
   const tabs = inspectorTabs(target, r, { mutable, takesCharges, rah });
   const cur = only ?? (tabs.includes(tab) ? tab : tabs.includes("info") ? "info" : tabs[0]);
   const editable = r.status === "ok" && r.live;
-  const showInfo = (tid) => inspect(typeTarget(tid), "info");
+  const showInfo = (tid, roll) => inspect(typeTarget(tid, undefined, roll), "info");
 
   // ── Where this item is ───────────────────────────────────────────────────────────────────────
   const fitLabel = target.kind !== "type" ? `${target.ship} · ${target.fitName ?? ""}` : null;
@@ -94,7 +94,7 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
       return (
         <div style={{ padding: 14 }}>
           {hasTraits(typeID) && <div style={{ marginBottom: 12 }}><TraitsPanel typeID={typeID} /></div>}
-          {item && (target.kind === "drone" || target.kind === "module")
+          {item && (target.kind === "drone" || target.kind === "module" || (target.kind === "type" && item.mutations))
             ? <ModuleInfoTab typeID={typeID} mod={item} engineItem={engine} bleed={14} />
             : <ItemInfoPanel typeID={typeID} item={engine} bleed={14} />}
         </div>

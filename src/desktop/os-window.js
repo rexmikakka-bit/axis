@@ -27,6 +27,18 @@ export async function openOsWindow(id, { url, width, height, title }) {
   return w ? { close: () => w.close() } : null;
 }
 
+/**
+ * Open a web link in the system browser. In the Tauri shell window.open is refused (see above), so it
+ * goes through the opener plugin (http/https, its default scope); in a plain browser, a new tab.
+ */
+export async function openExternal(url) {
+  if (!url) return;
+  if (IS_TAURI) {
+    try { const { openUrl } = await import("@tauri-apps/plugin-opener"); await openUrl(url); return; } catch (e) { console.error("open link failed", e); }
+  }
+  window.open(url, "_blank", "noopener");
+}
+
 /** Close the window this code is running in (a popped-out window's own Dock button). */
 export async function closeThisWindow() {
   if (IS_TAURI) {

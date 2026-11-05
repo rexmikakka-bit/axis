@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
@@ -23,12 +23,22 @@ const recOf = (d) => { const tid = d.typeID ?? (d.name ? tidByName(d.name) : nul
 const volOf = (d) => recOf(d)?.attrs?.volume ?? d.volume ?? 5;
 const bwOf = (d) => recOf(d)?.attrs?.droneBandwidthUsed ?? d.bandwidth ?? 5;
 
+// Below this the seven-column table no longer has room for the drone's name.
+const NARROW_W = 470;
+
 export default function DronesPanel({ s, stats }) {
   const [picker, setPicker] = useState(false);
   const insp = useInspect();
   const open = (d, tab) => insp.inspect(droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)), tab);
   const rs = useRowSelect();
   const drop = useItemDrop("drones");
+  // Narrow (a side column), each row folds onto two lines: who and how many, then range · speed · EHP.
+  const [width, setWidth] = useState(0), ro = useRef(null);
+  const rootRef = useCallback((el) => {
+    ro.current?.disconnect(); ro.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    ro.current = new ResizeObserver(([e]) => setWidth(e.contentRect.width)); ro.current.observe(el);
+  }, []);
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const drones = s.drones ?? [];
   const bay = drones.reduce((a, d) => a + d.qty * volOf(d), 0);
@@ -40,7 +50,8 @@ export default function DronesPanel({ s, stats }) {
   const add = (d) => addDrone(s, d, cap);
   const info = (d) => (d.id != null ? stats.droneInfo.find(x => x.id === d.id) : null) ?? stats.droneInfo.find(x => x.name === d.name) ?? {};
   const km = (m) => parseFloat((m / 1000).toFixed(2));
-  const cols = "18px 44px minmax(90px,1fr) 76px 62px 50px 16px";
+  const narrow = width > 0 && width < NARROW_W;
+  const cols = narrow ? "18px 44px minmax(0,1fr) 16px" : "18px 44px minmax(90px,1fr) 76px 62px 50px 16px";
   const cell = { fontSize: TYPE.small, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
   const toggleActive = (id) => set(l => l.map(x => x.id === id ? { ...x, active: !x.active } : x));
   const remove = (id) => set(l => l.filter(x => x.id !== id));
@@ -58,7 +69,7 @@ export default function DronesPanel({ s, stats }) {
     ];
   };
   return (
-    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div ref={rootRef} {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       <DropHint over={drop.over} ok={drop.ok} label={t("Add to drone bay")} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: "8px 16px", padding: "10px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <UsageBar label={t("Drone bay")} used={bay} total={cap.bay} unit="m³" fmt={n => String(Math.round(n))} />
@@ -68,7 +79,7 @@ export default function DronesPanel({ s, stats }) {
       <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", padding: "6px 12px", flex: "none", fontSize: TYPE.section,
                     letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, borderBottom: `1px solid ${C.border}` }}>
         <span /><span style={{ textAlign: "right" }}>{t("Qty")}</span><span>{t("Drone")}</span>
-        <span style={{ textAlign: "right" }}>{t("Range")}</span><span style={{ textAlign: "right" }}>{t("Speed")}</span><span style={{ textAlign: "right" }}>EHP</span>
+        {!narrow && <><span style={{ textAlign: "right" }}>{t("Range")}</span><span style={{ textAlign: "right" }}>{t("Speed")}</span><span style={{ textAlign: "right" }}>EHP</span></>}
         <button type="button" onClick={() => setPicker(true)} aria-label={t("Add drones")} title={t("Add drones")}
           style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 16, padding: 0 }}>+</button>
       </div>
@@ -76,10 +87,12 @@ export default function DronesPanel({ s, stats }) {
         {!drones.length && <div style={{ padding: 12, fontSize: TYPE.label, color: C.textMid }}>{t("No drones. Use + to add some.")}</div>}
         {drones.map(d => {
           const i = info(d);
+          const range = i.optimal > 0 ? `${km(i.optimal)}${i.falloff > 0 ? ` + ${km(i.falloff)}` : ""} km` : "—";
+          const speed = i.velocity > 0 ? `${Math.round(i.velocity)} m/s` : "—", ehp = i.ehp > 0 ? Math.round(i.ehp).toLocaleString() : "—";
           const rp = rs.rowProps(d.id, { onOpen: () => open(d, "info"), items: () => items(d), target: droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)) });
           return (
-            <div key={d.id} {...rp} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 30, padding: "0 12px",
-                                     borderBottom: `1px solid ${C.border}99`, opacity: d.active ? 1 : 0.65 }}>
+            <div key={d.id} {...rp} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, rowGap: 2, alignItems: "center", minHeight: 30,
+                                     padding: narrow ? "5px 12px" : "0 12px", borderBottom: `1px solid ${C.border}99`, opacity: d.active ? 1 : 0.65 }}>
               <input type="checkbox" checked={!!d.active} onChange={() => toggleActive(d.id)}
                 title={d.active ? t("In space") : t("In the bay")} aria-label={t("In space")} style={{ width: 16, height: 16, accentColor: C.accent }} />
               <input type="text" inputMode="numeric" value={d.qty} aria-label={t("Quantity of {name}", { name: d.name })}
@@ -91,11 +104,20 @@ export default function DronesPanel({ s, stats }) {
                 <span style={{ fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</span>
                 {d.mutaplasmid && <span style={{ fontSize: 10.5, color: C.danger, border: `1px solid ${C.danger}`, borderRadius: 3, padding: "0 3px" }}>A</span>}
               </span>
-              <span style={{ ...cell, color: C.rig }}>{i.optimal > 0 ? `${km(i.optimal)}${i.falloff > 0 ? ` + ${km(i.falloff)}` : ""} km` : "—"}</span>
-              <span style={cell}>{i.velocity > 0 ? `${Math.round(i.velocity)} m/s` : "—"}</span>
-              <span style={cell}>{i.ehp > 0 ? Math.round(i.ehp).toLocaleString() : "—"}</span>
+              {!narrow && <>
+                <span style={{ ...cell, color: C.rig }}>{range}</span>
+                <span style={cell}>{speed}</span>
+                <span style={cell}>{ehp}</span>
+              </>}
               <button type="button" onClick={() => remove(d.id)} aria-label={t("Remove {name}", { name: d.name })}
                 style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>
+              {narrow && (
+                <span style={{ gridColumn: "3 / 5", display: "flex", flexWrap: "wrap", gap: "0 10px", paddingLeft: 27, fontSize: TYPE.small, color: C.textMid, fontVariantNumeric: "tabular-nums" }}>
+                  <span style={{ color: C.rig }} title={t("Range")}>{range}</span>
+                  <span title={t("Speed")}>{speed}</span>
+                  <span title="EHP">{ehp} EHP</span>
+                </span>
+              )}
             </div>
           );
         })}

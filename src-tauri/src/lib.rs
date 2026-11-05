@@ -4,6 +4,8 @@ pub fn run() {
     // Requests from Rust, where CORS does not apply: mutamarket.com sends no CORS headers, so a
     // webview fetch to it is refused. Scoped to its API in capabilities/default.json.
     .plugin(tauri_plugin_http::init())
+    // Links out (MutaMarket listings) in the system browser: the webview refuses window.open.
+    .plugin(tauri_plugin_opener::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
