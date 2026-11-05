@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
@@ -109,6 +109,11 @@ export function FitTable({ api }) {
     // Undo brings it back), right click opens the context menu, with Show info; Delete removes the
     // selection, Escape clears it. The phone's tap-opens-the-sheet does not apply here.
     const insp = useInspect();
+    // "Charge rows": each loaded charge on a row of its own under its module (an experiment to compare
+    // with the charge-icon column). Remembered.
+    const [chargeRows, setChargeRows] = useState(() => { try { return localStorage.getItem("axis_desk_charge_rows") === "1"; } catch { return false; } });
+    const flipChargeRows = () => setChargeRows(v => { try { localStorage.setItem("axis_desk_charge_rows", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
+    const [chargeMenu, setChargeMenu] = useState(null);   // {x, y, secKey, row, unload}
     // Browser items dropped here: a module is fitted to its rack, a charge loads into every module
     // that takes it — or, dropped on one row, into that row (all of a grouped row's members).
     const items = useItems();
@@ -209,8 +214,10 @@ export function FitTable({ api }) {
       setMenu({ x: e.clientX, y: e.clientY, secKey, row });
     };
     const widths = FIT_COLS.map(c => cols?.[c.id] ?? c.w);
-    // State dot, the LOADED CHARGE's icon, the module's icon, then the name and the stat columns.
-    const template = `12px 20px 20px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
+    // State dot, the LOADED CHARGE's icon, the module's icon, then the name and the stat columns. With
+    // Charge rows on, the charge has a row of its own under its module instead, so its column goes.
+    const template = `12px ${chargeRows ? "" : "20px "}20px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
+    const lead = chargeRows ? 3 : 4;   // columns before the stat columns: dot, [charge], icon, name
     const prices = getCachedPrices(hub, source);
     const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
     const item = (id) => cs?.fittedItems?.get(id);
@@ -239,13 +246,15 @@ export function FitTable({ api }) {
           <button type="button" style={histBtn(undoDepth > 0)} disabled={!undoDepth} onClick={() => undo?.()} title={t("Undo last change ({n})", { n: undoDepth })}>↶ {t("Undo")}</button>
           <button type="button" style={histBtn(redoDepth > 0)} disabled={!redoDepth} onClick={() => redo?.()} title={t("Redo last undone change ({n})", { n: redoDepth })}>↷ {t("Redo")}</button>
           <span style={{ flex: 1 }} />
+          <button type="button" aria-pressed={chargeRows} onClick={flipChargeRows} title={t("Show each loaded charge on a row of its own under its module")}
+            style={{ ...histBtn(true), color: chargeRows ? C.accent : C.textMid, background: chargeRows ? C.accentLight : "transparent", borderColor: chargeRows ? C.accent : C.borderStrong }}>{t("Charge rows")}</button>
           <button type="button" aria-pressed={grouped} onClick={() => setGrouped(g => !g)}
             style={{ ...histBtn(true), color: grouped ? C.accent : C.textMid, background: grouped ? C.accentLight : "transparent", borderColor: grouped ? C.accent : C.borderStrong }}>{t("Grouped")}</button>
         </div>
         {/* Column header */}
         <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 24, padding: "0 12px", flex: "none",
                       borderBottom: `1px solid ${C.border}`, fontSize: 11.5, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
-          <span /><span /><span /><span>{t("Module")} · {t("Charge")}</span>
+          <span /><span />{!chargeRows && <span />}<span>{chargeRows ? t("Module") : <>{t("Module")} · {t("Charge")}</>}</span>
           {FIT_COLS.map(c => (
             <span key={c.id} style={{ position: "relative", textAlign: "right", color: c.id === "cpu" ? resourceColor("cpu") : c.id === "pg" ? resourceColor("pg") : C.textMid }}>
               <span aria-hidden="true" onPointerDown={startResize(c.id)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize}
@@ -256,6 +265,13 @@ export function FitTable({ api }) {
           <span />
         </div>
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.secKey, menu.row)} onClose={() => setMenu(null)} />}
+        {chargeMenu && <ContextMenu x={chargeMenu.x} y={chargeMenu.y} onClose={() => setChargeMenu(null)} items={[
+          { heading: chargeMenu.row.ammo?.replace(/\s*\(\d+\)$/, "") },
+          { label: t("Change charge…"), onSelect: () => inspectRow(chargeMenu.secKey, chargeMenu.row, "charge") },
+          { label: t("Show charge info…"), hint: t("double-click"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, chargeMenu.secKey, chargeMenu.row.id), "info") },
+          { divider: true },
+          { label: chargeMenu.row.count > 1 ? t("Unload charge from all {n}", { n: chargeMenu.row.count }) : t("Unload charge"), danger: true, onSelect: () => chargeMenu.unload() },
+        ]} />}
         <div tabIndex={0} onKeyDown={onKey} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
           {SECS.map(sec => {
             const rows = getDisplayRows(sec.key);
@@ -268,11 +284,11 @@ export function FitTable({ api }) {
                 {/* Rack header: one colour for every rack (the handoff's rule), with its sums. */}
                 <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 22, padding: "0 12px",
                               background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.textMid }}>
-                  <span style={{ gridColumn: "1 / 5", fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden" }}>
+                  <span style={{ gridColumn: `1 / ${lead + 1}`, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden" }}>
                     {sec.label} <span style={{ fontWeight: 500 }}>{fitted.length} / {total}</span>
                   </span>
                   {sec.key === "rigs"
-                    ? <span style={{ ...cell, gridColumn: "5 / 7", color: C.textMid }}>{t("Cal")} {num(cs?.calUsed ?? 0, 0)} / {num(cs?.calTotal ?? 0, 0)}</span>
+                    ? <span style={{ ...cell, gridColumn: `${lead + 1} / ${lead + 3}`, color: C.textMid }}>{t("Cal")} {num(cs?.calUsed ?? 0, 0)} / {num(cs?.calTotal ?? 0, 0)}</span>
                     : <><span style={{ ...cell, color: C.textMid }}>{num(cpuSum)}</span><span style={{ ...cell, color: C.textMid }}>{num(pgSum)}</span></>}
                   <span /><span /><span /><span /><span />
                 </div>
@@ -283,8 +299,8 @@ export function FitTable({ api }) {
                       title={t("Double-click to add a module, or pick one in the Browser's Market")}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
                                borderBottom: `1px solid ${C.border}99`, cursor: "default", color: C.textMid, fontSize: 13 }}>
-                      <span /><span /><span style={{ textAlign: "center", color: C.borderStrong }}>+</span>
-                      <span style={{ gridColumn: "4 / -1" }}>{row.name}</span>
+                      <span />{!chargeRows && <span />}<span style={{ textAlign: "center", color: C.borderStrong }}>+</span>
+                      <span style={{ gridColumn: `${lead} / -1` }}>{row.name}</span>
                     </div>
                   );
                   const e = engineStatsBySlotID.get(row.id);
@@ -301,8 +317,12 @@ export function FitTable({ api }) {
                   const isSel = sel.has(rowKey(sec.key, row.id));
                   const chargeHere = chargeOver === rowKey(sec.key, row.id);
                   const rowBg = row.orphan ? `${C.danger}14` : isDragOver || chargeHere ? C.accentLight : isSel ? C.accentLight : "transparent";
+                  const unload = (ev) => { ev?.stopPropagation(); const ids = new Set(row.groupIds ?? [row.id]);
+                    setSlots(prev => ({ ...prev, [sec.key]: prev[sec.key].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); };
+                  const showCharge = () => insp.inspect(chargeTarget(insp.fitRef, sec.key, row.id), "info");
                   return (
-                    <div key={row.rkey || row.id || row.name} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
+                    <Fragment key={row.rkey || row.id || row.name}>
+                    <div ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
                       onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)} {...rowDrop(sec.key, row)} {...rowReorder(sec.key, rowIdx)}
                       onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : removeMod(sec.key, row.id)} className="no-select"
                       aria-selected={isSel}
@@ -317,12 +337,12 @@ export function FitTable({ api }) {
                       </span>
                       {/* The loaded charge, so a rack's ammo reads at a glance down the column; click it for
                           the charge as the fit computes it (Show charge info). */}
-                      <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
+                      {!chargeRows && <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
                         {charge && tidByName(charge) && <img className="eve-icon" src={eveIcon(tidByName(charge), 32)} width={20} height={20} alt={charge}
                           title={`${charge} · ${t("click for charge info")}`} style={{ cursor: "pointer" }}
                           onClick={ev => { ev.stopPropagation(); insp.inspect(chargeTarget(insp.fitRef, sec.key, row.id), "info"); }}
                           onDoubleClick={ev => ev.stopPropagation()} onError={ev => { ev.target.style.visibility = "hidden"; }} />}
-                      </span>
+                      </span>}
                       <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
                         {row.typeID && <img className="eve-icon" src={eveIcon(row.typeID, 32)} width={20} height={20} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}
                       </span>
@@ -333,10 +353,9 @@ export function FitTable({ api }) {
                           {sec.key === "subsystems" ? (row.name || "").replace(/^.+?\s-\s/, "") : row.name}
                         </span>
                         {row.state === "overheated" && <span style={{ fontSize: 11, fontWeight: 500, color: C.overheat, flex: "none" }}>{t("OH")}</span>}
-                        {charge && <span title={`${charge} · ${row.charges}/${row.maxCharges}`} style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1000 auto", minWidth: 24 }}>· {charge}</span>}
-                        {charge && <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")}
-                          onClick={ev => { ev.stopPropagation(); const ids = new Set(row.groupIds ?? [row.id]);
-                            setSlots(prev => ({ ...prev, [sec.key]: prev[sec.key].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); }}
+                        {charge && !chargeRows && <span title={`${charge} · ${row.charges}/${row.maxCharges}`} style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1000 auto", minWidth: 24 }}>· {charge}</span>}
+                        {charge && !chargeRows && <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")}
+                          onClick={unload}
                           style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", padding: 0, fontSize: 12, flex: "none" }}>×</button>}
                       </span>
                       <span style={{ ...cell, color: resourceColor("cpu") }}>{cpu ? num(cpu) : ""}</span>
@@ -349,6 +368,29 @@ export function FitTable({ api }) {
                         onClick={ev => ev.stopPropagation()} title={t("Drag to reorder")}
                         style={{ cursor: sec.key === "subsystems" ? "default" : "grab", touchAction: "none", color: C.textMid, textAlign: "center", fontSize: 13 }}>{sec.key === "subsystems" ? "" : "≡"}</span>
                     </div>
+                    {chargeRows && charge && (
+                      // The loaded charge on a row of its own, hung under its module: double-click for
+                      // its info, right-click to change or unload it. Not a slot, so it neither selects,
+                      // reorders nor takes drops.
+                      <div role="row" aria-label={t("Charge: {name}", { name: charge })}
+                        onDoubleClick={showCharge} onContextMenu={ev => { ev.preventDefault(); setChargeMenu({ x: ev.clientX, y: ev.clientY, secKey: sec.key, row, unload }); }}
+                        style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 22, padding: "0 12px",
+                                 borderBottom: `1px solid ${C.border}99`, background: `${C.surfaceAlt}66`, color: C.textMid, fontSize: 12.5,
+                                 opacity: row.state === "offline" ? 0.5 : 1, cursor: "default" }}>
+                        <span />
+                        <span style={{ gridColumn: "2 / -1", display: "flex", alignItems: "center", gap: 7, minWidth: 0, paddingLeft: 10 }}>
+                          <span aria-hidden="true" style={{ color: C.textMute, flex: "none" }}>↳</span>
+                          {tidByName(charge) && <img className="eve-icon" src={eveIcon(tidByName(charge), 32)} width={16} height={16} alt="" style={{ flex: "none" }}
+                            onError={ev => { ev.target.style.visibility = "hidden"; }} />}
+                          <span title={charge} style={{ color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{charge}</span>
+                          {row.charges != null && <span style={{ flex: "none", fontVariantNumeric: "tabular-nums" }}
+                            title={row.count > 1 ? t("Charges per module") : t("Charges loaded")}>× {row.charges}{row.count > 1 ? ` ${t("each")}` : ""}</span>}
+                          <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")} onClick={unload}
+                            style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", padding: 0, fontSize: 12, flex: "none" }}>×</button>
+                        </span>
+                      </div>
+                    )}
+                    </Fragment>
                   );
                 })}
               </div>
