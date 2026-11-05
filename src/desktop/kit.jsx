@@ -132,6 +132,8 @@ export const deskCss = () => `
      double-click still selects a word inside a text field. */
   body { -webkit-user-select: none; user-select: none; }
   input, textarea, select, [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
+  /* A phone figure line shown at regular weight (the Market browser's PG/CPU costs). */
+  .desk-plain-figures span { font-weight: 400 !important; }
 ${PHONE_TYPE_CSS}`;
 
 // The phone panels an item window hosts (ItemInfoPanel and its modifier breakdowns, the charge and

@@ -141,9 +141,9 @@ function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind, headroom }
         {kind && kind !== "module" && kind !== "cargo" && <span>{t(KIND_LABEL[kind])}</span>}
         {(kind === "module" || kind === "charge" || kind === "drone" || kind === "fighter") && <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>}
         {kind === "cargo" && mod.vol != null && <span>{+(+mod.vol).toFixed(2)} m³</span>}
-        {/* The phone's own type here, its semibold figures included: they read better than the
-            desktop's lighter remap at this size (Owen, 2026-11-05). */}
-        {kind === "module" && <FitCost item={mod} headroom={headroom} size={12} />}
+        {/* The phone's glyph line, its figures at regular weight as this row had them before the
+            glyphs (Owen: more readable on desktop); a figure the fit cannot afford is still red. */}
+        {kind === "module" && <span className="desk-plain-figures" style={{ display: "inline-flex" }}><FitCost item={mod} headroom={headroom} size={12} /></span>}
         {kind === "module" && headroom && variantCostFits(fitCostParts(mod, mod.mutations), { cpu: 0, pg: 0, calib: 0 }, headroom, fitCostRatioOf(headroom, mod.typeID)) === false
           && <span style={{ color: C.danger, whiteSpace: "nowrap" }}>{t("won't fit")}</span>}
       </span>
