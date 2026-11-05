@@ -17,7 +17,7 @@ import { stationIndexFor, withStations } from "../lib/mutamarket-contracts.js";
 import { readMarketSettings, writeMarketSettings, marketStationId } from "../lib/market-settings.js";
 import { useOnline } from "../lib/use-online.js";
 import { AbyssalSources } from "../components/abyssal-sources.jsx";
-import { AbyssalBadge, fitCostParts, fmtMutaVal, fmtMutaDisplay, mutaToDisplay, mutaLabel } from "../components/ui.jsx";
+import { AbyssalBadge, PgGlyph, fitCostParts, fmtMutaVal, fmtMutaDisplay, mutaToDisplay, mutaLabel } from "../components/ui.jsx";
 import { ContextMenu, DialogFrame } from "./ContextMenu.jsx";
 import Menu from "./Menu.jsx";
 import { TYPE } from "./kit.jsx";
@@ -265,16 +265,20 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
       style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap",
                background: on ? `${color}22` : "transparent", border: `1px solid ${on ? color : C.borderStrong}`, color: on ? color : C.textMid }}>{label}</button>
   );
-  const owns = sources.includes("owned") && showAbyssals, mm = sources.includes(MARKET_SOURCE) && showAbyssals;
-  const toggleSource = (src) => {
-    const on = showAbyssals && sources.includes(src);
-    const next = on ? sources.filter(s => s !== src) : [...new Set([...sources, src])];
-    setSources(next);
-    setShowAbyssals(next.length > 0);
-  };
+  // The phone's three icon buttons, same glyphs and same meaning: the bolt (a fitting cost, as on
+  // every row) for "only what fits", the triangle for abyssal rolls on or off — red because red
+  // means abyssal here, not because it is active — and the pencil for which sources they come from.
+  const iconBtn = (on, label, onClick, glyph, color = C.accent) => (
+    <button type="button" aria-label={label} title={label} aria-pressed={on ?? undefined} onClick={onClick}
+      style={{ width: 30, height: 24, padding: 0, borderRadius: 12, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+               background: on ? `${color}22` : "transparent", border: `1px solid ${on ? color : C.borderStrong}`, color: on == null ? C.textMid : on ? color : C.textMute }}>{glyph}</button>
+  );
+  const triangle = <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16"><path d="M8 2 14 13H2Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" fill={showAbyssals ? "currentColor" : "none"} /></svg>;
+  const pencil = <svg aria-hidden="true" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round"><path d="m12.5 3.5 4 4M3 17l1-5L13.5 2.5a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L8 16Z" /></svg>;
   const hidden = [
     counts.budget && t("{n} over budget", { n: counts.budget }), counts.fits && t("{n} won't fit", { n: counts.fits }),
     counts.columns && t("{n} filtered out", { n: counts.columns }), counts.search && t("{n} not matching the search", { n: counts.search }),
+    abyssalCapable && showAbyssals && !sources.length && t("no abyssal sources"),
   ].filter(Boolean);
   const th = { position: "sticky", top: 0, zIndex: 2, background: C.surfaceAlt, padding: "5px 8px", fontSize: TYPE.section, letterSpacing: ".04em",
                textTransform: "uppercase", color: C.textMid, fontWeight: 500, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}`, cursor: "pointer", userSelect: "none" };
@@ -339,13 +343,11 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "8px 10px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("Search name, seller, location")} aria-label={t("Search name, seller, location")}
           style={{ height: 26, width: 210, boxSizing: "border-box", padding: "0 9px", borderRadius: 6, fontSize: 12.5, background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
+        {resourceHeadroom && iconBtn(fitsOnly, t("Only show what fits"), () => setFitsOnly(v => !v), <PgGlyph size={13} />)}
         {abyssalCapable && <>
-          {chip(owns, t("My rolls"), () => toggleSource("owned"), C.danger)}
-          {chip(mm, t("MutaMarket"), () => toggleSource(MARKET_SOURCE), C.danger)}
-          <button type="button" onClick={() => setEditSources(true)} title={t("Edit abyssal sources")}
-            style={{ height: 24, padding: "0 8px", borderRadius: 12, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid }}>{t("Sources…")}</button>
+          {iconBtn(showAbyssals, t("Show abyssals"), () => setShowAbyssals(v => !v), triangle, C.danger)}
+          {iconBtn(null, t("Edit abyssal sources"), () => setEditSources(true), pencil)}
         </>}
-        {resourceHeadroom && chip(fitsOnly, t("Only what fits"), () => setFitsOnly(v => !v))}
         <span style={{ flex: 1 }} />
         {cards && <Menu label={`${t("Sort")}: ${sortLabel(activeSort)} ${sort.dir === "asc" ? "▲" : "▼"}`} ariaLabel={t("Sort by")} align="right"
           buttonStyle={{ height: 24, border: `1px solid ${C.borderStrong}`, fontSize: 12, fontWeight: 400, borderRadius: 12 }} items={sortItems} />}
