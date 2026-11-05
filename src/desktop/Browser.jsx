@@ -18,6 +18,7 @@ import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { useItems } from "./items-context.jsx";
 import { itemKind, defaultAction, dragProps, fitDragProps } from "./items.js";
+import AbyssalPane from "./AbyssalPane.jsx";
 
 // The desktop Browser (docs/desktop-handoff.md, "Browser"): one window, Market and Ships, as in
 // pyfa. Both are trees that EXPAND IN PLACE — a caret per category, children indented beneath it —
@@ -155,7 +156,9 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
   // A market row opens as a type with its rack, so its Variations window can fit a variant.
   const setInfo = ({ typeID, tab }) => insp.inspect(typeTarget(typeID, rack && itemKind({ typeID }).kind === "module" ? rack : undefined), tab);
   const rs = useRowSelect();
-  const rackTree = useMarketTree(rack ?? "high", isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
+  // "abyssal": the My Abyssals chip, your saved rolls (AbyssalPane) in place of a rack's tree.
+  const abyssal = rack === "abyssal" && !isStructure;
+  const rackTree = useMarketTree(rack && rack !== "abyssal" ? rack : "high", isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
   const tree = rack ? rackTree : marketEverything();
   const prices = getCachedPrices(s.priceHub, s.priceSource);
   const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
@@ -211,8 +214,16 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
                      background: rack === k ? C.accentLight : "transparent", border: `1px solid ${rack === k ? C.accent : C.borderStrong}`,
                      color: rack === k ? C.accent : C.textMid }}>{t(label)}</button>
         ))}
+        {!isStructure && <button type="button" aria-pressed={abyssal} title={abyssal ? t("Show everything") : t("Your saved abyssal modules")}
+          onClick={() => { setRack(abyssal ? null : "abyssal"); setSelected(null); setOpen(new Set()); }}
+          style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
+                   background: abyssal ? `${C.danger}22` : "transparent", border: `1px solid ${abyssal ? C.danger : C.borderStrong}`,
+                   color: abyssal ? C.danger : C.textMid }}>{t("My Abyssals")}</button>}
       </div>
-      <SearchBox value={search} onChange={setSearch} placeholder={rack ? t("Search modules") : t("Search everything")} />
+      <SearchBox value={search} onChange={setSearch} placeholder={abyssal ? t("Search your rolls") : rack ? t("Search modules") : t("Search everything")} />
+      {abyssal && <AbyssalPane s={s} ship={ship} search={search} rowProps={rs.rowProps} TreeRow={TreeRow}
+        fit={(rk, mod) => { if (!ship) return; if (adderRef?.current) adderRef.current(rk, mod); else remoteAdd?.(rk, mod); }} />}
+      {!abyssal && <>
       {!q && <div role="tree" style={{ flex: "1 1 50%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>{renderNodes(tree, 0)}</div>}
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
@@ -220,6 +231,7 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
               kind={rack ? "module" : itemKind(m).kind} />)
           : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? (rack ? t("No modules found") : t("Nothing found")) : t("Pick a category above.")}</div>}
       </div>
+      </>}
       {rs.view}
     </>
   );

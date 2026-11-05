@@ -192,6 +192,9 @@ export function addItem(env, item, to) {
   switch (to) {
     case "fitting":
       if (k.kind === "charge") { const n = loadCharge(s, item, env.only); return n ? t("Loaded {name}", { name: item.name }) : t("Nothing fitted takes {name}", { name: item.name }); }
+      // A saved abyssal roll fits as itself — the phone library's libraryModule shape — never as the
+      // stock module its typeID names.
+      if (item.mutations) { fitModule?.(k.rack, { name: item.name, typeID: tid, mutaplasmid: item.mutaplasmid, mutations: { ...item.mutations }, abyssalItemId: item.abyssalItemId }); return null; }
       fitModule?.(k.rack, moduleEntry(tid)?.mod ?? item);
       return null;
     case "drones": addDrone(s, { ...(droneEntry(tid) ?? {}), name: item.name, typeID: tid }, { bw: cs?.droneBandwidth ?? 0, max: cs?.maxActiveDrones ?? 5 }); return null;
@@ -216,8 +219,10 @@ export function dragProps(item) {
     draggable: true,
     onDragEnd: () => { dragging = null; },
     onDragStart: (e) => {
-      dragging = { typeID: item.typeID ?? null, name: item.name };
-      e.dataTransfer.setData(ITEM_MIME, JSON.stringify({ typeID: item.typeID ?? null, name: item.name }));
+      // An abyssal roll travels with its rolled values, so it lands as that roll.
+      const roll = item.mutations ? { mutaplasmid: item.mutaplasmid ?? null, mutations: item.mutations, abyssalItemId: item.abyssalItemId ?? null } : {};
+      dragging = { typeID: item.typeID ?? null, name: item.name, ...roll };
+      e.dataTransfer.setData(ITEM_MIME, JSON.stringify(dragging));
       e.dataTransfer.setData("text/plain", item.name);
       e.dataTransfer.effectAllowed = "copy";
     },
