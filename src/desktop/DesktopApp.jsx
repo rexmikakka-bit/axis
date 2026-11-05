@@ -7,6 +7,7 @@ import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame } from "../components/ui.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
 import { deskCss } from "./kit.jsx";
+import { useBackdrop, Backdrop, BackdropDialog } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
@@ -216,6 +217,7 @@ function DesktopApp() {
   useEffect(() => { initKeyboardTracking(); }, []);
 
   const [layoutState, setLayoutState] = useLayoutState();
+  const bd = useBackdrop();
   const isOpen = (id) => layoutState.windows[id]?.open && !layoutState.windows[id]?.detached;
 
   const [sheet, setSheet] = useState(null);   // which header dialog is open
@@ -374,13 +376,14 @@ function DesktopApp() {
             { label: t("Optimize Fit Price"), onSelect: () => s.optimizeFitPrice(), disabled: !hasFit, hint: "Ctrl+D" },
             { label: t("Shopping List"), onSelect: () => setSheet("shopping"), disabled: !hasFit },
             { divider: true },
+            { label: t("Workspace background…"), onSelect: () => setSheet("backdrop") },
             { label: t("Settings"), onSelect: () => setSheet("settings") },
             { label: t("Send Feedback"), onSelect: () => setSheet("feedback") },
           ]} />
         </header>
 
         <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra}
-          onPopOut={popOut} onDock={dock} />
+          onPopOut={popOut} onDock={dock} backdrop={<Backdrop url={bd.url} settings={bd.settings} />} />
       </div>
 
       {banner.view}
@@ -407,6 +410,7 @@ function DesktopApp() {
         cs={stats.snapshot} drones={s.drones} fighters={s.fighters} implants={s.implants} boosters={s.boosters} cmdFits={s.cmdFits} projFits={s.projFits}
         fitsDB={s.fitsDB} sourceSkills={s.sourceSkills} skillLabel={s.fitSkillLabel} dmgProfile={s.dmgProfile} priceHub={s.priceHub} priceSource={s.priceSource} />}
       {sheet === "shopping" && <ShoppingListSheet slots={s.slots} onClose={close} />}
+      {sheet === "backdrop" && <BackdropDialog bd={bd} onClose={close} />}
       {sheet === "feedback" && <FeedbackModal activeFit={s.activeFit} slots={s.slots} implants={s.implants} boosters={s.boosters} drones={s.drones}
         fighters={s.fighters} cargo={s.cargoItems} projFits={s.projFits} cmdFits={s.cmdFits} fitsDB={s.fitsDB} onClose={close} />}
       {sheet === "settings" && <SettingsOverlay onClose={close} skills={s.skills} setSkills={s.setSkills} skillProfiles={s.skillProfiles}
