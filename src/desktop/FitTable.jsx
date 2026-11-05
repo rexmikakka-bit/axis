@@ -105,7 +105,8 @@ export function FitTable({ api }) {
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
 
     // ── Desktop mouse model: left click SELECTS (ctrl/cmd adds or removes one, shift extends within the
-    // rack), double click shows info, right click opens the context menu; Delete removes the
+    // rack), double click UNFITS it (one module of a grouped row per double-click, so it can be repeated;
+    // Undo brings it back), right click opens the context menu, with Show info; Delete removes the
     // selection, Escape clears it. The phone's tap-opens-the-sheet does not apply here.
     const insp = useInspect();
     // Browser items dropped here: a module is fitted to its rack, a charge loads into every module
@@ -114,6 +115,24 @@ export function FitTable({ api }) {
     const drop = useItemDrop("fitting");
     const [chargeOver, setChargeOver] = useState(null);   // the row key a charge hovers
     const dragKind = drop.over ? itemKind(currentDrag()).kind : null;
+    // Reorder by dragging the ROW, as a desktop list does, not only the phone's ≡ grip: a press arms,
+    // and only travel past ROW_DRAG_PX starts the phone's own drag (startRowDrag, which picks the drop
+    // row and reorders through FitTab), so a click still selects and a double click still unfits.
+    const press = useRef(null);
+    const ROW_DRAG_PX = 5;
+    const rowReorder = (secKey, rowIdx) => secKey === "subsystems" ? {} : {
+      onPointerDown: (e) => { if (e.button === 0) press.current = { secKey, rowIdx, x: e.clientX, y: e.clientY, started: false }; },
+      onPointerMove: (e) => {
+        const p = press.current; if (!p) return;
+        if (!p.started) {
+          if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < ROW_DRAG_PX) return;
+          p.started = true; startRowDrag(p.secKey, p.rowIdx)(e);
+        }
+        moveRowDrag(e);
+      },
+      onPointerUp: () => { const p = press.current; press.current = null; if (p?.started) endRowDrag(); },
+      onPointerCancel: () => { const p = press.current; press.current = null; if (p?.started) endRowDrag(); },
+    };
     const rowDrop = (secKey, row) => {
       const key = rowKey(secKey, row.id);
       const takes = () => { const it = currentDrag(); return !!it && row.typeID != null && itemKind(it).kind === "charge" && canLoadCharge(row.typeID, it.name); };
@@ -173,14 +192,15 @@ export function FitTable({ api }) {
           setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); } },
         takesCharges && { divider: true },
         (TYPES[row.typeID] ?? TYPES[String(row.typeID)])?.gn === "Armor Resistance Shift Hardener" && { label: t("Adaptation…"), onSelect: () => inspectRow(secKey, row, "rah") },
-        { label: t("Show info…"), hint: t("double-click"), onSelect: () => inspectRow(secKey, row, "info") },
+        { label: t("Show info…"), onSelect: () => inspectRow(secKey, row, "info") },
         { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations") },
         mutable && { label: t("Mutate…"), onSelect: () => inspectRow(secKey, row, "mutate") },
         { divider: true },
         src && duplicateRoom(secKey, src) > 0 && { label: t("Copy to an empty slot"), onSelect: () => duplicateMod(secKey, src, 1) },
         src && hardpointRoom(secKey, src) > 0 && { label: t("Fill hardpoints ({n})", { n: hardpointRoom(secKey, src) }), onSelect: () => fillHardpoints(secKey, src) },
         many ? { label: t("Remove {n} selected", { n: selectedRows().length }), hint: "Del", danger: true, onSelect: removeSelected }
-             : { label: row.count > 1 ? t("Remove all {n}", { n: row.count }) : t("Remove"), hint: "Del", danger: true, onSelect: () => removeMod(secKey, row.id, row.groupIds) },
+             : { label: row.count > 1 ? t("Remove all {n}", { n: row.count }) : t("Remove"), hint: row.count > 1 ? "Del" : t("double-click · Del"), danger: true, onSelect: () => removeMod(secKey, row.id, row.groupIds) },
+        row.count > 1 && !many && { label: t("Remove one"), hint: t("double-click"), danger: true, onSelect: () => removeMod(secKey, row.id) },
       ];
     };
     const openContext = (e, secKey, row) => {
@@ -282,11 +302,11 @@ export function FitTable({ api }) {
                   const rowBg = row.orphan ? `${C.danger}14` : isDragOver || chargeHere ? C.accentLight : isSel ? C.accentLight : "transparent";
                   return (
                     <div key={row.rkey || row.id || row.name} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
-                      onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)} {...rowDrop(sec.key, row)}
-                      onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : inspectRow(sec.key, row, "info")} className="no-select"
+                      onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)} {...rowDrop(sec.key, row)} {...rowReorder(sec.key, rowIdx)}
+                      onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : removeMod(sec.key, row.id)} className="no-select"
                       aria-selected={isSel}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
-                               borderBottom: `1px solid ${isDragOver ? C.accent : row.orphan ? C.danger : `${C.border}99`}`, cursor: "default",
+                               borderBottom: `1px solid ${isDragOver ? C.accent : row.orphan ? C.danger : `${C.border}99`}`, cursor: dragUI?.secKey === sec.key ? "grabbing" : "default",
                                opacity: isDragSrc ? 0.45 : 1, background: rowBg, boxShadow: isSel ? `inset 2px 0 0 ${C.accent}` : "none" }}
                       onMouseEnter={ev => { if (!row.orphan && !dragUI && !isSel) ev.currentTarget.style.background = C.surfaceAlt; }}
                       onMouseLeave={ev => { ev.currentTarget.style.background = rowBg; }}>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { C, THEMES, THEME_LABELS } from "../theme.js";
 import { availableLocales, t } from "../lib/i18n.js";
@@ -9,6 +9,11 @@ import { SKILL_GROUPS, GROUP_COLORS, SKILL_PRESETS, PRESET_COLORS } from "../com
 import { useBackup, boldFill } from "../components/backup.jsx";
 import { isFallbackMode } from "../lib/fits-store.js";
 import * as esi from "../lib/esi.js";
+import { ESI_SCOPES } from "../esi-config.js";
+import { ASSET_SCOPE, assetLocation } from "../lib/abyssal-library.js";
+import { readAbyssals, saveAbyssalScan } from "../lib/abyssal-store.js";
+import { scanAbyssals, importAbyssals } from "../lib/abyssal-import.js";
+import { requireOnline } from "../lib/network-request.js";
 import { EsiSkillAlignPanel, useEsiCharacters, friendlyError } from "../components/esi-ui.jsx";
 import { PrereleaseSkillControl } from "../components/prerelease-skill.jsx";
 import { BackdropControls } from "./Backdrop.jsx";
@@ -378,12 +383,83 @@ function BackupSection() {
   );
 }
 
+// One character's abyssal collection, synced from Settings rather than through an empty slot's module
+// picker. The phone library's own scan and import (lib/abyssal-import.js, lib/abyssal-store.js), so
+// a roll synced here is the same record the picker would save. "Sync" takes every location the scan
+// finds; "Choose locations…" stops after the scan for the same checklist the phone shows.
+function AbyssalSync({ c, saved, onSaved }) {
+  const allowed = c.scopes?.includes(ASSET_SCOPE);
+  const [busy, setBusy] = useState(false), [progress, setProgress] = useState(null);
+  const [scan, setScan] = useState(null), [picked, setPicked] = useState([]);
+  const [report, setReport] = useState(null), [error, setError] = useState("");
+  const ctl = useRef(null);
+  useEffect(() => () => ctl.current?.abort(), []);
+  const run = async (task) => {
+    if (ctl.current) return;
+    const abort = new AbortController(); ctl.current = abort; setBusy(true); setError(""); setReport(null);
+    try { requireOnline(); await task(abort.signal); }
+    catch (e) { if (e.name !== "AbortError") setError(friendlyError(e)); }
+    finally { ctl.current = null; setBusy(false); setProgress(null); try { onSaved(await readAbyssals()); } catch { /* shown on next read */ } }
+  };
+  const importFrom = async (result, locations, signal) => {
+    const r = await importAbyssals(result, locations, await readAbyssals(), { signal, onProgress: setProgress,
+      onBatch: async (batch) => { onSaved(await saveAbyssalScan(batch, result)); } });
+    if (!signal.aborted) { setReport(r); setScan(null); }
+  };
+  const locationsOf = (result) => [...new Set(result.candidates.map(a => String(a.location_id)))];
+  const syncAll = () => run(async (signal) => { const result = await scanAbyssals(c, { signal, onProgress: setProgress }); if (!signal.aborted) await importFrom(result, locationsOf(result), signal); });
+  const chooseLocations = () => run(async (signal) => { const result = await scanAbyssals(c, { signal, onProgress: setProgress }); if (!signal.aborted) { setScan(result); setPicked(locationsOf(result)); } });
+  const grant = async () => { setError(""); try { await esi.beginLogin([...new Set([...ESI_SCOPES, ASSET_SCOPE, ...(c.scopes ?? [])])]); } catch (e) { setError(friendlyError(e)); } };
+  const byId = scan ? new Map(scan.assets.map(a => [a.item_id, a])) : null;
+  const locations = new Map();
+  for (const a of scan?.candidates ?? []) { const k = String(a.location_id), old = locations.get(k); locations.set(k, { name: assetLocation(a, byId, scan.names), count: (old?.count ?? 0) + 1 }); }
+  return (
+    <div style={{ padding: "2px 0 8px 46px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: TYPE.small, color: C.textMid, flex: 1, minWidth: 140 }}>
+          {t("Abyssal modules")}: <span style={{ color: C.text }}>{saved}</span> {t("saved")}
+          {progress && <> · {progress.stage === "scan" ? t("Scanning assets") : t("Importing modules")} {progress.done} / {progress.total}</>}
+          {report && <span style={{ color: report.failures.length ? C.warning : C.success }}> · {t("Imported {n}; failed {failed}.", { n: report.imported, failed: report.failures.length })}</span>}
+        </span>
+        {!allowed && <button type="button" onClick={grant} style={button(false)} title={t("Log in again with permission to read this character's assets")}>{t("Allow asset access")}</button>}
+        {allowed && !busy && <button type="button" onClick={syncAll} style={button(false)} title={t("Scan this character's assets and save every abyssal module found")}>{t("Sync abyssals")}</button>}
+        {allowed && !busy && !scan && <button type="button" onClick={chooseLocations} style={{ ...button(false), color: C.textMid }}>{t("Choose locations…")}</button>}
+        {busy && <button type="button" onClick={() => ctl.current?.abort()} style={button(false)}>{t("Cancel")}</button>}
+      </div>
+      {error && <div role="alert" style={{ marginTop: 4, fontSize: TYPE.small, color: C.danger, wordBreak: "break-word" }}>{error}</div>}
+      {scan && (
+        <div style={{ marginTop: 8, padding: "8px 10px", background: C.surfaceAlt, border: `1px solid ${C.border}`, borderRadius: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ flex: 1, fontSize: TYPE.small, color: C.textMid }}>{t("Containers and locations")} ({scan.candidates.length})</span>
+            <button type="button" onClick={() => setPicked([...locations.keys()])} style={{ ...button(false), height: 24 }}>{t("Select all")}</button>
+            <button type="button" onClick={() => setPicked([])} style={{ ...button(false), height: 24 }}>{t("Clear")}</button>
+          </div>
+          {[...locations].map(([k, l]) => (
+            <label key={k} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0", fontSize: TYPE.label, color: C.text, overflowWrap: "anywhere" }}>
+              <input type="checkbox" checked={picked.includes(k)} onChange={e => setPicked(p => e.target.checked ? [...p, k] : p.filter(x => x !== k))} style={{ accentColor: C.accent }} />
+              {l.name} <span style={{ color: C.textMid }}>({l.count})</span>
+            </label>
+          ))}
+          <Note>{t("ESI assets can be cached for about an hour. Unresolved locations show their IDs.")}</Note>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button type="button" disabled={!picked.length} onClick={() => run(signal => importFrom(scan, picked, signal))} style={{ ...button(true), opacity: picked.length ? 1 : 0.45 }}>{t("Import selected locations")}</button>
+            <button type="button" onClick={() => setScan(null)} style={button(false)}>{t("Cancel")}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EsiSection({ s }) {
   const { characters, activeId, loginError, refresh, switchActive, remove } = useEsiCharacters();
   const [busy, setBusy] = useState(null);       // characterId being synced
   const [error, setError] = useState(null);
   const [synced, setSynced] = useState(null);   // {id, msg}
   const [waiting, setWaiting] = useState(false);
+  // Saved rolls, for each character's count beside its Sync button.
+  const [rolls, setRolls] = useState([]);
+  useEffect(() => { let live = true; readAbyssals().then(r => { if (live) setRolls(r); }).catch(() => {}); return () => { live = false; }; }, []);
   // A login finishing (the eveauth-visviva link, esi-desktop.js) changes the characters: stop waiting.
   useEffect(() => { setWaiting(false); }, [characters.length]);
   useEffect(() => { esi.handleWebRedirectOnLoad().then(r => { if (r) refresh(); }).catch(e => setError(friendlyError(e))); }, [refresh]);
@@ -412,7 +488,8 @@ function EsiSection({ s }) {
       {characters.map(c => {
         const on = c.characterId === activeId;
         return (
-          <div key={c.characterId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.border}88` }}>
+          <div key={c.characterId} style={{ borderBottom: `1px solid ${C.border}88` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0 4px" }}>
             <input type="radio" name="esi-active" checked={on} onChange={() => switchActive(c.characterId)} aria-label={t("Active character")} title={t("Active character")} style={{ accentColor: C.accent }} />
             <img src={`https://images.evetech.net/characters/${c.characterId}/portrait?size=64`} width={32} height={32} alt="" style={{ borderRadius: 4, flex: "none" }}
               onError={e => { e.target.style.visibility = "hidden"; }} />
@@ -426,6 +503,8 @@ function EsiSection({ s }) {
             <button type="button" onClick={() => sync(c.characterId)} disabled={busy != null} style={{ ...button(false), opacity: busy != null && busy !== c.characterId ? 0.5 : 1 }}>
               {busy === c.characterId ? t("Syncing…") : t("Sync skills")}</button>
             <button type="button" onClick={() => remove(c.characterId)} style={danger()}>{t("Unlink")}</button>
+          </div>
+          <AbyssalSync c={c} saved={rolls.filter(r => String(r.characterId) === String(c.characterId)).length} onSaved={setRolls} />
           </div>
         );
       })}
