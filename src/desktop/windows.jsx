@@ -72,7 +72,6 @@ export function NoFit() {
 // The phone's StatsTab sections, one group per window.
 export const STAT_SECTIONS = {
   repsmining: ["remotereps", "mining"],
-  price: ["fitvalue"],
 };
 
 export function StatsWindow({ s, ship, sections, id }) {

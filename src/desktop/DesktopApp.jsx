@@ -21,6 +21,7 @@ import { FirepowerPanel } from "./Firepower.jsx";
 import ExportDialog from "./ExportDialog.jsx";
 import CargoPanel from "./Cargo.jsx";
 import GraphsPanel from "./Graphs.jsx";
+import PricePanel from "./Price.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
@@ -71,6 +72,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "graphs": return <GraphsPanel s={s} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
+      case "price": return <PricePanel s={s} ship={ship} />;
       case "defense": return <DefensePanel s={s} cs={cs} onPickProfile={() => openProfilePicker?.()} />;
       // Remote reps and mining sit under the firepower they belong with, only on fits that have them.
       case "firepower": return (
