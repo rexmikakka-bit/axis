@@ -20,6 +20,7 @@ import DeskBrowser from "./Browser.jsx";
 import { FirepowerPanel } from "./Firepower.jsx";
 import ExportDialog from "./ExportDialog.jsx";
 import CargoPanel from "./Cargo.jsx";
+import GraphsPanel from "./Graphs.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
@@ -67,7 +68,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     switch (id) {
       case "browser": return <DeskBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
       case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} />;
-      case "graphs": return <GraphsWindow s={s} ship={ship} />;
+      case "graphs": return <GraphsPanel s={s} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
       case "defense": return <DefensePanel s={s} cs={cs} onPickProfile={() => openProfilePicker?.()} />;

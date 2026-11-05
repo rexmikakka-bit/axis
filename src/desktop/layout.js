@@ -55,7 +55,7 @@ const STATS = { resources: [8, 184], defense: [200, 368], capacitor: [576, 152],
 const column = (col, x, w) => Object.fromEntries(Object.entries(col).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
 const CLOSED_BY_DEFAULT = { drones: [296, 120, 400, 420, false], implants: [340, 160, 400, 480, false], notes: [380, 200, 320, 200, false],
                             command: [300, 640, 356, 300, false], boosters: [340, 600, 380, 360, false], environment: [380, 660, 340, 140, false],
-                            graphs: [256, 48, 720, 600, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false] };
+                            graphs: [200, 40, 1000, 640, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false] };
 
 const PRESET_GEOMETRY = {
   default: {
