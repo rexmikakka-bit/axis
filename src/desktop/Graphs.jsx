@@ -247,7 +247,19 @@ export default function GraphsPanel({ s }) {
   const [ignoreResists, setIgnoreResists] = useState(!!saved.ignoreResists);
   const [showY0, setShowY0] = useState(saved.showY0 ?? true);
   const [picker, setPicker] = useState(null);   // "source" | "target"
-  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0 }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0]);
+  // Compact (plot only) or expanded (controls beside it). "auto" follows the window: under 640 px the
+  // controls fold away, so the graph can sit small in a general workspace and still read; a Controls
+  // button overrides either way, and the override is remembered.
+  const [panelMode, setPanelMode] = useState(saved.panelMode ?? "auto");
+  const rootRef = useRef(null);
+  const [rootW, setRootW] = useState(1000);
+  useLayoutEffect(() => {
+    const el = rootRef.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => setRootW(e.contentRect.width));
+    ro.observe(el); return () => ro.disconnect();
+  }, []);
+  const showPanel = panelMode === "shown" || (panelMode === "auto" && rootW >= 640);
+  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode]);
 
   // With no sources chosen, graph the fit being edited.
   const srcList = sources.length ? sources : (s.activeFit?.ship ? [{ ship: s.activeFit.ship, fitName: s.activeFit.fitName, auto: true }] : []);
@@ -312,8 +324,8 @@ export default function GraphsPanel({ s }) {
   const yLabel = yAxes.find(a => a.key === y)?.label() ?? "";
 
   return (
-    <div style={{ height: "100%", display: "flex", minHeight: 0 }}>
-      <div style={{ width: 250, flex: "none", overflowY: "auto", padding: "4px 12px 12px", borderRight: `1px solid ${C.border}` }}>
+    <div ref={rootRef} style={{ height: "100%", display: "flex", minHeight: 0 }}>
+      {showPanel && <div style={{ width: rootW >= 1200 ? 290 : 250, flex: "none", overflowY: "auto", padding: "4px 12px 12px", borderRight: `1px solid ${C.border}` }}>
         <Label>{t("Graph")}</Label>
         <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle} aria-label={t("Graph")}>
           {GRAPH_TYPES.map(g => <option key={g.key} value={g.key}>{g.label()}</option>)}
@@ -373,10 +385,22 @@ export default function GraphsPanel({ s }) {
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
           <input type="checkbox" checked={showY0} onChange={() => setShowY0(v => !v)} style={{ accentColor: C.accent }} />{t("Always show Y = 0")}
         </label>
-      </div>
+      </div>}
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "6px 8px 8px" }}>
-        {busy && <div style={{ fontSize: 12.5, color: C.textMid, padding: "2px 4px" }}>{t("Comparing ammo…")}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, padding: "0 4px" }}>
+          <button type="button" aria-pressed={showPanel} onClick={() => setPanelMode(showPanel ? "hidden" : "shown")}
+            title={showPanel ? t("Hide the controls (compact graph)") : t("Show the controls")}
+            style={{ ...addBtn, height: 22, color: showPanel ? C.textMid : C.accent, borderColor: showPanel ? C.borderStrong : C.accent }}>
+            {showPanel ? "◧ " : "◨ "}{t("Controls")}
+          </button>
+          {!showPanel && <span style={{ fontSize: 12, color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {GRAPH_TYPES.find(g => g.key === cat)?.label()} · {yLabel}</span>}
+          {panelMode !== "auto" && <button type="button" onClick={() => setPanelMode("auto")} title={t("Fold the controls away automatically when the window is narrow")}
+            style={{ ...addBtn, height: 22, padding: "0 6px", fontSize: 11.5 }}>{t("Auto")}</button>}
+          <span style={{ flex: 1 }} />
+          {busy && <span style={{ fontSize: 12.5, color: C.textMid }}>{t("Comparing ammo…")}</span>}
+        </div>
         {!series.length && !busy
           ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
           : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} />}
