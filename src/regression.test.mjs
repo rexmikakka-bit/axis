@@ -8968,6 +8968,57 @@ Nanofiber Internal Structure II
   const withDcu = { high: [], mid: [], low: [{ id: 20, typeID: dcu }, { id: 21, type: 'empty' }] };
   check('fitops', 'group fitted room: one DCU per hull', F.groupFittedRoom(withDcu, { [TYPES[dcu].gn]: { fitted: 1 } }, dcu), 0, 0);
   check('fitops', 'group fitted room: the DCU being swapped does not count', F.groupFittedRoom(withDcu, { [TYPES[dcu].gn]: { fitted: 1 } }, dcu, 20), 1, 0);
+  // Variant swap: T2 ammo cannot go in the T1 gun, so it unloads; a stock variant clears a roll.
+  const t2gun = { ...gun(1, 'Hail M'), mutaplasmid: 'x', mutations: { damageMultiplier: 3 }, abyssalItemId: 5 };
+  const p1 = F.variantSwapPatch(t2gun, { name: '425mm AutoCannon I', typeID: typeIDByName('425mm AutoCannon I') });
+  check('fitops', 'swap: T2 ammo unloads from a T1 variant', p1.ammo === undefined ? 1 : 0, 1, 0);
+  check('fitops', 'swap: a stock variant clears the roll', [p1.mutaplasmid, p1.mutations, p1.abyssalItemId].every(v => v === undefined) ? 1 : 0, 1, 0);
+  const p2 = F.variantSwapPatch(gun(1, 'Republic Fleet EMP M'), { name: '425mm AutoCannon I', typeID: typeIDByName('425mm AutoCannon I') });
+  check('fitops', 'swap: faction ammo stays in the T1 variant', p2.ammo, 'Republic Fleet EMP M');
+  // Subsystem swap re-lays the racks: a slot that goes away keeps its module as an orphan.
+  const legion = { subsystems: [], high: [gun(1, 'Hail M'), gun(2, 'Hail M')], mid: [], low: [], rigs: [] };
+  const sw = F.applySubsystemSwap(legion, 's0', { name: 'x', typeID: 0 });
+  check('fitops', 'subsystem swap with no subsystems: modules kept as orphans', sw.high.filter(m => m.orphan).length, 2, 0);
+}
+
+// -----------------------------------------------------------------------------
+// DESKTOP INSPECTORS — src/desktop/inspect.js (what a window is looking at) and the floating-window
+// half of layout.js. A wrong rule here shows the wrong item, or loses a pinned window on restart.
+// -----------------------------------------------------------------------------
+{
+  console.log('\nDESKTOP INSPECTORS');
+  const I = await import('./desktop/inspect.js');
+  const L = await import('./desktop/layout.js');
+  const fitRef = { ship: 'Rifter', fitId: 7, fitName: 'a' };
+  const slots = { high: [{ id: 'h0', name: '200mm AutoCannon II', typeID: 2873 }, { id: 'h1', name: '[Empty High Slot]', type: 'empty' }], mid: [], low: [] };
+  const s = { fitsDB: { Rifter: [{ id: 7, name: 'a', slots }, { id: 8, name: 'b', slots: { high: [{ id: 'h0', name: 'Other', typeID: 1 }] } }] }, activeFit: { ship: 'Rifter', fitName: 'a' }, slots };
+  const tm = I.moduleTarget(fitRef, 'high', 'h0', 2873);
+  check('insp', 'a fitted module in the open fit is live', `${I.resolveTarget(tm, s).status}:${I.resolveTarget(tm, s).live}`, 'ok:true');
+  check('insp', 'an emptied slot falls back to the pinned type', `${I.resolveTarget(I.moduleTarget(fitRef, 'high', 'h1', 2873), s).status}:${I.resolveTarget(I.moduleTarget(fitRef, 'high', 'h1', 2873), s).typeID}`, 'empty:2873');
+  const other = I.moduleTarget({ ship: 'Rifter', fitId: 8, fitName: 'b' }, 'high', 'h0', 1);
+  check('insp', 'another fit resolves read-only from its saved copy', `${I.resolveTarget(other, s).name}:${I.resolveTarget(other, s).live}`, 'Other:false');
+  const renamed = { ...s, fitsDB: { Rifter: [{ id: 7, name: 'renamed', slots }] }, activeFit: { ship: 'Rifter', fitName: 'renamed' } };
+  check('insp', 'a renamed fit is still found by id', I.resolveTarget(tm, renamed).live ? 1 : 0, 1, 0);
+  check('insp', 'a deleted fit says so', I.resolveTarget(tm, { ...s, fitsDB: {}, activeFit: { ship: 'Rifter', fitName: 'zzz' } }).status, 'nofit');
+  check('insp', 'tabs: a live module gets State, Charge and Mutaplasmid', I.inspectorTabs(tm, I.resolveTarget(tm, s), { mutable: true, takesCharges: true }).join(), 'state,charge,info,variations,mutate');
+  check('insp', 'tabs: a read-only module edits nothing', I.inspectorTabs(other, I.resolveTarget(other, s), { mutable: true, takesCharges: true }).join(), 'info,variations');
+  check('insp', 'clean: a garbled target is dropped', I.cleanTarget({ kind: 'module', ship: 'Rifter', sec: 'nope', slot: 1 }) === null ? 1 : 0, 1, 0);
+  check('insp', 'clean: a type target round-trips', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(I.typeTarget(2873, 'high'))))), JSON.stringify(I.typeTarget(2873, 'high')));
+  const base = L.presetLayout('default');
+  const a = L.openFloat(base, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 1 });
+  check('insp', 'float: opens raised above every window', a.layout[a.id].z, L.topZ(base) + 1, 0);
+  const b = L.openFloat(a.layout, { target: tm, tab: 'variations', key: I.targetKey(tm) }, { seq: 2 });
+  check('insp', 'float: the same item reuses its window and switches tab', `${b.id === a.id}:${b.layout[a.id].tab}`, 'true:variations');
+  const c = L.openFloat(a.layout, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 3, fresh: true });
+  check('insp', 'float: "fresh" always adds one', Object.keys(L.floatsOf(c.layout)).length, 2, 0);
+  const back = L.cleanLayout(JSON.parse(JSON.stringify(c.layout)));
+  check('insp', 'float: survives the saved layout', Object.keys(L.floatsOf(back)).length, 2, 0);
+  check('insp', 'float: a float with a broken target is dropped', Object.keys(L.floatsOf(L.cleanLayout({ ...c.layout, 'insp:x': { x: 0, y: 0, w: 300, h: 300, float: true, target: { kind: 'zzz' } } }))).length, 2, 0);
+  check('insp', 'float: never enlarges the workspace canvas', L.canvasSize(c.layout).w, L.canvasSize(base).w, 0);
+  check('insp', 'float: not squeezed by fit-to-height', L.fitToHeight(c.layout, 600)[a.id].h, c.layout[a.id].h, 0);
+  check('insp', 'float: snaps only to its own layer', L.snapMove(c.layout, a.id, base.fitting.x + 3, 300, { windows: true }).x, base.fitting.x + 3, 0);
+  let many = base; for (let i = 0; i < L.MAX_FLOATS + 3; i++) many = L.openFloat(many, { target: I.typeTarget(i + 1), tab: 'info', key: `t:${i}` }, { seq: 100 + i }).layout;
+  check('insp', 'float: capped, oldest goes first', Object.keys(L.floatsOf(many)).length, L.MAX_FLOATS, 0);
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

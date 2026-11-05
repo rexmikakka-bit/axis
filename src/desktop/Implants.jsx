@@ -4,10 +4,11 @@ import { t } from "../lib/i18n.js";
 import { tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { implantSetMembers, applyImplantSet, searchImplants } from "../lib/core.js";
-import { ItemDetailSheet } from "../components/ui.jsx";
 import { ImplantPicker, ImplantLoadoutSheet } from "../components/implants.jsx";
 import Menu from "./Menu.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { implantTarget, typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
 
 // The desktop Implants window: the ten slots as a numbered list in two groups, a search across every
@@ -19,7 +20,7 @@ const GROUPS = [{ id: "attrs", label: "Attribute Enhancers", slots: [1, 2, 3, 4,
 
 export default function ImplantsPanel({ s }) {
   const [picker, setPicker] = useState(null);
-  const [detail, setDetail] = useState(null);
+  const insp = useInspect();
   const [query, setQuery] = useState("");
   const [naming, setNaming] = useState(null);
   const [loadoutsOpen, setLoadoutsOpen] = useState(false);
@@ -39,7 +40,10 @@ export default function ImplantsPanel({ s }) {
   };
   const row = { display: "flex", alignItems: "center", gap: 9, minHeight: 30, padding: "0 12px", borderBottom: `1px solid ${C.border}99` };
   const withRow = (key, o) => { const p = rs.rowProps(key, o); return { ...p, style: { ...row, ...p.style } }; };
-  const showDetail = (imp, slot, tab) => setDetail({ ...imp, slot, typeID: imp.typeID ?? tidByName(imp.name), tab });
+  // A fitted implant opens as its slot (so a swap in its Variations window lands in that slot); a
+  // search result is just a type.
+  const showDetail = (imp, slot, tab) => insp.inspect(implantTarget(insp.fitRef, slot, imp.typeID ?? tidByName(imp.name)), tab);
+  const showType = (item, tab) => insp.inspect(typeTarget(item.typeID ?? tidByName(item.name)), tab);
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
@@ -68,15 +72,16 @@ export default function ImplantsPanel({ s }) {
               const fitted = implants.find(i => i.slot === item.slot)?.name === item.name;
               return (
                 <div key={item.typeID} {...withRow(`r:${item.typeID}`, {
+                  target: typeTarget(item.typeID ?? tidByName(item.name)),
                   onOpen: () => fitInto(item),
                   items: () => {
-                    const tid = item.typeID ?? tidByName(item.name), st = implantSetMembers(item.name);
+                    const st = implantSetMembers(item.name);
                     return [
                       { label: fitted ? t("Fitted") : t("Fit implant"), hint: t("Double-click"), disabled: fitted, onSelect: () => fitInto(item) },
                       st && { label: t("+ {set} set", { set: st.setName }), onSelect: () => fitSet(st) },
                       { divider: true },
-                      { label: t("Show info"), onSelect: () => setDetail({ ...item, typeID: tid, tab: "info" }) },
-                      { label: t("Variations"), onSelect: () => setDetail({ ...item, typeID: tid, tab: "vars" }) },
+                      { label: t("Show info"), onSelect: () => showType(item, "info") },
+                      { label: t("Variations"), onSelect: () => showType(item, "variations") },
                     ];
                   },
                 })}>
@@ -96,12 +101,13 @@ export default function ImplantsPanel({ s }) {
                 const empty = !imp || imp.name === EMPTY;
                 return (
                   <div key={n} {...withRow(`s:${n}`, {
+                    target: empty ? undefined : implantTarget(insp.fitRef, n, imp.typeID ?? tidByName(imp.name)),
                     onOpen: () => empty ? setPicker({ slot: n, name: EMPTY }) : showDetail(imp, n, "info"),
                     items: () => empty
                       ? [{ label: t("Add implant…"), hint: t("Double-click"), onSelect: () => setPicker({ slot: n, name: EMPTY }) }]
                       : [
                           { label: t("Show info"), hint: t("Double-click"), onSelect: () => showDetail(imp, n, "info") },
-                          { label: t("Variations"), onSelect: () => showDetail(imp, n, "vars") },
+                          { label: t("Variations"), onSelect: () => showDetail(imp, n, "variations") },
                           { label: t("Change implant…"), onSelect: () => setPicker({ slot: n, name: imp.name }) },
                           implantSetMembers(imp.name) && { label: t("+ {set} set", { set: implantSetMembers(imp.name).setName }), onSelect: () => fitSet(implantSetMembers(imp.name)) },
                           { divider: true },
@@ -121,19 +127,6 @@ export default function ImplantsPanel({ s }) {
             </div>
           ))}
       </div>
-      {detail && (() => {
-        const st = implantSetMembers(detail.name);
-        const fitted = implants.find(i => i.slot === detail.slot)?.name === detail.name;
-        const acts = [];
-        if (st) acts.push({ label: t("+ {set} set", { set: st.setName }), primary: true, onClick: () => fitSet(st) });
-        if (!fitted) acts.push({ label: t("Fit implant"), primary: !st, onClick: () => fitInto(detail) });
-        else {
-          acts.push({ label: t("Change implant"), onClick: () => setPicker({ slot: detail.slot, name: detail.name }) });
-          acts.push({ label: t("Remove implant"), danger: true, onClick: () => clearSlot(detail.slot) });
-        }
-        return <ItemDetailSheet key={detail.tab} typeID={detail.typeID} name={detail.name} actions={acts} initialTab={detail.tab}
-          onSwap={v => set(prev => prev.map(i => i.slot === detail.slot ? { ...i, name: v.name, bonus: null } : i))} onClose={() => setDetail(null)} />;
-      })()}
       {picker && <ImplantPicker slot={picker.slot} current={picker.name}
         onSelect={opt => set(prev => prev.map(i => i.slot === picker.slot ? { ...i, name: opt.name, bonus: opt.bonus ?? null } : i))}
         onSelectSet={fitSet} onClear={() => clearSlot(picker.slot)} onClose={() => setPicker(null)} />}

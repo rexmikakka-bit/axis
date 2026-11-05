@@ -5,8 +5,9 @@ import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { cargoVolume, cargoUnitVolume } from "../lib/core.js";
 import { CargoBrowserSheet } from "../components/cargo.jsx";
-import { ItemInfoSheet } from "../components/ui.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
 
 // The desktop Cargo window: the hold as an Item / Qty table (docs/desktop-handoff.md, "Cargo") with
@@ -16,7 +17,8 @@ import { Empty, TYPE } from "./kit.jsx";
 
 export default function CargoPanel({ s, capacity }) {
   const [picker, setPicker] = useState(false);
-  const [info, setInfo] = useState(null);
+  const insp = useInspect();
+  const setInfo = (tid) => insp.inspect(typeTarget(tid), "info");
   const rs = useRowSelect();
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const items = s.cargoItems ?? [];
@@ -55,7 +57,7 @@ export default function CargoPanel({ s, capacity }) {
         {items.map(e => {
           const tid = e.typeID ?? tidByName(e.name);
           const vol = (e.vol ?? TYPES[tid]?.attrs?.volume ?? 0) * (e.qty ?? 0);
-          const rp = rs.rowProps(e.id, { onOpen: tid ? () => setInfo(tid) : undefined, items: [
+          const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: tid ? () => setInfo(tid) : undefined, items: [
             { label: t("Show info"), hint: t("Double-click"), disabled: !tid, onSelect: () => setInfo(tid) },
             { divider: true },
             { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(e.id) },
@@ -75,7 +77,6 @@ export default function CargoPanel({ s, capacity }) {
         })}
       </div>
       {rs.view}
-      {info != null && <ItemInfoSheet typeID={info} onClose={() => setInfo(null)} />}
       {picker && <CargoBrowserSheet slots={s.slots} onAdd={add} onClose={() => setPicker(false)} />}
     </div>
   );

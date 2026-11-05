@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { Dialog } from "./kit.jsx";
+import { useInspect } from "./inspect-context.jsx";
 
 // The desktop's right-click menu: opens at the pointer, kept inside the window, closes on a pick, an
 // outside click, Escape, or the window losing focus. Items are {label, onSelect, disabled?, hint?,
@@ -49,20 +50,22 @@ export function ContextMenu({ x, y, items, onClose }) {
 /**
  * The desktop list-row mouse model, for windows with one selection at a time (Implants, Drones,
  * Boosters, Cargo, the Market list): left click selects, double click does the row's main action,
- * right click selects and opens a menu. `rowProps(key, {onOpen, items})` spreads onto the row;
+ * right click selects and opens a menu. `rowProps(key, {onOpen, items, target})` spreads onto the row
+ * (`target`, an inspect.js target, also becomes the app-wide selection the item windows follow);
  * `view` renders the open menu. The Fitting table has its own multi-select version (FitTable.jsx).
  */
 export function useRowSelect() {
   const [sel, setSel] = useState(null);
   const [menu, setMenu] = useState(null);
-  const rowProps = (key, { onOpen, items } = {}) => {
+  const { select } = useInspect();
+  const rowProps = (key, { onOpen, items, target } = {}) => {
     const on = sel === key;
     return {
       "aria-selected": on,
       className: "no-select",
-      onClick: () => setSel(key),
+      onClick: () => { setSel(key); if (target) select(target); },
       onDoubleClick: onOpen ? (e) => { if (!e.target.closest("input, button, select")) onOpen(); } : undefined,
-      onContextMenu: items ? (e) => { e.preventDefault(); setSel(key); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
+      onContextMenu: items ? (e) => { e.preventDefault(); setSel(key); if (target) select(target); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
       style: { cursor: "default", background: on ? C.accentLight : "transparent", boxShadow: on ? `inset 2px 0 0 ${C.accent}` : "none" },
       onMouseEnter: (e) => { if (!on) e.currentTarget.style.background = C.surfaceAlt; },
       onMouseLeave: (e) => { e.currentTarget.style.background = on ? C.accentLight : "transparent"; },

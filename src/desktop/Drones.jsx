@@ -4,17 +4,18 @@ import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { DRONE_FLIGHT, droneAddQty, MUTA_BY_TYPE } from "../lib/core.js";
-import { DroneMenu } from "../components/ui.jsx";
 import { DroneBrowserSheet } from "../components/drones.jsx";
 import { UsageBar, Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { droneTarget } from "./inspect.js";
 
 // The desktop Drones window: bay, bandwidth and drones-in-space on top, then one table row per
 // stack — in space, quantity, name, and the engine's range / tracking / speed / EHP for it. Adding
 // follows the phone's DronesScreen exactly: a new stack is launched only if a whole flight fits the
 // free bandwidth and the free drone slots (droneAddQty), otherwise it goes to the bay; picking a
 // drone already in the bay adds another flight to that stack. Rows follow the desktop click model (useRowSelect):
-// double click or the right-click menu opens the phone's DroneMenu (info, variations, abyssal rolls).
+// double click or the right-click menu opens the drone in an item window (Inspector.jsx).
 
 const recOf = (d) => { const tid = d.typeID ?? (d.name ? tidByName(d.name) : null); return tid == null ? null : (TYPES[tid] ?? TYPES[String(tid)] ?? null); };
 const volOf = (d) => recOf(d)?.attrs?.volume ?? d.volume ?? 5;
@@ -22,7 +23,8 @@ const bwOf = (d) => recOf(d)?.attrs?.droneBandwidthUsed ?? d.bandwidth ?? 5;
 
 export default function DronesPanel({ s, stats }) {
   const [picker, setPicker] = useState(false);
-  const [menu, setMenu] = useState(null);   // {id, tab}
+  const insp = useInspect();
+  const open = (d, tab) => insp.inspect(droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)), tab);
   const rs = useRowSelect();
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const drones = s.drones ?? [];
@@ -47,7 +49,6 @@ export default function DronesPanel({ s, stats }) {
   const km = (m) => parseFloat((m / 1000).toFixed(2));
   const cols = "18px 44px minmax(90px,1fr) 76px 62px 50px 16px";
   const cell = { fontSize: TYPE.small, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
-  const menuDrone = menu && drones.find(d => d.id === menu.id);
   const toggleActive = (id) => set(l => l.map(x => x.id === id ? { ...x, active: !x.active } : x));
   const remove = (id) => set(l => l.filter(x => x.id !== id));
   const items = (d) => {
@@ -56,9 +57,9 @@ export default function DronesPanel({ s, stats }) {
       { label: d.active ? t("Recall to bay") : t("Launch"), onSelect: () => toggleActive(d.id) },
       { label: t("Add a flight (+{n})", { n: DRONE_FLIGHT }), onSelect: () => set(l => l.map(x => x.id === d.id ? { ...x, qty: x.qty + DRONE_FLIGHT } : x)) },
       { divider: true },
-      { label: t("Show info"), hint: t("Double-click"), onSelect: () => setMenu({ id: d.id, tab: "info" }) },
-      { label: t("Variations"), onSelect: () => setMenu({ id: d.id, tab: "variations" }) },
-      hasMuta && { label: t("Mutate"), onSelect: () => setMenu({ id: d.id, tab: "mutate" }) },
+      { label: t("Show info"), hint: t("Double-click"), onSelect: () => open(d, "info") },
+      { label: t("Variations"), onSelect: () => open(d, "variations") },
+      hasMuta && { label: t("Mutate"), onSelect: () => open(d, "mutate") },
       { divider: true },
       { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(d.id) },
     ];
@@ -81,7 +82,7 @@ export default function DronesPanel({ s, stats }) {
         {!drones.length && <div style={{ padding: 12, fontSize: TYPE.label, color: C.textMid }}>{t("No drones. Use + to add some.")}</div>}
         {drones.map(d => {
           const i = info(d);
-          const rp = rs.rowProps(d.id, { onOpen: () => setMenu({ id: d.id, tab: "info" }), items: () => items(d) });
+          const rp = rs.rowProps(d.id, { onOpen: () => open(d, "info"), items: () => items(d), target: droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)) });
           return (
             <div key={d.id} {...rp} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 30, padding: "0 12px",
                                      borderBottom: `1px solid ${C.border}99`, opacity: d.active ? 1 : 0.65 }}>
@@ -107,10 +108,6 @@ export default function DronesPanel({ s, stats }) {
       </div>
       {picker && <DroneBrowserSheet existingDrones={drones} onAdd={add} onClose={() => setPicker(false)} />}
       {rs.view}
-      {menuDrone && <DroneMenu key={`${menu.id}:${menu.tab}`} drone={menuDrone} initialTab={menu.tab} onClose={() => setMenu(null)}
-        onUpdateDrone={u => { set(l => l.map(x => x.id === menu.id ? { ...x, ...u } : x)); setMenu(null); }}
-        onUpdateDroneLive={u => set(l => l.map(x => x.id === menu.id ? { ...x, ...u } : x))}
-        engineItem={stats.fittedDrones?.get(menu.id)} />}
     </div>
   );
 }

@@ -4,11 +4,12 @@ import { t } from "../lib/i18n.js";
 import { tidByName, calcRangeFactor, stackingPenalty, jamChanceFrom, computeCommandBursts } from "../calc.js";
 import { WARFARE_BUFF_UNIT } from "../lib/core.js";
 import { projectedFitEffects } from "../lib/projection.js";
-import { ItemDetailSheet } from "../components/ui.jsx";
 import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, BoosterSideEffects, BoosterIcon, buildBoosterFromName,
          hasCommandBursts, boosterBonuses, boosterSlotOf } from "../components/effects.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { boosterTarget } from "./inspect.js";
 
 // The phone's Effects screen, split into four desktop windows (Owen floated splitting it):
 // Boosters, Projected, Command links, Environment. Each edits the same session state the phone's
@@ -41,14 +42,15 @@ const None = ({ children }) => <div style={{ padding: "12px", fontSize: TYPE.lab
 // ── Boosters ─────────────────────────────────────────────────────────────────────────────────
 export function BoostersPanel({ s }) {
   const [picker, setPicker] = useState(false);
-  const [info, setInfo] = useState(null);
+  const insp = useInspect();
   const rs = useRowSelect();
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = [...(s.boosters ?? [])].sort((a, b) => boosterSlotOf(a) - boosterSlotOf(b));
   const set = (fn) => s.setBoosters(prev => fn(prev ?? []));
   const remove = (id) => set(bs => bs.filter(x => x.id !== id));
   const toggle = (id) => set(bs => bs.map(x => x.id === id ? { ...x, active: !x.active } : x));
-  const show = (b, tab) => setInfo({ typeID: tidByName(b.name), name: b.name, id: b.id, tab });
+  const bTarget = (b) => boosterTarget(insp.fitRef, b.id, tidByName(b.name));
+  const show = (b, tab) => insp.inspect(bTarget(b), tab);
   return (
     <Shell>
       <Header onAdd={() => setPicker(true)} addLabel={t("Booster")}>{t("Toggle boosters to simulate their stat effects on this fit.")}</Header>
@@ -58,12 +60,13 @@ export function BoostersPanel({ s }) {
           const known = !!tidByName(b.name);
           const bonuses = known ? boosterBonuses(b) : [];
           const rp = rs.rowProps(b.id, {
+            target: known ? bTarget(b) : undefined,
             onOpen: known ? () => show(b, "info") : undefined,
             items: () => [
               { label: b.active ? t("Deactivate") : t("Activate"), onSelect: () => toggle(b.id) },
               { divider: true },
               { label: t("Show info"), hint: t("Double-click"), disabled: !known, onSelect: () => show(b, "info") },
-              { label: t("Variations"), disabled: !known, onSelect: () => show(b, "vars") },
+              { label: t("Variations"), disabled: !known, onSelect: () => show(b, "variations") },
               { divider: true },
               { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(b.id) },
             ],
@@ -91,8 +94,6 @@ export function BoostersPanel({ s }) {
       </Body>
       {picker && <BoosterPickerSheet onAdd={b => set(prev => [...prev, b])} onClose={() => setPicker(false)} />}
       {rs.view}
-      {info && <ItemDetailSheet key={info.tab} initialTab={info.tab} typeID={info.typeID} name={info.name} onClose={() => setInfo(null)}
-        onSwap={v => set(bs => bs.map(x => x.id === info.id ? { ...buildBoosterFromName(v.name), id: x.id, active: x.active } : x))} />}
     </Shell>
   );
 }

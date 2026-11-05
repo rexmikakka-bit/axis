@@ -8,9 +8,11 @@ import { metaOf, META_COLORS } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
 import { getCachedPrices } from "../prices.js";
-import { resourceColor, ItemDetailSheet } from "../components/ui.jsx";
+import { resourceColor } from "../components/ui.jsx";
 import Menu from "./Menu.jsx";
 import { ContextMenu, useRowSelect } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { typeTarget } from "./inspect.js";
 
 // The desktop Browser (docs/desktop-handoff.md, "Browser"): one window, Market and Ships, as in
 // pyfa. Both are trees that EXPAND IN PLACE — a caret per category, children indented beneath it —
@@ -76,14 +78,14 @@ const allMods = (nodes) => nodes.flatMap(n => [...(n.mods ?? []), ...allMods(n.c
 const isk = (n) => n == null ? "" : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n));
 
 // Click selects, double click (or Enter) fits, right click: Fit / Show info / Variations.
-function ItemRow({ mod, price, onFit, onInfo, rowProps }) {
+function ItemRow({ mod, price, onFit, onInfo, rowProps, rack }) {
   const a = TYPES[String(mod.typeID)]?.a ?? {};
   const meta = metaOf(mod.typeID, mod.meta);
-  const rp = rowProps(mod.typeID ?? mod.name, { onOpen: () => onFit(mod), items: [
+  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, rack) : undefined, onOpen: () => onFit(mod), items: [
     { label: t("Fit"), hint: t("Double-click"), onSelect: () => onFit(mod) },
     { divider: true },
     { label: t("Show info"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "info" }) },
-    { label: t("Variations"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "vars" }) },
+    { label: t("Variations"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "variations" }) },
   ] });
   return (
     <div role="option" tabIndex={0} {...rp} onKeyDown={e => { if (e.key === "Enter") onFit(mod); }} title={t("Double-click to fit")}
@@ -107,7 +109,9 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
-  const [info, setInfo] = useState(null);
+  const insp = useInspect();
+  // A market row opens as a type with its rack, so its Variations window can fit a variant.
+  const setInfo = ({ typeID, tab }) => insp.inspect(typeTarget(typeID, rack), tab);
   const rs = useRowSelect();
   const tree = useMarketTree(rack, isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
   const prices = getCachedPrices(s.priceHub, s.priceSource);
@@ -154,12 +158,10 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
       {!q && <div role="tree" style={{ flex: "1 1 50%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>{renderNodes(tree, 0)}</div>}
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
-          ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} onFit={fit} onInfo={setInfo} rowProps={rs.rowProps} />)
+          ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} onFit={fit} onInfo={setInfo} rowProps={rs.rowProps} rack={rack} />)
           : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? t("No modules found") : t("Pick a category above.")}</div>}
       </div>
       {rs.view}
-      {info && <ItemDetailSheet key={info.tab} initialTab={info.tab} typeID={info.typeID} onClose={() => setInfo(null)}
-        onSwap={v => fit(allMods(tree).find(m => String(m.typeID) === String(v.typeID)) ?? v)} />}
     </>
   );
 }
