@@ -15,7 +15,7 @@ import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
 import { SkillsProvider } from "../components/skill-mark.jsx";
 import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
-import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, Button } from "./Workspace.jsx";
+import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, openInspector, Button } from "./Workspace.jsx";
 import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
 import { FirepowerPanel } from "./Firepower.jsx";
@@ -26,7 +26,10 @@ import PricePanel from "./Price.jsx";
 import ImplantsPanel from "./Implants.jsx";
 import DronesPanel from "./Drones.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
-import { WINDOWS } from "./layout.js";
+import { WINDOWS, isFloatId, readLayoutState } from "./layout.js";
+import { activeFitRef, targetKey } from "./inspect.js";
+import { InspectContext } from "./inspect-context.jsx";
+import { InspectorView, inspectorTitle } from "./Inspector.jsx";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
@@ -41,11 +44,45 @@ import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow,
 // A window popped out to another monitor is this same app started as `?satellite=<id>`, showing
 // that one window and kept in step with the main one by sync.js.
 
-const SATELLITE = (() => { try { const id = new URLSearchParams(window.location.search).get("satellite"); return WINDOWS.some(w => w.id === id) ? id : null; } catch { return null; } })();
+const SATELLITE = (() => { try { const id = new URLSearchParams(window.location.search).get("satellite"); return WINDOWS.some(w => w.id === id) || isFloatId(id) ? id : null; } catch { return null; } })();
+const INSPECTOR_WINDOWS = new Set(["info", "variations", "mutate"]);
+
+/** The visible workspace's size, for placing a new inspector inside it. */
+const workspaceView = () => ({ w: window.innerWidth, h: Math.max(200, window.innerHeight - 74) });
+
+/**
+ * The selection and the inspector windows, for the main app and a popped-out window alike. A
+ * selection made in either is posted to the other, so a Variations window on a second monitor
+ * follows a click in the Fitting table on the first.
+ */
+function useInspectorState(s, { setLayoutState, post, adderRef, remoteAdd }) {
+  const [selection, setSelection] = useState(null);
+  const fitRef = useMemo(() => activeFitRef(s.fitsDB, s.activeFit), [s.fitsDB, s.activeFit]);
+  // The callbacks read the latest post/remoteAdd through a ref, so the context value only changes
+  // when the selection or the fit does — not on every render of the app.
+  const latest = useRef(null); latest.current = { post, remoteAdd };
+  const value = useMemo(() => ({
+    fitRef, selection,
+    select: (target) => { setSelection(target); latest.current.post?.({ type: "select", target }); },
+    inspect: (target, tab = "info", opts = {}) => {
+      if (!target) return;
+      if (setLayoutState) openInspector(setLayoutState, { target, tab, key: targetKey(target) }, { view: workspaceView(), fresh: !!opts.fresh });
+      else latest.current.post?.({ type: "inspect", target, tab, fresh: !!opts.fresh });
+    },
+    fitModule: (rack, mod) => { if (adderRef?.current) adderRef.current(rack, mod); else latest.current.remoteAdd?.(rack, mod); },
+  }), [fitRef, selection, setLayoutState, adderRef]);
+  return { value, setSelection };
+}
 
 export default function DesktopRoot() {
   return SATELLITE ? <SatelliteApp id={SATELLITE} /> : <DesktopApp />;
 }
+
+const PinGlyph = () => (
+  <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+    <path d="M10 1.8 14.2 6l-2.1.7-2.6 2.6.3 3.2-1.4 1.4-2.6-2.6L2.3 14.8 1.2 13.7l3.5-3.5-2.6-2.6 1.4-1.4 3.2.3 2.6-2.6Z" />
+  </svg>
+);
 
 function useBanner() {
   const [banner, setBanner] = useState(null);
@@ -58,7 +95,7 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
@@ -68,6 +105,12 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     drones: isOpen("drones"),
   });
   const renderWindow = (id) => {
+    // A floating inspector shows the item it was opened on; the full-time windows, the selection.
+    if (isFloatId(id)) {
+      const w = windows?.[id];
+      return w?.target ? <InspectorView s={s} ship={ship} cs={cs} target={w.target} tab={w.tab} onTab={(tb) => setFloatTab?.(id, tb)} pinned /> : null;
+    }
+    if (INSPECTOR_WINDOWS.has(id)) return <InspectorView s={s} ship={ship} cs={cs} target={selection} only={id} />;
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
       case "browser": return <DeskBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
@@ -102,10 +145,19 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     }
   };
   // "Fitting · Sleipnir": the window title says which hull you are editing.
-  const windowTitle = (id) => id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : t(WINDOWS.find(w => w.id === id)?.title ?? id);
+  const windowTitle = (id) => {
+    if (isFloatId(id)) return inspectorTitle(windows?.[id]?.target, windows?.[id]?.tab, s);
+    if (INSPECTOR_WINDOWS.has(id) && selection) return inspectorTitle(selection, id, s);
+    return id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : t(WINDOWS.find(w => w.id === id)?.title ?? id);
+  };
   // The Fitting window's title bar carries the fit's validity, so the Validation window can stay
-  // closed until there is something to read.
-  const windowExtra = (id) => id === "fitting" && cs ? <ValidityBadge issues={issues} onOpen={() => openValidation?.()} /> : null;
+  // closed until there is something to read. A full-time item window offers to pin what it is
+  // showing into a window of its own, which then stays put while the selection moves on.
+  const windowExtra = (id) => {
+    if (id === "fitting" && cs) return <ValidityBadge issues={issues} onOpen={() => openValidation?.()} />;
+    if (INSPECTOR_WINDOWS.has(id) && selection && inspect) return <TitleButton label={t("Pin in its own window")} onClick={() => inspect(selection, id, { fresh: true })}><PinGlyph /></TitleButton>;
+    return null;
+  };
   return { ship, stats, renderWindow, windowTitle, windowExtra };
 }
 
@@ -114,17 +166,27 @@ function SatelliteApp({ id }) {
   const banner = useBanner();
   const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify });
   const adderRef = useRef(null);
-  const sync = useSessionSync(s, { onMessage: (m) => { if (m.type === "add") adderRef.current?.(m.secKey, m.mod); } });
+  const sync = useSessionSync(s, { onMessage: (m) => {
+    if (m.type === "add") adderRef.current?.(m.secKey, m.mod);
+    if (m.type === "select") insp.setSelection(m.target ?? null);
+  } });
   useEffect(() => { initKeyboardTracking(); }, []);
   useEffect(() => {
     sync.post({ type: "hello", id });
     return onThisWindowClosing(() => sync.post({ type: "closed", id }));
   }, [id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const remoteAdd = (secKey, mod) => sync.post({ type: "add", secKey, mod });
+  // A popped-out inspector reads what it was showing from the saved layout the main window wrote
+  // just before opening it; its tab is its own from then on.
+  const [floatWin, setFloatWin] = useState(() => isFloatId(id) ? readLayoutState(localStorage).windows[id] ?? null : null);
+  const insp = useInspectorState(s, { post: sync.post, adderRef, remoteAdd });
   const { renderWindow, windowTitle } = useWindowContents(s, (w) => w === id, null,
-    { adderRef, remoteAdd: (secKey, mod) => sync.post({ type: "add", secKey, mod }) });
+    { adderRef, remoteAdd, selection: insp.value.selection, windows: floatWin ? { [id]: floatWin } : undefined,
+      setFloatTab: (_, tab) => setFloatWin(w => w && { ...w, tab }), inspect: insp.value.inspect });
   const title = windowTitle(id);
   useEffect(() => { document.title = `${title} · Axis`; }, [title]);
   return (
+    <InspectContext.Provider value={insp.value}>
     <SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
       <style>{getGlobalCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.surface, color: C.text, fontSize: 13 }}>
@@ -138,6 +200,7 @@ function SatelliteApp({ id }) {
       </div>
       {banner.view}
     </SkillsProvider></SheetFrame.Provider>
+    </InspectContext.Provider>
   );
 }
 
@@ -163,9 +226,11 @@ function DesktopApp() {
   const adderRef = useRef(null);
   const sync = useSessionSync(s, {
     onMessage: (m) => {
-      if (m.type === "hello") sync.sendAll();
+      if (m.type === "hello") { sync.sendAll(); sync.post({ type: "select", target: insp.value.selection }); }
       if (m.type === "add") adderRef.current?.(m.secKey, m.mod);
-      if (m.type === "closed" && WINDOWS.some(w => w.id === m.id)) { delete popups.current[m.id]; dockWindow(setLayoutState, m.id); }
+      if (m.type === "select") insp.setSelection(m.target ?? null);
+      if (m.type === "inspect" && m.target) insp.value.inspect(m.target, m.tab, { fresh: m.fresh });
+      if (m.type === "closed" && (WINDOWS.some(w => w.id === m.id) || isFloatId(m.id))) { delete popups.current[m.id]; dockWindow(setLayoutState, m.id); }
     },
   });
   const popOut = async (id) => {
@@ -185,12 +250,17 @@ function DesktopApp() {
     else flash("none", t("Open the Fitting window to add modules."));
   };
   const setCols = (id, c) => setLayoutState(st => ({ ...st, cols: { ...st.cols, [id]: c } }));
+  const insp = useInspectorState(s, { setLayoutState, post: sync.post, adderRef, remoteAdd });
+  const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
-    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile") });
+    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile"),
+      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
-    for (const w of WINDOWS) if (layoutState.windows[w.id]?.detached) dockWindow(setLayoutState, w.id);
+    for (const id of Object.keys(layoutState.windows)) if (layoutState.windows[id]?.detached) dockWindow(setLayoutState, id);
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+  // The selection follows the fit: a module picked in one fit means nothing in the next one opened.
+  useEffect(() => { const sel = insp.value.selection; if (sel && sel.kind !== "type" && sel.ship !== s.activeFit?.ship) insp.setSelection(null); }, [s.activeFit]);   // eslint-disable-line react-hooks/exhaustive-deps
   const shipMeta = useMemo(() => {
     const sh = s.activeFit?.ship ? lookupShip(s.activeFit.ship) : null;
     return { faction: sh?.race ?? "", cls: sh?.hullClass ?? sh?.groupName ?? "" };
@@ -251,7 +321,7 @@ function DesktopApp() {
   const hasFit = !!s.activeFit?.ship;
 
   return (
-    <SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
+    <InspectContext.Provider value={insp.value}><SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
       <style>{getGlobalCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.bg, color: C.text, fontSize: 13 }}>
         <header style={{ height: 44, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px",
@@ -343,6 +413,6 @@ function DesktopApp() {
         setPriceHub={s.setPriceHub} priceSource={s.priceSource} setPriceSource={s.setPriceSource} themePref={s.themePref} setThemePref={s.setThemePref}
         autoFillHardpoints={s.autoFillHardpoints} setAutoFillHardpoints={s.setAutoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd}
         setCloseBrowserOnAdd={s.setCloseBrowserOnAdd} locale={s.locale} setLocale={s.setLocale} />}
-    </SkillsProvider></SheetFrame.Provider>
+    </SkillsProvider></SheetFrame.Provider></InspectContext.Provider>
   );
 }

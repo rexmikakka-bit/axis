@@ -3,7 +3,7 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import DeskWindow from "./DeskWindow.jsx";
 import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, rescue, canvasSize,
-         readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H } from "./layout.js";
+         readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat } from "./layout.js";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
 // holding the detached tray and the layout controls. What a window CONTAINS is the caller's
@@ -28,6 +28,12 @@ export const toggleWindow = (setState, id) => setState(s => {
   if (w.open && !w.detached) return { ...s, windows: { ...s.windows, [id]: { ...w, open: false } } };
   return { ...s, windows: bringToFront({ ...s.windows, [id]: { ...w, open: true, detached: false } }, id) };
 });
+
+/**
+ * Open (or raise) a floating inspector on `target` at `tab` — see layout.js openFloat. `view` is the
+ * visible workspace's size, for placing a new window inside it.
+ */
+export const openInspector = (setState, spec, opts) => setState(s => ({ ...s, windows: openFloat(s.windows, spec, opts).layout }));
 
 /** Open (and raise) a window from outside the workspace — e.g. the Browser when "+" starts a new tab. */
 export const openWindow = (setState, id) => setState(s => ({
@@ -62,7 +68,9 @@ const SectionLabel = ({ children }) => (
 
 // `onPopOut(id)` / `onDock(id)` let the app open and close the real OS window; the workspace only
 // records the detached state they report back through `setState`.
-export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, onPopOut, onDock }) {
+// `backdrop` (optional) is drawn behind the workspace and does not scroll with it — the user's
+// background picture (Backdrop.jsx).
+export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, onPopOut, onDock, backdrop }) {
   const layout = state.windows;
   // `extra` rides along only when the windows actually changed, so a pointer move that snaps to the
   // same spot re-renders nothing.
@@ -82,10 +90,10 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     // An untouched built-in preset (first launch, or nothing moved since) is fitted to this
     // workspace's height; anything the user arranged is left exactly where they put it.
     const el = wsRef.current;
-    if (el && PRESETS.some(p => p.id === state.preset) && JSON.stringify(state.windows) === JSON.stringify(presetLayout(state.preset)))
+    if (el && PRESETS.some(p => p.id === state.preset) && JSON.stringify(dockedOf(state.windows)) === JSON.stringify(presetLayout(state.preset)))
       // From the preset itself, not s.windows: StrictMode runs this twice, and scaling the already
-      // scaled layout again squeezed it twice over.
-      setState(s => PRESETS.some(p => p.id === s.preset) ? { ...s, windows: fitToHeight(presetLayout(s.preset), el.clientHeight) } : s);
+      // scaled layout again squeezed it twice over. Inspector windows ride along untouched.
+      setState(s => PRESETS.some(p => p.id === s.preset) ? { ...s, windows: { ...fitToHeight(presetLayout(s.preset), el.clientHeight), ...floatsOf(s.windows) } } : s);
     doRescue();
   }, [doRescue]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -100,7 +108,11 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     if (w.open && !w.detached) return { ...l, [id]: { ...w, open: false } };
     return bringToFront({ ...l, [id]: { ...w, open: true, detached: false } }, id);
   });
-  const close = useCallback((id) => setLayout(l => ({ ...l, [id]: { ...l[id], open: false } })), [setLayout]);
+  // An inspector is made for one look at one item, so closing it forgets it; a workspace window only hides.
+  const close = useCallback((id) => setLayout(l => {
+    if (!l[id]?.float) return { ...l, [id]: { ...l[id], open: false } };
+    const out = { ...l }; delete out[id]; return out;
+  }), [setLayout]);
   const popOutLocal = useCallback((id) => setLayout(l => ({ ...l, [id]: { ...l[id], detached: true } })), [setLayout]);
   const popOut = onPopOut ?? popOutLocal;
   const dock = (id) => { onDock?.(id); setLayout(l => bringToFront({ ...l, [id]: { ...l[id], detached: false, open: true } }, id)); };
@@ -111,6 +123,8 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   const optsRef = useRef(opts); optsRef.current = opts;
   // Kept out of the state updaters on purpose: StrictMode runs updaters twice, and one that deletes
   // the start rect would find it already gone on the second run.
+  // Moving a workspace window means the layout is no longer the preset; moving an inspector does not.
+  const dockedEdit = (id) => layoutRef.current[id]?.float ? undefined : { preset: null };
   const onDragStart = useCallback((id) => { dragStart.current[id] = { ...layoutRef.current[id] }; }, []);
   const onDrag = useCallback((id, kind, edges, dx, dy) => setLayout(l => {
     const s = dragStart.current[id]; if (!s) return l;
@@ -119,7 +133,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     const w = l[id];
     if (r.x === w.x && r.y === w.y && r.w === w.w && r.h === w.h) return l;
     return { ...l, [id]: { ...w, ...r } };
-  }, { preset: null }), [setLayout]);
+  }, dockedEdit(id)), [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
   const onDragEnd = useCallback((id) => { delete dragStart.current[id]; }, []);
   const onDragCancel = useCallback((id) => {
     const s = dragStart.current[id]; delete dragStart.current[id];
@@ -130,22 +144,23 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     const r = kind === "move" ? { x: Math.max(0, w.x + dx), y: Math.max(0, w.y + dy) }
                               : { w: Math.max(MIN_W, w.w + dx), h: Math.max(MIN_H, w.h + dy) };
     return { ...l, [id]: { ...w, ...r } };
-  }, { preset: null }), [setLayout]);
+  }, dockedEdit(id)), [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyPreset = (id) => {
     const h = wsRef.current?.clientHeight;
-    setState(s => ({ ...s, windows: fitToHeight(presetLayout(id), h), preset: id }));
+    setState(s => ({ ...s, windows: { ...fitToHeight(presetLayout(id), h), ...floatsOf(s.windows) }, preset: id }));
     requestAnimationFrame(doRescue);
   };
   const applyNamed = (name) => {
-    setState(s => s.named[name] ? { ...s, windows: cleanLayout(s.named[name]), preset: `named:${name}` } : s);
+    setState(s => s.named[name] ? { ...s, windows: { ...dockedOf(cleanLayout(s.named[name])), ...floatsOf(s.windows) }, preset: `named:${name}` } : s);
     requestAnimationFrame(doRescue);
   };
   const [naming, setNaming] = useState(null);   // the "Save layout as…" field's text, or null when closed
   const saveNamed = () => {
     const name = (naming ?? "").trim();
     if (!name) { setNaming(null); return; }
-    setState(s => ({ ...s, named: { ...s.named, [name]: s.windows }, preset: `named:${name}` }));
+    // A layout is the arrangement of the workspace; the inspectors open right now are not part of it.
+    setState(s => ({ ...s, named: { ...s.named, [name]: dockedOf(s.windows) }, preset: `named:${name}` }));
     setNaming(null);
   };
   const deleteNamed = (name) => setState(s => {
@@ -154,28 +169,38 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   });
   const setFlag = (k) => setState(s => ({ ...s, [k]: !s[k] }));
 
-  const top = Math.max(...Object.values(layout).filter(w => w.open && !w.detached).map(w => w.z), 0);
+  const shown = (w) => w.open && !w.detached;
+  const top = Math.max(...Object.values(layout).filter(w => shown(w) && !w.float).map(w => w.z), 0);
+  const floatTop = Math.max(...Object.values(layout).filter(w => shown(w) && w.float).map(w => w.z), 0);
   const size = canvasSize(layout);
-  const detached = WINDOWS.filter(w => layout[w.id].detached && layout[w.id].open);
+  const floats = Object.entries(layout).filter(([, w]) => w.float);
+  const detached = [...WINDOWS.map(w => w.id), ...floats.map(([id]) => id)].filter(id => layout[id].detached && layout[id].open);
+  const win = (id, g, isTop, title) => (
+    <DeskWindow key={id} id={id} title={title} rect={g} z={g.z} focused={isTop} locked={state.locked} floating={!!g.float}
+      onFocus={focus} onDragStart={onDragStart} onDrag={onDrag} onDragEnd={onDragEnd} onDragCancel={onDragCancel}
+      onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(id)}>
+      {renderWindow(id)}
+    </DeskWindow>
+  );
 
   return (
     <>
-      {/* Workspace. Which windows are open is the header's Windows menu (toggleWindow). */}
-      <div ref={wsRef} style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative",
-                                backgroundImage: state.snapGrid ? `radial-gradient(${C.border} 1px, transparent 1px)` : "none",
-                                backgroundSize: `${GRID * 2}px ${GRID * 2}px`, backgroundAttachment: "local" }}>
-        <div style={{ position: "relative", width: size.w, height: size.h, minWidth: "100%", minHeight: "100%" }}>
-          {WINDOWS.map(w => {
-            const g = layout[w.id];
-            if (!g.open || g.detached) return null;
-            return (
-              <DeskWindow key={w.id} id={w.id} title={windowTitle?.(w.id) ?? t(w.title)} rect={g} z={g.z} focused={g.z === top} locked={state.locked}
-                onFocus={focus} onDragStart={onDragStart} onDrag={onDrag} onDragEnd={onDragEnd} onDragCancel={onDragCancel}
-                onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(w.id)}>
-                {renderWindow(w.id)}
-              </DeskWindow>
-            );
-          })}
+      {/* Workspace. Which windows are open is the header's Windows menu (toggleWindow). The
+          inspector layer sits over it without scrolling with it, and lets clicks through
+          everywhere it has no window — nothing is dimmed, nothing is blocked. */}
+      <div style={{ flex: 1, minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+        {backdrop}
+        <div ref={wsRef} style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative", zIndex: 1,
+                                  backgroundImage: state.snapGrid ? `radial-gradient(${C.border} 1px, transparent 1px)` : "none",
+                                  backgroundSize: `${GRID * 2}px ${GRID * 2}px`, backgroundAttachment: "local" }}>
+          <div style={{ position: "relative", width: size.w, height: size.h, minWidth: "100%", minHeight: "100%" }}>
+            {WINDOWS.map(w => { const g = layout[w.id]; return shown(g) ? win(w.id, g, g.z === top, windowTitle?.(w.id) ?? t(w.title)) : null; })}
+          </div>
+        </div>
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 2 }}>
+          {floats.map(([id, g]) => shown(g)
+            ? <div key={id} style={{ pointerEvents: "auto" }}>{win(id, g, g.z === floatTop, windowTitle?.(id) ?? id)}</div>
+            : null)}
         </div>
       </div>
 
@@ -184,7 +209,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
                        background: C.surface, borderTop: `1px solid ${C.border}`, overflowX: "auto" }}>
         <SectionLabel>{t("Detached")}</SectionLabel>
         {detached.length
-          ? detached.map(w => <Chip key={w.id} pressed={false} onClick={() => dock(w.id)} title={t("Dock")}>{t(w.title)}</Chip>)
+          ? detached.map(id => <Chip key={id} pressed={false} onClick={() => dock(id)} title={t("Dock")}>{windowTitle?.(id) ?? id}</Chip>)
           : <span style={{ fontSize: 12, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>

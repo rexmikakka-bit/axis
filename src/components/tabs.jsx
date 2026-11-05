@@ -4,11 +4,12 @@ import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
 import { C } from "../theme.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES, tidByName, calcFitStats, computeFitCostRatios, peakRegen, PEAK_REGEN_AT_PCT, isT3Cruiser, t3cSlotLayout, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
-import { DMG, DOUBLE_TAP_MS, STATE_COLORS, STATE_GLOW, STATE_LABELS, cargoVolume, computeDisplayRows, defaultChargeFor, isAssaultDamageControl, isGroupableModule, isMicroJumpDrive, fmtN, gestureTarget, haptic, moduleByName, moduleTakesCharges, shipTraits, slotIcons, validStatesFor, canLoadCharge, loadedChargeCount } from "../lib/core.js";
+import { DMG, DOUBLE_TAP_MS, STATE_COLORS, STATE_GLOW, STATE_LABELS, cargoVolume, computeDisplayRows, defaultChargeFor, isAssaultDamageControl, isMicroJumpDrive, fmtN, gestureTarget, haptic, moduleByName, moduleTakesCharges, shipTraits, slotIcons, validStatesFor, canLoadCharge, loadedChargeCount } from "../lib/core.js";
 import { metaOf, META_COLORS } from "../lib/meta.js";
 import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { moduleGestureHistory } from '../lib/module-gesture.js';
 import { fittedAbyssalIds } from '../lib/variation-items.js';
+import { enforceGroupLimit, groupFittedRoom, applyModUpdate, applyRemove, applyRowState, applySubsystemSwap } from '../lib/fit-ops.js';
 import { abyssalValue } from '../lib/abyssal-value.js';
 import { useAbyssalData } from '../lib/use-abyssal-data.js';
 import { missileRangeTip, fmtPriceAge } from "../lib/fmt.js";
@@ -150,52 +151,8 @@ function checkFitRestriction(modTypeID, ship, subsystems) {
 import { ModuleBrowserSheet, ModuleMenu, ResourceStrip, SubsystemPickerSheet, DamageProfileSheet, TargetProfileSheet, ItemDetailSheet, InfoButton, resourceColor } from "./ui.jsx";
 import { fetchPrices, priceAsOf, MARKET_HUBS } from "../prices.js";
 
-// A module stranded by a subsystem swap sits past the end of its rack flagged `orphan`. Freeing a real
-// slot in that rack pulls the first one back in, so making room by deleting something else is enough
-// to recover it — previously the only way was to delete the stranded module and re-add it by hand.
-const reabsorbOrphans=arr=>{
-  if(!arr.some(m=>m.orphan))return arr;
-  const out=[...arr];
-  for(;;){
-    const free=out.findIndex(m=>!m.orphan&&m.type==="empty");
-    const orph=out.findIndex(m=>m.orphan);
-    if(free<0||orph<0)return out;
-    out[free]={...out[orph],id:out[free].id,orphan:false};
-    out.splice(orph,1);
-  }
-};
-
-// "How many of this group may run at once" — activating a second MWD shuts the first one off, and a
-// Bifrost may only online ONE Skirmish Command Burst until Command Processor rigs raise the ceiling.
-// Both are the SAME CCP mechanic (maxGroupActive / maxGroupOnline), so neither is special-cased here:
-// `limits` comes straight from the engine via calcFitStats, which is what folds in the Command Ship
-// role bonus (2), the command-carrier one (3) and +1 per Command Processor. Enforced in the UI rather
-// than the engine so the fit the user sees is the fit that gets calculated.
-//
-// Every path that can put a module into a constrained state has to come through here: changing a
-// module's state and fitting one into an empty slot are separate code paths, and only the first one
-// used to check — which is how a second MWD could arrive already active.
-const ACTIVE_STATES=new Set(["active","overheated"]);
-const ONLINE_STATES=new Set(["online","active","overheated"]);
-// "How many of this group may be FITTED" (maxGroupFitted) is the third sibling of the two above, and
-// the one that isn't a state ceiling: a hull takes one Damage Control however you set it, so there is
-// nothing to demote and the add has to be refused outright. Rigs and service slots count too — Higgs
-// Anchors and ~90 structure rig groups are capped this way.
-//
-// The cap comes from `limits`, which only knows a group once one of its modules is fitted — and that
-// is sufficient, because with none fitted the count is zero and nothing can be over the cap. Same
-// reasoning as enforceGroupLimit's.
-const FITTED_RACKS=["high","mid","low","rigs","services"];
-const groupFittedRoom=(slots,limits,typeID,exceptId)=>{
-  const gn=TYPES[typeID]?.gn;
-  const cap=gn?limits?.[gn]?.fitted:0;
-  if(!cap)return Infinity;
-  let n=0;
-  for(const k of FITTED_RACKS)for(const m of slots[k]??[]){
-    if(m.id!==exceptId&&m.typeID&&TYPES[m.typeID]?.gn===gn)n++;
-  }
-  return Math.max(0,cap-n);
-};
+// The editing rules (group ceilings, orphan reabsorption, grouped-rack updates and removals) live in
+// lib/fit-ops.js, shared with the desktop's module windows — see the note at the top of that file.
 // `gn` is a CCP market group name and stays English. Its absence gets its own key pair rather than
 // substituting the word "module" into the group slot, which read as "one module module".
 const groupFittedError=typeID=>{
@@ -270,34 +227,6 @@ function StateDot({row,states,onSet,rack,gestureMemory}){
     </div>);
 }
 
-const enforceGroupLimit=(slots,limits,changedId)=>{
-  const gnOf=m=>TYPES[m?.typeID]?.gn;
-  const racks=["high","mid","low"];
-  const changed=racks.flatMap(k=>slots[k]??[]).find(m=>m.id===changedId);
-  const gn=gnOf(changed);
-  const lim=gn?limits?.[gn]:null;
-  if(!lim)return slots;
-  const out={...slots};
-  // Two independent ceilings, applied strongest-first: anything over the ONLINE cap goes offline, and
-  // anything still over the ACTIVE cap drops back to online. The module the user just touched always
-  // survives — it is the one they expressed intent about — so the demotions come out of the others,
-  // oldest slot first.
-  for(const[cap,states,demoteTo]of[[lim.online,ONLINE_STATES,"offline"],[lim.active,ACTIVE_STATES,"online"]]){
-    if(!cap)continue;
-    // The changed module only occupies a place if it is actually in the constrained state — setting
-    // one burst OFFLINE must free its place rather than reserve it.
-    let room=cap-(states.has(changed?.state)?1:0);
-    for(const k of racks){
-      out[k]=(out[k]??[]).map(m=>{
-        if(m.id===changedId||gnOf(m)!==gn||!states.has(m.state))return m;
-        if(room>0){room--;return m;}
-        return{...m,state:demoteTo};
-      });
-    }
-  }
-  return out;
-};
-
 // The mark on the swipe-to-delete button behind a fitted row. It used to read "Remove", which at the
 // 11px the 72px button allowed was a cramped word doing an icon's job — and the row sliding aside is
 // already the sentence, so the button only has to name the verb.
@@ -371,24 +300,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
   // Re-absorption is automatic and needs no extra bookkeeping: an orphan lives at its original
   // index, so if a later swap restores the slot count, the loop below picks it back up as a normal
   // module and clears the flag.
-  const swapSubsystem=(slotId,sub)=>setSlots(prev=>{
-    const subs=[...(prev.subsystems??[])];
-    const idx=subs.findIndex(s=>s.id===slotId);
-    if(idx>=0)subs[idx]={...subs[idx],name:sub.name,typeID:sub.typeID,type:"subsystem"};
-    const layout=t3cSlotLayout(subs.filter(s=>s.typeID));
-    const isReal=m=>m&&m.typeID&&m.type!=="empty";
-    const label=key=>key==='mid'?'Mid':key==='rigs'?'Rig':key.charAt(0).toUpperCase()+key.slice(1);
-    const fit=(key,count)=>{
-      const cur=prev[key]??[];
-      const out=[];
-      for(let i=0;i<count;i++)
-        out.push(cur[i]?{...cur[i],orphan:false}
-                       :{id:`${key[0]}${i}`,name:`[Empty ${label(key)} Slot]`,icon:null,type:"empty"});
-      for(let i=count;i<cur.length;i++) if(isReal(cur[i])) out.push({...cur[i],orphan:true});
-      return out;
-    };
-    return{...prev,subsystems:subs,high:fit("high",layout.hiSlots),mid:fit("mid",layout.medSlots),low:fit("low",layout.lowSlots),rigs:fit("rigs",layout.rigSlots)};
-  });
+  const swapSubsystem=(slotId,sub)=>setSlots(prev=>applySubsystemSwap(prev,slotId,sub));
   const[moduleMenu,setModuleMenu]=useState(null);
   const[emptySlot,setEmptySlot]=useState(null);
   // Two buttons behind every fitted row: copy-to-next-empty-slot, then Remove.
@@ -511,75 +423,27 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
   const _rigsAffected = (slots.rigs ?? []).some(r =>
     r?.typeID && TYPES[r.typeID]?.a?.nullSecModifier != null);
 
+  // The rules (grouped-rack swaps, charge fan-out by display row, group ceilings, a roll already
+  // fitted elsewhere) are lib/fit-ops.js' applyModUpdate, shared with the desktop's module windows.
   const updateMod=(secKey,modId,updated,keepOpen=false,replace=false,groupIds=null)=>{
-    setSlots(prev=>{
-      const sec=[...prev[secKey]],idx=sec.findIndex(m=>m.id===modId);
-      if(idx<0)return prev;
-      if(updated.abyssalItemId&&fittedAbyssalIds(prev,modId).has(updated.abyssalItemId))return prev;
-      // Swapping to another variant from a grouped row swaps the whole rack, like its Remove button
-      // and state toggle — replacing one member of a 5x row would silently split it into 4x + 1x.
-      // A specific abyssal roll is the exception: it is one physical item, so it can only ever fill
-      // one slot, and computeDisplayRows gives every mutated module a row of its own anyway.
-      if(replace&&!updated.abyssalItemId&&!updated.mutaplasmid&&groupIds&&groupIds.length>1){
-        const ids=new Set(groupIds);
-        return{...prev,[secKey]:sec.map(m=>ids.has(m.id)?{...m,...updated,id:m.id}:m)};
-      }
-      // Loading a charge fans out to every identical module in the rack — but only for things
-      // that are actually GROUPED. It used to match on name alone, so two Skirmish Command
-      // Bursts always ended up with the same charge and running two different scripts was
-      // impossible. Bursts (and anything else non-groupable) are one row each already.
-      // ...and it must fan out to exactly the modules SHARING THAT DISPLAY ROW, which means
-      // matching on the same key computeDisplayRows groups by: name, current ammo AND state.
-      // Matching on name alone made the mutation disagree with the display — a Phoenix carrying
-      // three Rapid Torpedo Launchers deliberately loaded with three different Javelin types shows
-      // three separate rows, but changing the charge on any one of them silently rewrote all three,
-      // destroying the split. State matters for the same reason: 3 active + 2 overheated launchers
-      // of the same ammo now show as two rows (see computeDisplayRows), and a charge change made
-      // from one of them must not silently reach into the other. `origAmmo`/`origState` are the OLD
-      // values, which is what the row's members still carry at this point.
-      if(grouped&&secKey==="high"&&updated.ammo!==undefined&&!replace&&isGroupableModule(sec[idx])){
-        const origName=sec[idx].name, origAmmo=sec[idx].ammo, origState=sec[idx].state;
-        return{...prev,[secKey]:sec.map(m=>m.name===origName&&m.ammo===origAmmo&&m.state===origState&&isGroupableModule(m)?{...m,...updated,id:m.id}:m)};
-      }
-      sec[idx]={...sec[idx],...updated};
-
-      if(updated.state!==undefined)return enforceGroupLimit({...prev,[secKey]:sec},_cs.groupLimits,modId);
-      return{...prev,[secKey]:sec};
-    });if(!keepOpen)setModuleMenu(null);
+    setSlots(prev=>applyModUpdate(prev,secKey,modId,updated,{replace,groupIds,grouped,limits:_cs.groupLimits}));
+    if(!keepOpen)setModuleMenu(null);
   };
   // A grouped row stands for every slot in row.groupIds. state IS part of the grouping key now
   // (mixed-overheat racks must not merge into one misleading row), so every member already shares
   // the row's state — the gesture still has to set all of them together, or the tap would split
   // the row into two states instead of moving the whole rack. Same reasoning (and same groupIds)
-  // as the unload-charge button.
+  // as the unload-charge button. Group ceilings are enforced on the way in, as the menu's picker
+  // does — the dot must not be a way around a limit the picker respects.
   const setRowState=(secKey,row,state)=>{
-    const ids=new Set(row.groupIds??[row.id]);
-    setSlots(prev=>{
-      const next={...prev,[secKey]:(prev[secKey]??[]).map(m=>ids.has(m.id)?{...m,state}:m)};
-      // Group ceilings (one MWD active, N command bursts online) are enforced on the way in, exactly
-      // as the menu's picker does — the dot must not be a way around a limit the picker respects.
-      return enforceGroupLimit(next,_cs.groupLimits,row.id);
-    });
+    setSlots(prev=>applyRowState(prev,secKey,row.groupIds??[row.id],state,_cs.groupLimits,row.id));
   };
   // groupIds, when passed, removes every slot in a grouped rack at once — the row's state toggle
   // and unload-charge button already act on the whole group (see their comments above), so a lone
   // per-member Remove was the odd one out: it silently split a "3x" row into 2x + empty with no
   // indication only one of three had gone. Falls back to just modId for an ungrouped row.
   const removeMod=(secKey,modId,groupIds)=>{
-    // "[Empty <rack> Slot]" is a STORED sentinel, not display text: lib/core.js builds the same
-    // string and calc.js, esi-fits.js and the regression suite compare against it. It stays English.
-    const labels={high:"High",mid:"Mid",low:"Low",rigs:"Rig",services:"Service"};
-    const ids=new Set(groupIds&&groupIds.length>1?groupIds:[modId]);
-    setSlots(prev=>{
-      const arr=[];
-      for(const m of prev[secKey]??[]){
-        // Deleting an ORPHAN leaves nothing behind — the ship has no such slot, so an empty
-        // placeholder in its place would offer a slot the fit does not actually have.
-        if(ids.has(m.id)&&m.orphan)continue;
-        arr.push(ids.has(m.id)?{id:m.id,name:`[Empty ${labels[secKey]} Slot]`,icon:null,type:"empty"}:m);
-      }
-      return{...prev,[secKey]:reabsorbOrphans(arr)};
-    });
+    setSlots(prev=>applyRemove(prev,secKey,modId,groupIds));
   };
   // How many more of THIS module the hull can actually take: the smallest of its empty slots in that
   // section, its free hardpoints of the matching kind, and whatever its group still has room for. All

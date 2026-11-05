@@ -8,6 +8,7 @@ import { PriceCard } from './price-card.jsx';
 import { AbyssalSources } from './abyssal-sources.jsx';
 import { readAbyssals, readListings, editAbyssal, rememberListings } from '../lib/abyssal-store.js';
 import { variationItems, variationRoll, filterVariationItems, withinPriceCeiling, MARKET_SOURCE } from '../lib/variation-items.js';
+import { variantSwapPatch } from '../lib/fit-ops.js';
 import { SourceBadge, BADGE_STYLE } from './source-badge.jsx';
 import { abyssalTypeIds, listingCost, JITA_4_4_STATION_ID, savedMarketListings } from '../lib/mutamarket.js';
 import { useOnline } from '../lib/use-online.js';
@@ -2622,10 +2623,15 @@ function MutaplasmidEditor({mod,onUpdateMod}){
 // the fit, so type data alone is the honest answer for them.
 // `Frame` / `initialTab` (desktop only): draw the same tabs inside the desktop's dialog instead of a
 // bottom sheet, opened on the tab a right-click menu asked for. The phone passes neither.
-function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onReplaceMod,onRemove,onDuplicate,onFillHardpoints,fillCount=0,resourceHeadroom,engineItem,chargeStats,usedAbyssalIds,Frame=BottomSheet,initialTab="state"}){
+// Desktop only: `tab` makes the tab CONTROLLED and `bare` drops the tab row and the 60vh scroll cap, so a
+// desktop window can host one tab of this menu under its own tab bar; `onShowInfo(typeID)` sends a
+// charge's info button to the caller instead of a sheet. The phone passes none of the three.
+function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onReplaceMod,onRemove,onDuplicate,onFillHardpoints,fillCount=0,resourceHeadroom,engineItem,chargeStats,usedAbyssalIds,Frame=BottomSheet,initialTab="state",tab:tabProp,bare=false,onShowInfo}){
   const _hasMuta=(MUTA_BY_TYPE[mod.typeID]??MUTA_BY_TYPE[String(mod.typeID)]??[]).length>0||mod.mutaplasmid;
-  const[tab,setTab]=useState(initialTab);
-  const[chargeInfo,setChargeInfo]=useState(null);
+  const[tabState,setTab]=useState(initialTab);
+  const tab=tabProp??tabState;
+  const[chargeInfo,setChargeInfoState]=useState(null);
+  const setChargeInfo=id=>{if(id!=null&&onShowInfo)onShowInfo(id);else setChargeInfoState(id);};
   // Ammo picker is a two-step drill-down (family, e.g. "Multifrequency S" -> variant, e.g. "Imperial
   // Navy Multifrequency S") rather than one long list of every tier/faction line at once — mirrors
   // the module browser's own category drill-down. Opens straight to the loaded ammo's family, so
@@ -2657,10 +2663,10 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
   const modData=moduleByName(mod.name);
   return(<>
     <Frame title={mod.name} onClose={onClose} height="78vh">
-      <div style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
+      {!bare&&<div style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
         {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:tab===tb?C.accent:C.textMute,borderBottom:tab===tb?`2px solid ${C.accent}`:"2px solid transparent"}}>{tabLabel[tb]}</button>)}
-      </div>
-      <div onScroll={dismissKeyboardOnScroll} style={{padding:14,overflowY:'auto',maxHeight:'60vh'}}>
+      </div>}
+      <div onScroll={dismissKeyboardOnScroll} style={{padding:14,overflowY:'auto',maxHeight:bare?undefined:'60vh'}}>
         {tab==="state"&&(<div>
           <div style={{fontSize:11,color:C.textMute,marginBottom:10}}>{t("Module State")}</div>
           <div style={{display:"flex",gap:8,marginBottom:20}}>
@@ -2822,23 +2828,9 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
         {tab==="info"&&<ModuleInfoTab typeID={mod.typeID} mod={mod} engineItem={engineItem} bleed={14} onSaved={record=>onUpdateModLive({...mod,abyssalItemId:record.itemId})}/>}
         {tab==="variations"&&(<ModuleVariationsTab typeID={mod.typeID} currentName={mod.name} resourceHeadroom={resourceHeadroom}
                                 baseMutations={mod.mutaplasmid?mod.mutations:null} baseMutaplasmid={mod.mutaplasmid} baseItemId={mod.abyssalItemId} usedAbyssalIds={usedAbyssalIds} onSwap={v=>{
-          // A variant that cannot load the current charge unloads it, as pyfa's module replace does
-          // (localReplace.py). T2 ammo is the common case: Hail stays legal in a 425mm AutoCannon II
-          // and is not in a 425mm AutoCannon I, which lists no Advanced Autocannon Ammo group.
-          const ammo=mod.ammo&&v.typeID&&!canLoadCharge(v.typeID,mod.ammo)?undefined:mod.ammo;
-          // Recompute charge count: variants can have different bay capacities (e.g. cap boosters)
-          let nc=ammo?mod.charges:undefined;
-          if(ammo&&v.typeID){
-            const newTd=TYPES[v.typeID]??TYPES[String(v.typeID)];
-            const cap=newTd?.attrs?.capacity??0;
-            const cTid=tidByName((mod.ammo||"").replace(/\s*\(\d+\)$/,""));
-            const vol=cTid?(TYPES[cTid]?.attrs?.volume??1):1;
-            nc=cap>0&&vol>0?Math.floor(cap/vol):undefined;
-          }
-          // updateMod merges fields. Carry the selected physical roll, or explicitly clear
-          // all roll/ownership fields when choosing stock, including the UNMUTATED row.
-          (onReplaceMod||onUpdateMod)({name:v.name,typeID:v.typeID,state:mod.state,ammo,charges:nc,maxCharges:nc,
-                       ...variationRoll(v)});onClose();}} />)}
+          // Charge compatibility, charge count and the roll's fields: lib/fit-ops.js variantSwapPatch,
+          // shared with the desktop's Variations window. updateMod merges the patch.
+          (onReplaceMod||onUpdateMod)(variantSwapPatch(mod,v));onClose();}} />)}
         {/* No wrapper here either, same reasoning as the info tab above: a second overflowY:auto
             nested inside this one already-scrolling tab body is redundant, and on iOS it stopped
             WebKit's native "scroll the focused input above the keyboard" from finding the right
@@ -3015,4 +3007,4 @@ function DamageProfileSheet({current,onSelect,onClose}){
 }
 
 
-export { ATTR_UNIT, AccordionSection, BottomSheet, DamageProfileSheet, TargetProfileSheet, DroneMenu, HIDDEN_ATTRS, ImportFitSheet, InfoButton, ItemInfoSheet, ItemPrice, MUTA_ATTR_LABELS, ModuleBrowserSheet, ModuleInfoTab, ModuleMenu, ModuleVariationsTab, MutaplasmidEditor, NumpadModal, RESIST_ATTRS, ResistBars, ResourceStrip, SubsystemPickerSheet, TraitsPanel, abyssalToText, fmtAttrName, fmtAttrVal, fmtMutaVal, mutaLabel, parseAbyssal };
+export { hasTraits, AbyssalBadge, CpuGlyph, PgGlyph, CalGlyph, DeltaMark, ItemInfoPanel, fitCostParts, fmtMutaDisplay, mutaToDisplay, ATTR_UNIT, AccordionSection, BottomSheet, DamageProfileSheet, TargetProfileSheet, DroneMenu, HIDDEN_ATTRS, ImportFitSheet, InfoButton, ItemInfoSheet, ItemPrice, MUTA_ATTR_LABELS, ModuleBrowserSheet, ModuleInfoTab, ModuleMenu, ModuleVariationsTab, MutaplasmidEditor, NumpadModal, RESIST_ATTRS, ResistBars, ResourceStrip, SubsystemPickerSheet, TraitsPanel, abyssalToText, fmtAttrName, fmtAttrVal, fmtMutaVal, mutaLabel, parseAbyssal };

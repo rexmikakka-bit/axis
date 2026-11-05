@@ -40,7 +40,7 @@ export function TitleButton({ label, onClick, children }) {
   );
 }
 
-export default function DeskWindow({ id, title, rect, z, focused, locked, onFocus, onDragStart, onDrag, onDragEnd,
+export default function DeskWindow({ id, title, rect, z, focused, locked, floating = false, onFocus, onDragStart, onDrag, onDragEnd,
                                      onDragCancel, onKeyNudge, onClose, onPopOut, extra, children }) {
   const drag = useRef(null);
 
@@ -95,14 +95,17 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, onFocu
     <section role="group" aria-label={title} onPointerDownCapture={() => onFocus(id)}
       style={{ position: "absolute", left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: z,
                display: "flex", flexDirection: "column", boxSizing: "border-box", background: C.surface,
-               border: `1px solid ${border}`, borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,.45)" }}>
+               border: `1px solid ${border}`, borderRadius: 6,
+               // An inspector floats over the workspace, and its shadow is what says so.
+               boxShadow: floating ? "0 14px 40px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4)" : "0 4px 16px rgba(0,0,0,.45)" }}>
       <div tabIndex={0} onKeyDown={onTitleKey} {...pointer("move", "")}
         aria-label={t("{title} window. Arrow keys move it, Shift and arrow keys resize it.", { title })}
         style={{ height: TITLE_H, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px",
                  background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, borderRadius: "5px 5px 0 0",
                  color: C.textMute, cursor: locked ? "default" : "grab", userSelect: "none", touchAction: "none", outline: "none" }}>
         <Grip />
-        <span style={{ fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
+        {/* An inspector is titled with an item name, which reads as a name only in its own case. */}
+        <span style={floating ? { fontSize: 13, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
         <span style={{ flex: 1 }} />
         {extra}

@@ -34,3 +34,9 @@ export function useViewMemory(key, initial) {
   }, [key]);
   return [value, set];
 }
+
+/** The remembered value for `key`, read outside React (the desktop's module windows honour the
+ *  Fitting table's Grouped toggle without being inside it). */
+export function peekViewMemory(key, fallback) {
+  return store.has(key) ? store.get(key) : fallback;
+}

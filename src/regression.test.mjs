@@ -8906,7 +8906,7 @@ Nanofiber Internal Structure II
   let saved = null;
   D.writeLayoutState({ setItem: (k, v) => { saved = v; } }, D.defaultLayoutState());
   check('desk', 'persist: round trip', JSON.stringify(D.readLayoutState(store(saved))), JSON.stringify(D.defaultLayoutState()));
-  check('desk', 'bring to front: already on top is a no-op', D.bringToFront(def, 'notes') === def ? 1 : 0, 1, 0);
+  check('desk', 'bring to front: already on top is a no-op', D.bringToFront(def, D.WINDOW_IDS.at(-1)) === def ? 1 : 0, 1, 0);
   check('desk', 'bring to front: raises above the rest', D.bringToFront(def, 'browser').browser.z, D.topZ(def) + 1, 0);
   // A preset on a shorter workspace: squeezed, never stretched, columns still end at the bottom
   // and keep a gutter between rows.
@@ -8928,6 +8928,46 @@ Nanofiber Internal Structure II
   check('desk', 'sync: deleted hull -> null', JSON.stringify(P.fitsPatch(db0, db2)), '{"Tempest":null}');
   check('desk', 'sync: patch round-trips', JSON.stringify(P.applyFitsPatch(db0, P.fitsPatch(db0, db1))), JSON.stringify(db1));
   check('desk', 'sync: applying a delete removes the hull', 'Tempest' in P.applyFitsPatch(db0, { Tempest: null }) ? 1 : 0, 0, 0);
+}
+
+// -----------------------------------------------------------------------------
+// FIT EDITING RULES — src/lib/fit-ops.js, the rules FitTab used to hold privately and the desktop's
+// module windows now share. Not pyfa numbers: each check is a bug that has shipped once (a 5x rack
+// split by a swap, three Javelin loads rewritten at once, a second MWD arriving active).
+// -----------------------------------------------------------------------------
+{
+  console.log('\nFIT EDITING RULES');
+  const F = await import('./lib/fit-ops.js');
+  const ac = typeIDByName('425mm AutoCannon II'), mwd = typeIDByName('50MN Microwarpdrive II');
+  const gun = (id, ammo, state = 'active') => ({ id, name: '425mm AutoCannon II', typeID: ac, ammo, state, type: 'weapon' });
+  const s0 = { high: [gun(1, 'Hail M'), gun(2, 'Hail M'), gun(3, 'Barrage M'), gun(4, 'Hail M', 'overheated')], mid: [], low: [] };
+  const fan = F.applyModUpdate(s0, 'high', 1, { ammo: 'Republic Fleet EMP M' }, { grouped: true });
+  check('fitops', 'charge fans out to its display row only', fan.high.map(m => m.ammo).join(), 'Republic Fleet EMP M,Republic Fleet EMP M,Barrage M,Hail M');
+  check('fitops', 'charge with grouping off touches one module', F.applyModUpdate(s0, 'high', 1, { ammo: 'Republic Fleet EMP M' }, { grouped: false }).high.filter(m => m.ammo === 'Republic Fleet EMP M').length, 1, 0);
+  const swap = F.applyModUpdate(s0, 'high', 1, { name: '425mm AutoCannon I', typeID: typeIDByName('425mm AutoCannon I') }, { replace: true, groupIds: [1, 2] });
+  check('fitops', 'a variant swap takes the whole grouped row', swap.high.map(m => m.name.endsWith(' I') ? 1 : 0).join(), '1,1,0,0');
+  check('fitops', 'a swap keeps every slot id', swap.high.map(m => m.id).join(), '1,2,3,4');
+  const roll = F.applyModUpdate(s0, 'high', 1, { mutaplasmid: 'x', mutations: { damageMultiplier: 3 } }, { replace: true, groupIds: [1, 2] });
+  check('fitops', 'an abyssal roll fills one slot, not the row', roll.high.filter(m => m.mutaplasmid).length, 1, 0);
+  const taken = { ...s0, high: [{ ...gun(1, 'Hail M'), abyssalItemId: 77 }, gun(2, 'Hail M')] };
+  check('fitops', 'a roll fitted elsewhere is refused', F.applyModUpdate(taken, 'high', 2, { abyssalItemId: 77 }) === taken ? 1 : 0, 1, 0);
+  check('fitops', 'an unknown slot id is a no-op', F.applyModUpdate(s0, 'high', 99, { state: 'online' }) === s0 ? 1 : 0, 1, 0);
+  const lim = { [TYPES[mwd].gn]: { active: 1 } };
+  const twoMwd = { high: [], mid: [{ id: 10, typeID: mwd, name: 'MWD', state: 'active' }, { id: 11, typeID: mwd, name: 'MWD', state: 'online' }], low: [] };
+  const act = F.applyModUpdate(twoMwd, 'mid', 11, { state: 'active' }, { limits: lim });
+  check('fitops', 'activating a second MWD shuts the first off', act.mid.map(m => m.state).join(), 'online,active');
+  check('fitops', 'row state through the ceiling too', F.applyRowState(twoMwd, 'mid', [11], 'overheated', lim).mid.map(m => m.state).join(), 'online,overheated');
+  check('fitops', 'row state sets every member', F.applyRowState(s0, 'high', [1, 2], 'offline', {}).high.map(m => m.state).join(), 'offline,offline,active,overheated');
+  const rm = F.applyRemove(s0, 'high', 1, [1, 2]);
+  check('fitops', 'remove empties the whole row', rm.high.slice(0, 2).map(m => m.name).join(), '[Empty High Slot],[Empty High Slot]');
+  const orph = { high: [gun(1, 'Hail M'), gun(2, 'Hail M'), { ...gun(3, 'Barrage M'), orphan: true }] };
+  const rm2 = F.applyRemove(orph, 'high', 1);
+  check('fitops', 'a freed slot takes the orphan back in', `${rm2.high.length}:${rm2.high[0].ammo}:${rm2.high[0].orphan}:${rm2.high[0].id}`, '2:Barrage M:false:1');
+  check('fitops', 'removing an orphan leaves no slot behind', F.applyRemove(orph, 'high', 3).high.length, 2, 0);
+  const dcu = typeIDByName('Damage Control II');
+  const withDcu = { high: [], mid: [], low: [{ id: 20, typeID: dcu }, { id: 21, type: 'empty' }] };
+  check('fitops', 'group fitted room: one DCU per hull', F.groupFittedRoom(withDcu, { [TYPES[dcu].gn]: { fitted: 1 } }, dcu), 0, 0);
+  check('fitops', 'group fitted room: the DCU being swapped does not count', F.groupFittedRoom(withDcu, { [TYPES[dcu].gn]: { fitted: 1 } }, dcu, 20), 1, 0);
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

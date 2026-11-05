@@ -5,6 +5,8 @@
 // Coordinates are plain pixels from the workspace's top-left. A window is
 // {x, y, w, h, open, detached, z}; a layout is {[windowId]: window}.
 
+import { cleanTarget, targetKey } from './inspect.js';
+
 export const GRID = 8;            // Snap to grid: positions and sizes round to this
 export const SNAP_DIST = 12;      // Snap to windows: how close an edge has to be to catch
 export const SNAP_GAP = 8;        // ...and the gutter left between two windows snapped side by side
@@ -38,6 +40,10 @@ export const WINDOWS = [
   { id: 'drones', title: 'Drones' },
   { id: 'implants', title: 'Implants' },
   { id: 'notes', title: 'Notes' },
+  // Full-time item windows: they follow whatever is selected in any list (desktop/inspect.js).
+  { id: 'info', title: 'Info' },
+  { id: 'variations', title: 'Variations' },
+  { id: 'mutate', title: 'Mutaplasmid' },
 ];
 export const WINDOW_IDS = WINDOWS.map(w => w.id);
 
@@ -55,7 +61,8 @@ const STATS = { resources: [8, 184], defense: [200, 368], capacitor: [576, 152],
 const column = (col, x, w) => Object.fromEntries(Object.entries(col).map(([id, [y, h]]) => [id, [x, y, w, h, true]]));
 const CLOSED_BY_DEFAULT = { drones: [296, 120, 500, 420, false], implants: [340, 160, 400, 480, false], notes: [380, 200, 320, 200, false],
                             command: [300, 640, 356, 300, false], boosters: [340, 600, 380, 360, false], environment: [380, 660, 340, 140, false],
-                            graphs: [200, 40, 1000, 640, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false] };
+                            graphs: [200, 40, 1000, 640, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false],
+                            info: [984, 200, 448, 600, false], variations: [160, 96, 1000, 600, false], mutate: [536, 120, 440, 560, false] };
 
 const PRESET_GEOMETRY = {
   default: {
@@ -117,11 +124,53 @@ export function fitToHeight(layout, viewH) {
   const k = (viewH - GRID) / PRESET_HEIGHT;
   const out = {};
   for (const [id, w] of Object.entries(layout)) {
+    if (w.float) { out[id] = w; continue; }
     const top = Math.round((w.y - GRID) * k / GRID) * GRID + GRID;
     const bottom = Math.round((w.y + w.h) * k / GRID) * GRID;
     out[id] = { ...w, y: top, h: Math.max(TITLE_H * 2, bottom - top) };
   }
   return out;
+}
+
+// ── Floating inspector windows ─────────────────────────────────────────────────────────────────
+// Any number of them, created at run time, each pinned to one item (a `target`, desktop/inspect.js)
+// and showing one tab of it. They live in the same map as the workspace windows, flagged `float`
+// with an `insp:` id, so dragging, resizing, stacking, pop-out and persistence are the same code —
+// but they draw on a layer of their own above the workspace and do not scroll with it, which is
+// the point: a gun's info stays in view while you work underneath it.
+export const FLOAT_PREFIX = 'insp:';
+export const MAX_FLOATS = 24;
+export const FLOAT_W = 480, FLOAT_H = 560;
+export const isFloatId = (id) => typeof id === 'string' && id.startsWith(FLOAT_PREFIX);
+const pick = (layout, keep) => Object.fromEntries(Object.entries(layout).filter(([id, w]) => keep(id, w)));
+export const floatsOf = (layout) => pick(layout, (id, w) => !!w.float);
+export const dockedOf = (layout) => pick(layout, (id, w) => !w.float);
+
+/**
+ * `layout` with an inspector on `target` open at `tab` and raised. One window per item: asking again
+ * for an item that already has one raises that window and switches its tab, unless `fresh` (Open in
+ * a new window), which always adds one. New windows cascade from the top-left of `view` (the visible
+ * workspace's size), wrapping before they would leave it. Past MAX_FLOATS the oldest one goes.
+ * Returns {layout, id}.
+ */
+export function openFloat(layout, { target, tab, key }, { view = { w: 1440, h: 900 }, fresh = false, seq = Date.now() } = {}) {
+  const floats = Object.entries(layout).filter(([, w]) => w.float);
+  const same = !fresh && floats.find(([, w]) => w.key === key);
+  if (same) {
+    const [id, w] = same;
+    return { id, layout: bringToFront({ ...layout, [id]: { ...w, tab, open: true } }, id) };
+  }
+  let out = layout;
+  if (floats.length >= MAX_FLOATS) {
+    const oldest = floats.reduce((a, b) => (a[1].z <= b[1].z ? a : b))[0];
+    out = { ...layout }; delete out[oldest];
+  }
+  const n = floats.length % 8, step = 28;
+  const w = Math.min(FLOAT_W, Math.max(MIN_W, view.w - 2 * GRID)), h = Math.min(FLOAT_H, Math.max(MIN_H, view.h - 2 * GRID));
+  const x = Math.max(GRID, Math.min(view.w - w - GRID, view.w - w - 3 * GRID - n * step));
+  const y = Math.max(GRID, Math.min(view.h - h - GRID, 4 * GRID + n * step));
+  const id = `${FLOAT_PREFIX}${seq.toString(36)}`;
+  return { id, layout: { ...out, [id]: { x, y, w, h, open: true, detached: false, z: topZ(out) + 1, float: true, target, tab, key } } };
 }
 
 export const topZ = (layout) => Math.max(0, ...Object.values(layout).map(w => w.z || 0));
@@ -155,8 +204,11 @@ function nearest(v, list) {
   for (const t of list) { const d = Math.abs(t - v); if (d <= SNAP_DIST && (!best || d < best.dist)) best = { delta: t - v, dist: d }; }
   return best;
 }
+// Snap targets come from the window's own LAYER: a workspace window lines up with workspace windows,
+// a floating inspector with other inspectors. The two layers scroll differently (inspectors stay put
+// while the workspace scrolls under them), so an edge in one is not a place in the other.
 const dockedOthers = (layout, id) => Object.entries(layout)
-  .filter(([k, w]) => k !== id && w.open && !w.detached).map(([, w]) => w);
+  .filter(([k, w]) => k !== id && w.open && !w.detached && !!w.float === !!layout[id]?.float).map(([, w]) => w);
 
 /**
  * Where a window being DRAGGED lands. Grid snap first, then window snap: the window's leading and
@@ -244,11 +296,24 @@ function cleanWindow(w, fallback) {
     z: num(w.z, 0) ? w.z : fallback.z,
   };
 }
-/** Every known window present and sane; unknown ids dropped. */
+/**
+ * Every known window present and sane; unknown ids dropped. Inspector windows survive when their
+ * target still reads as one (cleanTarget) — a hand-edited or outdated entry is dropped, never shown
+ * half-built — and come back docked, since the OS window they may have been in is gone.
+ */
 export function cleanLayout(raw) {
   const base = presetLayout('default');
   const out = {};
   for (const id of WINDOW_IDS) out[id] = cleanWindow(raw?.[id], base[id]);
+  if (raw && typeof raw === 'object') {
+    const floats = Object.entries(raw).filter(([id, w]) => isFloatId(id) && w && typeof w === 'object').slice(-MAX_FLOATS);
+    for (const [id, w] of floats) {
+      const target = cleanTarget(w.target);
+      if (!target) continue;
+      const g = cleanWindow(w, { x: GRID, y: GRID, w: FLOAT_W, h: FLOAT_H, open: true, detached: false, z: 1 });
+      out[id] = { ...g, open: true, detached: false, float: true, target, key: targetKey(target), tab: typeof w.tab === 'string' ? w.tab : 'info' };
+    }
+  }
   return out;
 }
 
@@ -291,6 +356,6 @@ export function writeLayoutState(storage, state) {
 /** How big the workspace's scrollable canvas must be to hold every docked window. */
 export function canvasSize(layout) {
   let w = 0, h = 0;
-  for (const win of Object.values(layout)) if (win.open && !win.detached) { w = Math.max(w, win.x + win.w); h = Math.max(h, win.y + win.h); }
+  for (const win of Object.values(layout)) if (win.open && !win.detached && !win.float) { w = Math.max(w, win.x + win.w); h = Math.max(h, win.y + win.h); }
   return { w: w + GRID, h: h + GRID };
 }

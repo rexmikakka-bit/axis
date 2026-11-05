@@ -4,6 +4,8 @@ import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
 import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges } from "../lib/core.js";
 import { ContextMenu } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { moduleTarget } from "./inspect.js";
 import { resourceColor } from "../components/ui.jsx";
 import { getCachedPrices } from "../prices.js";
 
@@ -102,11 +104,16 @@ export function FitTable({ api }) {
     // ── Desktop mouse model: left click SELECTS (ctrl/cmd adds or removes one, shift extends within the
     // rack), double click shows info, right click opens the context menu; Delete removes the
     // selection, Escape clears it. The phone's tap-opens-the-sheet does not apply here.
+    const insp = useInspect();
     const [sel, setSel] = useState(() => new Set());
     const [anchor, setAnchor] = useState(null);
     const [menu, setMenu] = useState(null);   // {x, y, secKey, row}
     const rowKey = (secKey, id) => `${secKey}:${id}`;
+    // The desktop opens a module in its own window (Inspector.jsx) rather than the phone menu, and a
+    // click makes it the selection the full-time Info / Variations / Mutaplasmid windows show.
+    const inspectRow = (secKey, row, tab) => insp.inspect(moduleTarget(insp.fitRef, secKey, row.id, row.typeID), tab);
     const clickRow = (e, secKey, row, rows) => {
+      if (row.type !== "empty") insp.select(moduleTarget(insp.fitRef, secKey, row.id, row.typeID));
       const k = rowKey(secKey, row.id);
       if (e.shiftKey && anchor?.secKey === secKey) {
         const ids = rows.map(r => r.id), a = ids.indexOf(anchor.id), b = ids.indexOf(row.id);
@@ -136,13 +143,13 @@ export function FitTable({ api }) {
         ...ORDER.filter(st => states.includes(st)).map(st => ({ label: STATE_LABELS[st](), checked: (row.state ?? "online") === st,
           onSelect: () => setRowState(secKey, row, st), hint: st === "overheated" ? t("right-click dot") : st === "offline" ? t("ctrl-click dot") : undefined })),
         { divider: true },
-        takesCharges && { label: row.ammo ? t("Change charge…") : t("Load charge…"), onSelect: () => openMenu(secKey, row.id, "charge") },
+        takesCharges && { label: row.ammo ? t("Change charge…") : t("Load charge…"), onSelect: () => inspectRow(secKey, row, "charge") },
         row.ammo && { label: t("Unload charge"), onSelect: () => { const ids = new Set(row.groupIds ?? [row.id]);
           setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); } },
         takesCharges && { divider: true },
-        { label: t("Show info…"), hint: t("double-click"), onSelect: () => openMenu(secKey, row.id, "info") },
-        { label: t("Variations…"), onSelect: () => openMenu(secKey, row.id, "variations") },
-        mutable && { label: t("Mutate…"), onSelect: () => openMenu(secKey, row.id, "mutate") },
+        { label: t("Show info…"), hint: t("double-click"), onSelect: () => inspectRow(secKey, row, "info") },
+        { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations") },
+        mutable && { label: t("Mutate…"), onSelect: () => inspectRow(secKey, row, "mutate") },
         { divider: true },
         src && duplicateRoom(secKey, src) > 0 && { label: t("Copy to an empty slot"), onSelect: () => duplicateMod(secKey, src, 1) },
         src && hardpointRoom(secKey, src) > 0 && { label: t("Fill hardpoints ({n})", { n: hardpointRoom(secKey, src) }), onSelect: () => fillHardpoints(secKey, src) },
@@ -248,7 +255,7 @@ export function FitTable({ api }) {
                   return (
                     <div key={row.rkey || row.id || row.name} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
                       onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)}
-                      onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : openMenu(sec.key, row.id, "info")} className="no-select"
+                      onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : inspectRow(sec.key, row, "info")} className="no-select"
                       aria-selected={isSel}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
                                borderBottom: `1px solid ${isDragOver ? C.accent : row.orphan ? C.danger : `${C.border}99`}`, cursor: "default",
