@@ -8,6 +8,7 @@ import { ItemDetailSheet } from "../components/ui.jsx";
 import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, BoosterSideEffects, BoosterIcon, buildBoosterFromName,
          hasCommandBursts, boosterBonuses, boosterSlotOf } from "../components/effects.jsx";
 import { Empty, TYPE } from "./kit.jsx";
+import { useRowSelect } from "./ContextMenu.jsx";
 
 // The phone's Effects screen, split into four desktop windows (Owen floated splitting it):
 // Boosters, Projected, Command links, Environment. Each edits the same session state the phone's
@@ -34,30 +35,45 @@ const Remove = ({ onClick, label }) => (
     style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 15, padding: "0 2px", flex: "none" }}>×</button>
 );
 const Shell = ({ children }) => <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>{children}</div>;
-const Body = ({ children }) => <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>{children}</div>;
+const Body = ({ children, list }) => <div {...list} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>{children}</div>;
 const None = ({ children }) => <div style={{ padding: "12px", fontSize: TYPE.label, color: C.textMid }}>{children}</div>;
 
 // ── Boosters ─────────────────────────────────────────────────────────────────────────────────
 export function BoostersPanel({ s }) {
   const [picker, setPicker] = useState(false);
   const [info, setInfo] = useState(null);
+  const rs = useRowSelect();
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = [...(s.boosters ?? [])].sort((a, b) => boosterSlotOf(a) - boosterSlotOf(b));
   const set = (fn) => s.setBoosters(prev => fn(prev ?? []));
+  const remove = (id) => set(bs => bs.filter(x => x.id !== id));
+  const toggle = (id) => set(bs => bs.map(x => x.id === id ? { ...x, active: !x.active } : x));
+  const show = (b, tab) => setInfo({ typeID: tidByName(b.name), name: b.name, id: b.id, tab });
   return (
     <Shell>
       <Header onAdd={() => setPicker(true)} addLabel={t("Booster")}>{t("Toggle boosters to simulate their stat effects on this fit.")}</Header>
-      <Body>
+      <Body list={rs.listProps({ onDelete: remove })}>
         {!list.length && <None>{t("No boosters added")}</None>}
         {list.map(b => {
           const known = !!tidByName(b.name);
           const bonuses = known ? boosterBonuses(b) : [];
+          const rp = rs.rowProps(b.id, {
+            onOpen: known ? () => show(b, "info") : undefined,
+            items: () => [
+              { label: b.active ? t("Deactivate") : t("Activate"), onSelect: () => toggle(b.id) },
+              { divider: true },
+              { label: t("Show info"), hint: t("Double-click"), disabled: !known, onSelect: () => show(b, "info") },
+              { label: t("Variations"), disabled: !known, onSelect: () => show(b, "vars") },
+              { divider: true },
+              { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(b.id) },
+            ],
+          });
           return (
-            <div key={b.id} style={{ borderBottom: `1px solid ${C.border}99`, opacity: b.active ? 1 : 0.6 }}>
+            <div key={b.id} {...rp} style={{ ...rp.style, borderBottom: `1px solid ${C.border}99`, opacity: b.active ? 1 : 0.6 }}>
               <div style={{ ...rowStyle, borderBottom: "none" }}>
-                <Check on={!!b.active} onClick={() => set(bs => bs.map(x => x.id === b.id ? { ...x, active: !x.active } : x))} title={t("Active")} />
+                <Check on={!!b.active} onClick={() => toggle(b.id)} title={t("Active")} />
                 <BoosterIcon name={b.name} size={22} />
-                <div style={{ flex: 1, minWidth: 0, cursor: "pointer" }} onClick={() => setInfo({ typeID: tidByName(b.name), name: b.name, id: b.id })}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
                   <div style={{ fontSize: TYPE.small, color: known ? C.rig : C.warning }}>
                     {known ? <><span style={{ color: C.textMid }}>{t("Slot {n}", { n: boosterSlotOf(b) })}</span>{bonuses.length ? ` · ${bonuses.join(" · ")}` : ""}</>
@@ -74,7 +90,8 @@ export function BoostersPanel({ s }) {
         })}
       </Body>
       {picker && <BoosterPickerSheet onAdd={b => set(prev => [...prev, b])} onClose={() => setPicker(false)} />}
-      {info && <ItemDetailSheet typeID={info.typeID} name={info.name} onClose={() => setInfo(null)}
+      {rs.view}
+      {info && <ItemDetailSheet key={info.tab} initialTab={info.tab} typeID={info.typeID} name={info.name} onClose={() => setInfo(null)}
         onSwap={v => set(bs => bs.map(x => x.id === info.id ? { ...buildBoosterFromName(v.name), id: x.id, active: x.active } : x))} />}
     </Shell>
   );

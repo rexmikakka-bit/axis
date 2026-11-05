@@ -4,7 +4,8 @@ import { t } from "../lib/i18n.js";
 import { tidByName, TYPES } from "../calc.js";
 import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText } from "../lib/core.js";
 import { useFitSession } from "../use-fit-session.js";
-import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking } from "../components/ui.jsx";
+import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame } from "../components/ui.jsx";
+import { DialogFrame } from "./ContextMenu.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
@@ -124,7 +125,7 @@ function SatelliteApp({ id }) {
   const title = windowTitle(id);
   useEffect(() => { document.title = `${title} · Axis`; }, [title]);
   return (
-    <SkillsProvider value={s.fitSkills}>
+    <SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
       <style>{getGlobalCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.surface, color: C.text, fontSize: 13 }}>
         <div style={{ height: 28, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px", background: C.surfaceAlt,
@@ -136,7 +137,7 @@ function SatelliteApp({ id }) {
         <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{renderWindow(id)}</div>
       </div>
       {banner.view}
-    </SkillsProvider>
+    </SkillsProvider></SheetFrame.Provider>
   );
 }
 
@@ -250,7 +251,7 @@ function DesktopApp() {
   const hasFit = !!s.activeFit?.ship;
 
   return (
-    <SkillsProvider value={s.fitSkills}>
+    <SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
       <style>{getGlobalCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.bg, color: C.text, fontSize: 13 }}>
         <header style={{ height: 44, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px",
@@ -342,6 +343,6 @@ function DesktopApp() {
         setPriceHub={s.setPriceHub} priceSource={s.priceSource} setPriceSource={s.setPriceSource} themePref={s.themePref} setThemePref={s.setThemePref}
         autoFillHardpoints={s.autoFillHardpoints} setAutoFillHardpoints={s.setAutoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd}
         setCloseBrowserOnAdd={s.setCloseBrowserOnAdd} locale={s.locale} setLocale={s.setLocale} />}
-    </SkillsProvider>
+    </SkillsProvider></SheetFrame.Provider>
   );
 }

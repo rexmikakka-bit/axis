@@ -46,7 +46,58 @@ export function ContextMenu({ x, y, items, onClose }) {
   );
 }
 
-/** A frame with BottomSheet's props, drawn as a desktop dialog: hands phone sheets a desktop home. */
-export function DialogFrame({ title, onClose, children }) {
-  return <Dialog title={title} onClose={onClose} width={640}>{children}</Dialog>;
+/**
+ * The desktop list-row mouse model, for windows with one selection at a time (Implants, Drones,
+ * Boosters, Cargo, the Market list): left click selects, double click does the row's main action,
+ * right click selects and opens a menu. `rowProps(key, {onOpen, items})` spreads onto the row;
+ * `view` renders the open menu. The Fitting table has its own multi-select version (FitTable.jsx).
+ */
+export function useRowSelect() {
+  const [sel, setSel] = useState(null);
+  const [menu, setMenu] = useState(null);
+  const rowProps = (key, { onOpen, items } = {}) => {
+    const on = sel === key;
+    return {
+      "aria-selected": on,
+      className: "no-select",
+      onClick: () => setSel(key),
+      onDoubleClick: onOpen ? (e) => { if (!e.target.closest("input, button, select")) onOpen(); } : undefined,
+      onContextMenu: items ? (e) => { e.preventDefault(); setSel(key); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
+      style: { cursor: "default", background: on ? C.accentLight : "transparent", boxShadow: on ? `inset 2px 0 0 ${C.accent}` : "none" },
+      onMouseEnter: (e) => { if (!on) e.currentTarget.style.background = C.surfaceAlt; },
+      onMouseLeave: (e) => { e.currentTarget.style.background = on ? C.accentLight : "transparent"; },
+    };
+  };
+  // On the list's container: clicking a row focuses it, so Delete / Escape act on this window only.
+  const listProps = ({ onDelete } = {}) => ({
+    tabIndex: -1,
+    onKeyDown: (e) => {
+      if (e.target.tagName === "INPUT") return;
+      if ((e.key === "Delete" || e.key === "Backspace") && sel != null && onDelete) { e.preventDefault(); onDelete(sel); setSel(null); }
+      if (e.key === "Escape") setSel(null);
+    },
+    style: { outline: "none" },
+  });
+  const view = menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />;
+  return { sel, setSel, rowProps, listProps, view };
+}
+
+/**
+ * BottomSheet's props, drawn as a desktop dialog. Provided app-wide through ui.jsx's SheetFrame, so
+ * every phone sheet (pickers, info, variations) opens centred instead of rising from the bottom.
+ * `headerExtra` / `footerExtra` keep their places; `dismissRequested` (the module picker's "rack is
+ * full, close yourself") closes it; a full-height sheet gets a tall dialog.
+ */
+export function DialogFrame({ title, onClose, children, headerExtra, footerExtra, dismissRequested, fillHeight, height }) {
+  useEffect(() => { if (dismissRequested) onClose?.(); }, [dismissRequested]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const tall = fillHeight || height === "100vh" || height === "88vh";
+  return (
+    <Dialog title={title} onClose={onClose} width={tall ? 720 : 640}>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: tall ? "70vh" : undefined, maxHeight: "calc(100vh - 150px)" }}>
+        {headerExtra && <div style={{ flex: "none" }}>{headerExtra}</div>}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>{children}</div>
+        {footerExtra && <div style={{ flex: "none" }}>{footerExtra}</div>}
+      </div>
+    </Dialog>
+  );
 }

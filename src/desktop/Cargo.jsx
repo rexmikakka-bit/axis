@@ -5,6 +5,8 @@ import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { cargoVolume, cargoUnitVolume } from "../lib/core.js";
 import { CargoBrowserSheet } from "../components/cargo.jsx";
+import { ItemInfoSheet } from "../components/ui.jsx";
+import { useRowSelect } from "./ContextMenu.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 
 // The desktop Cargo window: the hold as an Item / Qty table (docs/desktop-handoff.md, "Cargo") with
@@ -14,6 +16,8 @@ import { Empty, TYPE } from "./kit.jsx";
 
 export default function CargoPanel({ s, capacity }) {
   const [picker, setPicker] = useState(false);
+  const [info, setInfo] = useState(null);
+  const rs = useRowSelect();
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const items = s.cargoItems ?? [];
   const used = cargoVolume(items);
@@ -46,13 +50,18 @@ export default function CargoPanel({ s, capacity }) {
                     letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, borderBottom: `1px solid ${C.border}` }}>
         <span /><span>{t("Item")}</span><span style={{ textAlign: "right" }}>{t("Qty")}</span><span />
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <div {...rs.listProps({ onDelete: remove })} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
         {!items.length && <div style={{ padding: "10px 12px", fontSize: TYPE.label, color: C.textMid }}>{t("Cargo bay is empty")}</div>}
         {items.map(e => {
           const tid = e.typeID ?? tidByName(e.name);
           const vol = (e.vol ?? TYPES[tid]?.attrs?.volume ?? 0) * (e.qty ?? 0);
+          const rp = rs.rowProps(e.id, { onOpen: tid ? () => setInfo(tid) : undefined, items: [
+            { label: t("Show info"), hint: t("Double-click"), disabled: !tid, onSelect: () => setInfo(tid) },
+            { divider: true },
+            { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(e.id) },
+          ] });
           return (
-            <div key={e.id} title={`${e.name} · ${vol.toLocaleString(undefined, { maximumFractionDigits: 1 })} m³`} style={{ display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 28, padding: "0 12px", borderBottom: `1px solid ${C.border}99` }}>
+            <div key={e.id} {...rp} title={`${e.name} · ${vol.toLocaleString(undefined, { maximumFractionDigits: 1 })} m³`} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 28, padding: "0 12px", borderBottom: `1px solid ${C.border}99` }}>
               <span>{tid && <img className="eve-icon" src={eveIcon(tid, 32)} width={18} height={18} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}</span>
               <span title={e.name} style={{ fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
               <input type="text" inputMode="numeric" value={e.qty} onChange={ev => { const n = parseInt(ev.target.value.replace(/[^0-9]/g, ""), 10); if (n > 0) setQty(e.id, n); }} aria-label={t("Quantity of {name}", { name: e.name })}
@@ -65,6 +74,8 @@ export default function CargoPanel({ s, capacity }) {
           );
         })}
       </div>
+      {rs.view}
+      {info != null && <ItemInfoSheet typeID={info} onClose={() => setInfo(null)} />}
       {picker && <CargoBrowserSheet slots={s.slots} onAdd={add} onClose={() => setPicker(false)} />}
     </div>
   );

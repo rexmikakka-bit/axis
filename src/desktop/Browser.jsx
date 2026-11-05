@@ -8,8 +8,9 @@ import { metaOf, META_COLORS } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
 import { getCachedPrices } from "../prices.js";
-import { resourceColor, ItemInfoSheet } from "../components/ui.jsx";
+import { resourceColor, ItemDetailSheet } from "../components/ui.jsx";
 import Menu from "./Menu.jsx";
+import { ContextMenu, useRowSelect } from "./ContextMenu.jsx";
 
 // The desktop Browser (docs/desktop-handoff.md, "Browser"): one window, Market and Ships, as in
 // pyfa. Both are trees that EXPAND IN PLACE — a caret per category, children indented beneath it —
@@ -74,15 +75,20 @@ function useMarketTree(rack, isStructure, hullRigSize) {
 const allMods = (nodes) => nodes.flatMap(n => [...(n.mods ?? []), ...allMods(n.children ?? [])]);
 const isk = (n) => n == null ? "" : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n));
 
-function ItemRow({ mod, price, onFit, onInfo }) {
+// Click selects, double click (or Enter) fits, right click: Fit / Show info / Variations.
+function ItemRow({ mod, price, onFit, onInfo, rowProps }) {
   const a = TYPES[String(mod.typeID)]?.a ?? {};
   const meta = metaOf(mod.typeID, mod.meta);
+  const rp = rowProps(mod.typeID ?? mod.name, { onOpen: () => onFit(mod), items: [
+    { label: t("Fit"), hint: t("Double-click"), onSelect: () => onFit(mod) },
+    { divider: true },
+    { label: t("Show info"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "info" }) },
+    { label: t("Variations"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "vars" }) },
+  ] });
   return (
-    <div role="button" tabIndex={0} onClick={() => onFit(mod)} onKeyDown={e => { if (e.key === "Enter") onFit(mod); }} title={t("Fit")}
-      onContextMenu={e => { e.preventDefault(); onInfo(mod); }}
-      style={{ display: "grid", gridTemplateColumns: "16px minmax(0,1fr) auto", columnGap: 8, rowGap: 1, padding: "5px 10px", cursor: "pointer",
-               borderBottom: `1px solid ${C.border}99` }}
-      onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+    <div role="option" tabIndex={0} {...rp} onKeyDown={e => { if (e.key === "Enter") onFit(mod); }} title={t("Double-click to fit")}
+      style={{ ...rp.style, display: "grid", gridTemplateColumns: "16px minmax(0,1fr) auto", columnGap: 8, rowGap: 1, padding: "5px 10px", outline: "none",
+               borderBottom: `1px solid ${C.border}99` }}>
       <img className="eve-icon" src={eveIcon(mod.typeID, 32)} width={16} height={16} alt="" style={{ gridRow: "1 / 3", alignSelf: "center" }} onError={e => { e.target.style.visibility = "hidden"; }} />
       <span style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", gridColumn: "2 / 4" }}>{mod.name}</span>
       <span style={{ fontSize: 12, color: C.textMid, display: "flex", gap: 8, fontVariantNumeric: "tabular-nums" }}>
@@ -102,6 +108,7 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const [info, setInfo] = useState(null);
+  const rs = useRowSelect();
   const tree = useMarketTree(rack, isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
   const prices = getCachedPrices(s.priceHub, s.priceSource);
   const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
@@ -147,10 +154,12 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
       {!q && <div role="tree" style={{ flex: "1 1 50%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>{renderNodes(tree, 0)}</div>}
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
-          ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} onFit={fit} onInfo={setInfo} />)
+          ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} onFit={fit} onInfo={setInfo} rowProps={rs.rowProps} />)
           : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? t("No modules found") : t("Pick a category above.")}</div>}
       </div>
-      {info && <ItemInfoSheet typeID={info.typeID} onClose={() => setInfo(null)} />}
+      {rs.view}
+      {info && <ItemDetailSheet key={info.tab} initialTab={info.tab} typeID={info.typeID} onClose={() => setInfo(null)}
+        onSwap={v => fit(allMods(tree).find(m => String(m.typeID) === String(v.typeID)) ?? v)} />}
     </>
   );
 }
@@ -161,6 +170,8 @@ function ShipsPane({ s }) {
   const [open, setOpen] = useState(() => new Set());
   const [search, setSearch] = useState("");
   const [renaming, setRenaming] = useState(null);   // {ship, id, name}
+  const [ctx, setCtx] = useState(null);   // {x, y, items}
+  const openCtx = (e, items) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, items }); };
   const fitsDB = s.fitsDB ?? {};
   const toggle = (key) => setOpen(o => { const x = new Set(o); x.has(key) ? x.delete(key) : x.add(key); return x; });
 
@@ -200,20 +211,23 @@ function ShipsPane({ s }) {
           style={{ width: "100%", height: 24, boxSizing: "border-box", padding: "0 8px", borderRadius: 5, fontSize: 13.5, background: C.bg, border: `1px solid ${C.accent}`, color: C.text, outline: "none" }} />
       </div>
     );
+    const actions = [
+      { label: t("Open"), onSelect: () => s.loadFit(ship, fit.name) },
+      { label: t("Open in New Tab"), onSelect: () => s.openFitInNewTab(ship, fit.name) },
+      { label: t("Rename"), onSelect: () => setRenaming({ ship, id: fit.id }) },
+      { label: t("Duplicate"), onSelect: () => duplicate(ship, fit) },
+      { divider: true },
+      { label: t("Delete"), danger: true, onSelect: () => remove(ship, fit) },
+    ];
+    // A fit is the one tree item where a single click acts: opening it IS selecting it, as in
+    // pyfa's ship browser. Right click carries the rest.
     return (
       <div key={fit.id} style={{ display: "flex", alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <TreeRow depth={depth} leaf selected={on} label={fit.name} onClick={() => s.loadFit(ship, fit.name)}
-            onContextMenu={e => { e.preventDefault(); setRenaming({ ship, id: fit.id }); }} title={t("Click to open · right-click to rename")} />
+            onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more")} />
         </div>
-        <Menu label="⋯" ariaLabel={t("Fit actions")} buttonStyle={{ height: 22, padding: "0 6px", color: C.textMid }} items={[
-          { label: t("Open"), onSelect: () => s.loadFit(ship, fit.name) },
-          { label: t("Open in New Tab"), onSelect: () => s.openFitInNewTab(ship, fit.name) },
-          { label: t("Rename"), onSelect: () => setRenaming({ ship, id: fit.id }) },
-          { label: t("Duplicate"), onSelect: () => duplicate(ship, fit) },
-          { divider: true },
-          { label: t("Delete"), onSelect: () => remove(ship, fit) },
-        ]} />
+        <Menu label="⋯" ariaLabel={t("Fit actions")} buttonStyle={{ height: 22, padding: "0 6px", color: C.textMid }} items={actions} />
       </div>
     );
   };
@@ -221,7 +235,8 @@ function ShipsPane({ s }) {
     const key = `ship:${sh.name}`, fits = fitsDB[sh.name] ?? [], isOpen = open.has(key);
     return (
       <div key={key} role="group">
-        <TreeRow depth={depth} open={isOpen} label={sh.name} icon={eveIcon(sh.typeID, 32)} sub={fits.length ? String(fits.length) : null} onClick={() => toggle(key)} />
+        <TreeRow depth={depth} open={isOpen} label={sh.name} icon={eveIcon(sh.typeID, 32)} sub={fits.length ? String(fits.length) : null} onClick={() => toggle(key)}
+          onContextMenu={e => openCtx(e, [{ label: t("New Fit"), onSelect: () => createFit(sh.name) }, { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(key) }])} />
         {isOpen && <>
           {fits.map(f => fitRow(sh.name, f, depth + 1))}
           <TreeRow depth={depth + 1} leaf label={<span style={{ color: C.accent }}>+ {t("New Fit")}</span>} onClick={() => createFit(sh.name)} />
@@ -255,7 +270,7 @@ function ShipsPane({ s }) {
               {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
           : tree.map(n => nodeRow(n, 0))}
       </div>
-
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
     </>
   );
 }

@@ -7,6 +7,7 @@ import { implantSetMembers, applyImplantSet, searchImplants } from "../lib/core.
 import { ItemDetailSheet } from "../components/ui.jsx";
 import { ImplantPicker, ImplantLoadoutSheet } from "../components/implants.jsx";
 import Menu from "./Menu.jsx";
+import { useRowSelect } from "./ContextMenu.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 
 // The desktop Implants window: the ten slots as a numbered list in two groups, a search across every
@@ -23,6 +24,7 @@ export default function ImplantsPanel({ s }) {
   const [naming, setNaming] = useState(null);
   const [loadoutsOpen, setLoadoutsOpen] = useState(false);
   const results = useMemo(() => searchImplants(query), [query]);
+  const rs = useRowSelect();
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const implants = s.implants ?? [];
   const set = s.setImplants;
@@ -35,7 +37,9 @@ export default function ImplantsPanel({ s }) {
     const name = (naming ?? "").trim(); setNaming(null);
     if (name) s.setImplantLoadouts(prev => [...(prev ?? []), { id: Date.now(), name, implants: [...implants] }]);
   };
-  const row = { display: "flex", alignItems: "center", gap: 9, minHeight: 30, padding: "0 12px", borderBottom: `1px solid ${C.border}99`, cursor: "pointer" };
+  const row = { display: "flex", alignItems: "center", gap: 9, minHeight: 30, padding: "0 12px", borderBottom: `1px solid ${C.border}99` };
+  const withRow = (key, o) => { const p = rs.rowProps(key, o); return { ...p, style: { ...row, ...p.style } }; };
+  const showDetail = (imp, slot, tab) => setDetail({ ...imp, slot, typeID: imp.typeID ?? tidByName(imp.name), tab });
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
@@ -58,13 +62,24 @@ export default function ImplantsPanel({ s }) {
       <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("Search all implants...")} aria-label={t("Search all implants...")}
         style={{ height: 28, margin: "8px 12px 4px", boxSizing: "border-box", width: "calc(100% - 24px)", padding: "0 10px", borderRadius: 6, fontSize: 13,
                  background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none", flex: "none" }} />
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <div {...rs.listProps({ onDelete: k => { if (k.startsWith("s:")) clearSlot(+k.slice(2)); } })} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
         {results
           ? (results.length ? results.map(item => {
               const fitted = implants.find(i => i.slot === item.slot)?.name === item.name;
               return (
-                <div key={item.typeID} style={row} onClick={() => fitInto(item)} title={t("Fit implant")}
-                  onContextMenu={e => { e.preventDefault(); setDetail({ ...item, typeID: item.typeID ?? tidByName(item.name) }); }}>
+                <div key={item.typeID} {...withRow(`r:${item.typeID}`, {
+                  onOpen: () => fitInto(item),
+                  items: () => {
+                    const tid = item.typeID ?? tidByName(item.name), st = implantSetMembers(item.name);
+                    return [
+                      { label: fitted ? t("Fitted") : t("Fit implant"), hint: t("Double-click"), disabled: fitted, onSelect: () => fitInto(item) },
+                      st && { label: t("+ {set} set", { set: st.setName }), onSelect: () => fitSet(st) },
+                      { divider: true },
+                      { label: t("Show info"), onSelect: () => setDetail({ ...item, typeID: tid, tab: "info" }) },
+                      { label: t("Variations"), onSelect: () => setDetail({ ...item, typeID: tid, tab: "vars" }) },
+                    ];
+                  },
+                })}>
                   <span style={{ width: 22, fontSize: TYPE.small, color: C.textMid, textAlign: "right" }}>{item.slot}</span>
                   <img className="eve-icon" src={eveIcon(item.typeID ?? tidByName(item.name), 32)} width={20} height={20} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />
                   <span style={{ flex: 1, minWidth: 0, fontSize: TYPE.label, color: fitted ? C.accent : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
@@ -80,10 +95,19 @@ export default function ImplantsPanel({ s }) {
                 const imp = implants.find(i => i.slot === n);
                 const empty = !imp || imp.name === EMPTY;
                 return (
-                  <div key={n} style={row}
-                    onClick={() => empty ? setPicker({ slot: n, name: EMPTY }) : setDetail({ ...imp, slot: n, typeID: imp.typeID ?? tidByName(imp.name) })}
-                    onContextMenu={e => { e.preventDefault(); setPicker({ slot: n, name: imp?.name ?? EMPTY }); }}
-                    onMouseEnter={e => { e.currentTarget.style.background = C.surfaceAlt; }} onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}>
+                  <div key={n} {...withRow(`s:${n}`, {
+                    onOpen: () => empty ? setPicker({ slot: n, name: EMPTY }) : showDetail(imp, n, "info"),
+                    items: () => empty
+                      ? [{ label: t("Add implant…"), hint: t("Double-click"), onSelect: () => setPicker({ slot: n, name: EMPTY }) }]
+                      : [
+                          { label: t("Show info"), hint: t("Double-click"), onSelect: () => showDetail(imp, n, "info") },
+                          { label: t("Variations"), onSelect: () => showDetail(imp, n, "vars") },
+                          { label: t("Change implant…"), onSelect: () => setPicker({ slot: n, name: imp.name }) },
+                          implantSetMembers(imp.name) && { label: t("+ {set} set", { set: implantSetMembers(imp.name).setName }), onSelect: () => fitSet(implantSetMembers(imp.name)) },
+                          { divider: true },
+                          { label: t("Remove implant"), hint: "Del", danger: true, onSelect: () => clearSlot(n) },
+                        ],
+                  })}>
                     <span style={{ width: 22, fontSize: TYPE.small, color: C.textMid, textAlign: "right" }}>{n}</span>
                     {empty ? <span style={{ width: 20 }} /> : <img className="eve-icon" src={eveIcon(imp.typeID ?? tidByName(imp.name), 32)} width={20} height={20} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />}
                     <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: TYPE.label, color: empty ? C.textMid : C.text }}>
@@ -107,12 +131,13 @@ export default function ImplantsPanel({ s }) {
           acts.push({ label: t("Change implant"), onClick: () => setPicker({ slot: detail.slot, name: detail.name }) });
           acts.push({ label: t("Remove implant"), danger: true, onClick: () => clearSlot(detail.slot) });
         }
-        return <ItemDetailSheet typeID={detail.typeID} name={detail.name} actions={acts}
+        return <ItemDetailSheet key={detail.tab} typeID={detail.typeID} name={detail.name} actions={acts} initialTab={detail.tab}
           onSwap={v => set(prev => prev.map(i => i.slot === detail.slot ? { ...i, name: v.name, bonus: null } : i))} onClose={() => setDetail(null)} />;
       })()}
       {picker && <ImplantPicker slot={picker.slot} current={picker.name}
         onSelect={opt => set(prev => prev.map(i => i.slot === picker.slot ? { ...i, name: opt.name, bonus: opt.bonus ?? null } : i))}
         onSelectSet={fitSet} onClear={() => clearSlot(picker.slot)} onClose={() => setPicker(null)} />}
+      {rs.view}
       {loadoutsOpen && <ImplantLoadoutSheet loadouts={loadouts}
         onLoad={lo => lo.implants?.length && set(lo.implants.map(i => ({ ...i })))}
         onRename={(id, name) => s.setImplantLoadouts(prev => prev.map(l => l.id === id ? { ...l, name: (name ?? "").trim() || l.name } : l))}

@@ -180,7 +180,15 @@ export function useVisualViewport(){
   return vv;
 }
 
-function BottomSheet({title,onClose,children,height="70vh",fillHeight=false,headerExtra,footerExtra,dismissRequested=false}){
+// Desktop only: a component to draw sheets with instead (the desktop app provides a dialog). Every
+// sheet in the app goes through BottomSheet, so this one switch moves all of them — pickers, info,
+// variations — into desktop dialogs without touching any of them. The phone provides nothing.
+export const SheetFrame=createContext(null);
+function BottomSheet(props){
+  const Alt=useContext(SheetFrame);
+  return Alt?<Alt {...props}/>:<PhoneBottomSheet {...props}/>;
+}
+function PhoneBottomSheet({title,onClose,children,height="70vh",fillHeight=false,headerExtra,footerExtra,dismissRequested=false}){
   const vv=useVisualViewport();
   const frame=vv?{top:0,height:vv.height,left:0,right:0}:{inset:0};
   // Derived, not a third prop that could drift out of step with the two it would have to agree with:
@@ -607,6 +615,19 @@ function SubsystemPickerSheet({ship,slotId,current,onSelect,onClose}){
   const options=byGroup[group]??[];
   // The one picker still built as a bare overlay rather than on BottomSheet, so Back is wired here.
   useBackHandler(onClose);
+  // ...and so SheetFrame (desktop) is honoured here too: the same list, in the desktop's frame.
+  const Alt=useContext(SheetFrame);
+  if(Alt)return(<Alt title={t("{group} Subsystem",{group})} onClose={onClose}><div style={{padding:12}}>
+    {options.map(opt=>{
+      const on=current?.typeID===opt.typeID;
+      return(<div key={opt.typeID} onClick={()=>onSelect(opt)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:on?C.accentLight:"transparent",border:`1px solid ${on?C.accent:C.border}`,borderRadius:6,marginBottom:4,cursor:"pointer"}}>
+        <img className="eve-icon" src={eveIcon(opt.typeID,32)} width={24} height={24} alt="" onError={e=>{e.target.style.display="none";}}/>
+        <span style={{flex:1,minWidth:0,fontSize:13,color:on?C.accent:C.text}}>{opt.name.replace(`${ship?.name} ${group} - `,"")}</span>
+        <SkillMark typeID={opt.typeID}/>
+      </div>);
+    })}
+    {options.length===0&&<div style={{textAlign:"center",color:C.textMute,padding:"24px 0",fontSize:13}}>{t("No subsystems found")}</div>}
+  </div></Alt>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxHeight:"70vh",background:C.bg,borderTopLeftRadius:16,borderTopRightRadius:16,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -1553,6 +1574,11 @@ function TraitsPanel({typeID, empty=t("No trait data available.")}){
 function ItemInfoSheet({typeID, onClose, item, overrides,baseOverrides,mutaplasmid,children}) {
   const sheet=useSheetDrag(onClose);
   const td=TYPES[String(typeID)]??TYPES[typeID];
+  // Built bare rather than on BottomSheet, so it takes SheetFrame (desktop) itself.
+  const Alt=useContext(SheetFrame);
+  if(Alt)return(<Alt title={td?.n} onClose={onClose}><div style={{padding:'12px 16px 20px'}}>
+    <ItemInfoPanel typeID={typeID} item={item} overrides={overrides} baseOverrides={baseOverrides} mutaplasmid={mutaplasmid} bleed={16} hideName priceContent={children}/>
+  </div></Alt>);
   return (
     <div style={{position:'fixed',inset:0,zIndex:400,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={sheet.dismiss}>
       <div ref={sheet.sheetRef} style={{background:C.surface,borderRadius:'16px 16px 0 0',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',...sheetTransform(sheet)}} onClick={e=>e.stopPropagation()}>
@@ -2128,7 +2154,7 @@ function ModuleVariationsTab({typeID, currentName, onSwap, readOnly, resourceHea
  * set" and "Change implant", so those are reachable from the same sheet that tells you what the
  * implant does, without this component needing to know what an implant is.
  */
-export function ItemDetailSheet({typeID, name, onClose, onSwap, actions, item}) {
+export function ItemDetailSheet({typeID, name, onClose, onSwap, actions, item, initialTab}) {
   // Traits only appears for things CCP actually wrote trait text for — in this sheet that is the T3
   // subsystems. Showing an always-empty third tab on every drone and implant would cost more than it
   // gives, and the tab row is already tight on a phone.
@@ -2137,7 +2163,7 @@ export function ItemDetailSheet({typeID, name, onClose, onSwap, actions, item}) 
   // subsystem over another, whereas Info is the same boilerplate description on all of them. Every
   // other item type is unaffected and still opens on Info.
   const traits = hasTraits(typeID);
-  const [tab, setTab] = useState(traits ? "traits" : "info");
+  const [tab, setTab] = useState(initialTab ?? (traits ? "traits" : "info"));
   const title = name ?? TYPES[typeID]?.n ?? TYPES[String(typeID)]?.n ?? t("Item");
   // Built inside the component, so it is rebuilt on every render and a plain t() is correct — see
   // lib/i18n.js. The first element is the stable tab id; only the second is shown.
@@ -2834,9 +2860,9 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
 // Drone bottom sheet — mirrors ModuleMenu's Info/Variations/Mutate tabs. No State or Charge tab:
 // a drone's active/qty controls already live inline in the drone row, and drones take no charges.
 // No Remove button either, for the same reason — the row's own "x" already does that.
-function DroneMenu({drone,onClose,onUpdateDrone,onUpdateDroneLive,engineItem}){
+function DroneMenu({drone,onClose,onUpdateDrone,onUpdateDroneLive,engineItem,initialTab="info"}){
   const _hasMuta=(MUTA_BY_TYPE[drone.typeID]??MUTA_BY_TYPE[String(drone.typeID)]??[]).length>0||drone.mutaplasmid;
-  const[tab,setTab]=useState("info");
+  const[tab,setTab]=useState(initialTab);
   const tabs=["info","variations",...(_hasMuta?["mutate"]:[])];
   // Rebuilt every render, so a plain t() is correct. The KEYS are the stable tab ids.
   const tabLabel={info:t("Info"),variations:t("Variations"),mutate:t("Mutate")};
