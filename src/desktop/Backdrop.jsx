@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { Dialog, TYPE } from "./kit.jsx";
+import { TYPE } from "./kit.jsx";
 
 // Your own picture behind the workspace (Owen, 2026-11-05). It has to stay out of the way of the
 // numbers, so it is never shown as-is: it sits under a scrim of the theme's own background colour
@@ -65,12 +65,7 @@ export function Backdrop({ url, settings }) {
   );
 }
 
-/** Menu > Workspace background: pick, dim, blur, fit, remove. Changes apply live. */
-export function BackdropDialog({ bd, onClose }) {
-  return <Dialog title={t("Workspace background")} onClose={onClose} width={460}><BackdropControls bd={bd} /></Dialog>;
-}
-
-/** The controls themselves, for the dialog and for Settings > Workspace. */
+/** Settings > Interface > Workspace background: pick, dim, blur, fit, remove. Changes apply live. */
 export function BackdropControls({ bd }) {
   const { settings: st, setSettings } = bd;
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));

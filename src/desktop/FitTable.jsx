@@ -3,10 +3,12 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES } from "../calc.js";
-import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge } from "../lib/core.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { moduleTarget } from "./inspect.js";
+import { useItems, useItemDrop, DropHint } from "./items-context.jsx";
+import { currentDrag, draggedItem, isItemDrag, itemKind } from "./items.js";
 import { resourceColor } from "../components/ui.jsx";
 import { getCachedPrices } from "../prices.js";
 
@@ -106,6 +108,27 @@ export function FitTable({ api }) {
     // rack), double click shows info, right click opens the context menu; Delete removes the
     // selection, Escape clears it. The phone's tap-opens-the-sheet does not apply here.
     const insp = useInspect();
+    // Browser items dropped here: a module is fitted to its rack, a charge loads into every module
+    // that takes it — or, dropped on one row, into that row (all of a grouped row's members).
+    const items = useItems();
+    const drop = useItemDrop("fitting");
+    const [chargeOver, setChargeOver] = useState(null);   // the row key a charge hovers
+    const dragKind = drop.over ? itemKind(currentDrag()).kind : null;
+    const rowDrop = (secKey, row) => {
+      const key = rowKey(secKey, row.id);
+      const takes = () => { const it = currentDrag(); return !!it && row.typeID != null && itemKind(it).kind === "charge" && canLoadCharge(row.typeID, it.name); };
+      return {
+        onDragOver: (e) => { if (!isItemDrag(e) || !takes()) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; if (chargeOver !== key) setChargeOver(key); },
+        onDragLeave: () => setChargeOver(k => (k === key ? null : k)),
+        onDrop: (e) => {
+          setChargeOver(null);
+          if (!isItemDrag(e) || !takes()) return;
+          const it = draggedItem(e); if (!it) return;
+          e.preventDefault();
+          items.add(it, "fitting", { only: row.groupIds ?? [row.id] });
+        },
+      };
+    };
     const [sel, setSel] = useState(() => new Set());
     const [anchor, setAnchor] = useState(null);
     const [menu, setMenu] = useState(null);   // {x, y, secKey, row}
@@ -188,7 +211,8 @@ export function FitTable({ api }) {
                                color: on ? C.text : C.textMute, cursor: on ? "pointer" : "default" });
 
     return (
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", lineHeight: 1.3 }}>
+      <div {...drop.props} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", lineHeight: 1.3, position: "relative" }}>
+        {!chargeOver && <DropHint over={drop.over} ok={drop.ok} label={dragKind === "charge" ? t("Load into compatible modules") : t("Fit")} />}
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
           <button type="button" style={histBtn(undoDepth > 0)} disabled={!undoDepth} onClick={() => undo?.()} title={t("Undo last change ({n})", { n: undoDepth })}>↶ {t("Undo")}</button>
           <button type="button" style={histBtn(redoDepth > 0)} disabled={!redoDepth} onClick={() => redo?.()} title={t("Redo last undone change ({n})", { n: redoDepth })}>↷ {t("Redo")}</button>
@@ -253,10 +277,11 @@ export function FitTable({ api }) {
                   const isDragOver = dragUI?.secKey === sec.key && dragUI?.overIdx === rowIdx && dragUI?.fromIdx !== rowIdx;
                   const charge = row.ammo ? row.ammo.replace(/\s*\(\d+\)$/, "") : null;
                   const isSel = sel.has(rowKey(sec.key, row.id));
-                  const rowBg = row.orphan ? `${C.danger}14` : isDragOver ? C.accentLight : isSel ? C.accentLight : "transparent";
+                  const chargeHere = chargeOver === rowKey(sec.key, row.id);
+                  const rowBg = row.orphan ? `${C.danger}14` : isDragOver || chargeHere ? C.accentLight : isSel ? C.accentLight : "transparent";
                   return (
                     <div key={row.rkey || row.id || row.name} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
-                      onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)}
+                      onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)} {...rowDrop(sec.key, row)}
                       onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : inspectRow(sec.key, row, "info")} className="no-select"
                       aria-selected={isSel}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",

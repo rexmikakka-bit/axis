@@ -3,12 +3,14 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
-import { DRONE_FLIGHT, droneAddQty, MUTA_BY_TYPE } from "../lib/core.js";
+import { DRONE_FLIGHT, MUTA_BY_TYPE } from "../lib/core.js";
 import { DroneBrowserSheet } from "../components/drones.jsx";
 import { UsageBar, Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { droneTarget } from "./inspect.js";
+import { addDrone } from "./items.js";
+import { useItemDrop, DropHint } from "./items-context.jsx";
 
 // The desktop Drones window: bay, bandwidth and drones-in-space on top, then one table row per
 // stack — in space, quantity, name, and the engine's range / tracking / speed / EHP for it. Adding
@@ -26,6 +28,7 @@ export default function DronesPanel({ s, stats }) {
   const insp = useInspect();
   const open = (d, tab) => insp.inspect(droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)), tab);
   const rs = useRowSelect();
+  const drop = useItemDrop("drones");
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const drones = s.drones ?? [];
   const bay = drones.reduce((a, d) => a + d.qty * volOf(d), 0);
@@ -33,18 +36,8 @@ export default function DronesPanel({ s, stats }) {
   const inSpace = drones.filter(d => d.active).reduce((a, d) => a + d.qty, 0);
   const cap = { bay: stats.snapshot?.droneBay ?? 0, bw: stats.snapshot?.droneBandwidth ?? 0, max: stats.snapshot?.maxActiveDrones ?? 5 };
   const set = (fn) => s.setDrones(prev => fn(prev ?? []));
-  const add = (d) => {
-    const ex = drones.find(e => e.name === d.name && !e.mutaplasmid);
-    if (ex) { set(list => list.map(e => e === ex ? { ...e, qty: e.qty + DRONE_FLIGHT } : e)); return; }
-    set(prev => {
-      const a = recOf(d)?.attrs ?? null;
-      const bandwidth = a?.droneBandwidthUsed ?? d.bandwidth ?? 5;
-      const { qty, active } = droneAddQty({ bandwidth, bwFree: cap.bw - bw, slotsFree: cap.max - inSpace });
-      return [...prev, { id: Date.now(), name: d.name, size: d.size, qty, active, range: a?.maxRange ?? d.maxRange ?? d.range ?? 0, falloff: a?.falloff ?? d.falloff ?? 0,
-        tracking: a?.trackingSpeed ?? d.tracking ?? 0, velocity: a?.maxVelocity ?? d.maxVelocity ?? d.velocity ?? 0, hp: a?.hp ?? d.hp ?? 0, dps: d.dps ?? 0,
-        bandwidth, volume: a?.volume ?? d.volume ?? 5, typeID: d.typeID }];
-    });
-  };
+  // The add rule lives in items.js, shared with the Browser and drag-and-drop.
+  const add = (d) => addDrone(s, d, cap);
   const info = (d) => (d.id != null ? stats.droneInfo.find(x => x.id === d.id) : null) ?? stats.droneInfo.find(x => x.name === d.name) ?? {};
   const km = (m) => parseFloat((m / 1000).toFixed(2));
   const cols = "18px 44px minmax(90px,1fr) 76px 62px 50px 16px";
@@ -65,7 +58,8 @@ export default function DronesPanel({ s, stats }) {
     ];
   };
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+      <DropHint over={drop.over} ok={drop.ok} label={t("Add to drone bay")} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: "8px 16px", padding: "10px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <UsageBar label={t("Drone bay")} used={bay} total={cap.bay} unit="m³" fmt={n => String(Math.round(n))} />
         <UsageBar label={t("Bandwidth")} used={bw} total={cap.bw} unit="Mbit/s" fmt={n => String(Math.round(n))} />

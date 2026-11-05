@@ -3,12 +3,14 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
-import { cargoVolume, cargoUnitVolume } from "../lib/core.js";
+import { cargoVolume } from "../lib/core.js";
 import { CargoBrowserSheet } from "../components/cargo.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
+import { addCargo } from "./items.js";
+import { useItemDrop, DropHint } from "./items-context.jsx";
 
 // The desktop Cargo window: the hold as an Item / Qty table (docs/desktop-handoff.md, "Cargo") with
 // the quantity typed straight into its cell. Items are added through the phone's cargo picker and
@@ -20,6 +22,7 @@ export default function CargoPanel({ s, capacity }) {
   const insp = useInspect();
   const setInfo = (tid) => insp.inspect(typeTarget(tid), "info");
   const rs = useRowSelect();
+  const drop = useItemDrop("cargo");
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const items = s.cargoItems ?? [];
   const used = cargoVolume(items);
@@ -28,15 +31,12 @@ export default function CargoPanel({ s, capacity }) {
   const setQty = (id, qty) => s.setCargoItems(prev => (prev ?? []).map(e => e.id === id ? { ...e, qty: Math.max(1, Math.round(qty) || 1) } : e));
   const remove = (id) => s.setCargoItems(prev => (prev ?? []).filter(e => e.id !== id));
   // As the phone's addItem: a second pick of the same item adds one to its stack.
-  const add = (item) => s.setCargoItems(prev => {
-    const list = prev ?? [];
-    if (list.some(e => e.name === item.name)) return list.map(e => e.name === item.name ? { ...e, qty: e.qty + 1 } : e);
-    return [...list, { id: Date.now(), name: item.name, qty: 1, vol: item.vol ?? cargoUnitVolume(item), icon: item.icon, typeID: item.typeID }];
-  });
+  const add = (item) => addCargo(s, item);
   // m³ per stack rides in the row tooltip: the window is narrow by default and the name is what you read.
   const cols = "18px minmax(0,1fr) 52px 16px";
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+      <DropHint over={drop.over} ok={drop.ok} label={t("Add to cargo")} />
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <span style={{ fontSize: TYPE.label, color: C.textMid }}>{t("Cargo")}</span>
         <span style={{ fontSize: TYPE.value, color: over ? C.danger : C.text, fontVariantNumeric: "tabular-nums" }}>

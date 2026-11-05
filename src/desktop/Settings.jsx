@@ -16,12 +16,12 @@ import { TYPE, WEIGHT } from "./kit.jsx";
 // same session value the phone's Settings sheet does, from the same catalogues (SKILL_GROUPS,
 // SKILL_PRESETS, availableLocales, THEMES), so the two cannot offer different choices.
 //
-// Interface, Market, Skills, Workspace and About are drawn here. Backup and ESI host the phone's own
+// Interface (with the workspace background), Market, Skills and About are drawn here. Backup and ESI host the phone's own
 // panels: they are file and login flows with their own careful states, and a second copy of those
 // is a second place for them to go wrong.
 
 const SECTIONS = [
-  ["skills", "Skills"], ["interface", "Interface"], ["market", "Market"], ["workspace", "Workspace"],
+  ["skills", "Skills"], ["interface", "Interface"], ["market", "Market"],
   ["backup", "Backup"], ["esi", "ESI"], ["about", "About"],
 ];
 const SECTION_KEY = "axis_desk_settings_section";
@@ -68,7 +68,7 @@ const button = (primary) => ({ height: 28, padding: "0 12px", borderRadius: 6, f
 const input = { height: 28, boxSizing: "border-box", padding: "0 10px", borderRadius: 6, fontSize: 13, background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" };
 
 // ── Sections ───────────────────────────────────────────────────────────────────────────────────
-function InterfaceSection({ s }) {
+function InterfaceSection({ s, bd }) {
   const langs = availableLocales();
   return (
     <>
@@ -83,6 +83,9 @@ function InterfaceSection({ s }) {
           <Choice key={k} on={(s.themePref ?? "system") === k} onClick={() => s.setThemePref?.(k)}>{l}</Choice>)}
       </Choices>
       <Note>{t("System follows your device's light/dark setting; the rest pin the app regardless. Amarr, Sansha and Intaki are dark themes, in imperial gold, Nation oxblood and cold slate.")}</Note>
+      <Heading>{t("Workspace background")}</Heading>
+      {bd ? <div style={{ margin: "0 -16px" }}><BackdropControls bd={bd} /></div>
+          : <Note>{t("The workspace background is set from the main Axis window.")}</Note>}
       <Heading>{t("Fits")}</Heading>
       <Row label={t("Always open fits in a new tab")} note={t("Off: opening a fit replaces the tab you are in, and the + in the tab strip opens a new one. On: every fit you open gets its own tab.")}>
         <Switch on={!!s.openInNewTab} onChange={s.setOpenInNewTab} label={t("Always open fits in a new tab")} />
@@ -266,7 +269,8 @@ function AboutSection() {
 export default function DeskSettings({ s, bd }) {
   const [section, setSection] = useState(() => { try { return localStorage.getItem(SECTION_KEY) || "skills"; } catch { return "skills"; } });
   useEffect(() => { try { localStorage.setItem(SECTION_KEY, section); } catch { /* private mode */ } }, [section]);
-  const cur = SECTIONS.some(([k]) => k === section) ? section : "skills";
+  // "workspace" was its own section until the background moved into Interface.
+  const cur = section === "workspace" ? "interface" : SECTIONS.some(([k]) => k === section) ? section : "skills";
   return (
     <div style={{ height: "100%", display: "flex", minHeight: 0 }}>
       <nav aria-label={t("Settings")} style={{ width: 148, flex: "none", padding: "8px 6px", borderRight: `1px solid ${C.border}`, background: C.surfaceAlt, overflowY: "auto" }}>
@@ -282,11 +286,8 @@ export default function DeskSettings({ s, bd }) {
       <div style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "14px 18px 24px" }}>
         <div style={{ maxWidth: 720 }}>
           {cur === "skills" && <SkillsSection s={s} />}
-          {cur === "interface" && <InterfaceSection s={s} />}
+          {cur === "interface" && <InterfaceSection s={s} bd={bd} />}
           {cur === "market" && <MarketSection s={s} />}
-          {cur === "workspace" && (bd
-            ? <><Heading first>{t("Background")}</Heading><div style={{ margin: "0 -16px" }}><BackdropControls bd={bd} /></div></>
-            : <Note>{t("The workspace background is set from the main Axis window.")}</Note>)}
           {cur === "backup" && <BackupPanel />}
           {cur === "esi" && <EsiSettingsPanel setSkills={s.setSkills} />}
           {cur === "about" && <AboutSection />}

@@ -8,7 +8,7 @@ import { weaponRacks } from "../lib/ammo-compare.js";
 import { buildExternalBursts, buildProjectedEffects } from "../lib/projection.js";
 import { targetFitProfile } from "../lib/graph-target.js";
 import { GRAPH_CONFIG, generateCurve, TARGET_PROFILES, TARGET_FIT, profileTarget, interpCurveAt,
-         defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S } from "../components/GraphTab.jsx";
+         defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S, VectorCompass, ScrubField, IDEAL_SIG, COMPASS_DIRS } from "../components/GraphTab.jsx";
 import { FitPickerSheet } from "../components/effects.jsx";
 import { tabFits } from "./tab-fits.js";
 import Menu from "./Menu.jsx";
@@ -76,6 +76,9 @@ function sourceData(s, ship, fit, extraOpts = {}) {
   return { ship: sh, skills, cs: calc(fit.slots), ownProj, calc };
 }
 
+const num = (v) => typeof v === "number" && Number.isFinite(v);
+const customLabel = (tg) => `${t("Custom")} · ${num(tg.sig) && tg.sig < IDEAL_SIG ? `${Math.round(tg.sig)} m` : "∞"} · ${Math.round(tg.vel ?? 0)} m/s`;
+
 /** What a target presents: sig, speed, the scrammed variant and what is already painting/webbing it. */
 function targetData(s, tg) {
   if (tg.kind === "fit") {
@@ -83,6 +86,12 @@ function targetData(s, tg) {
     if (!fit) return null;
     const p = targetFitProfile(tg.ship, fit, s.sourceSkills(fit), {}, { fitsDB: s.fitsDB, sourceSkills: s.sourceSkills });
     return p && { profileKey: TARGET_FIT, sig: p.sig, vel: p.vel, noMwd: p.scrammed ?? null, incoming: p.incoming, label: `${tg.ship} · ${tg.fitName}` };
+  }
+  // A typed sig and speed. No MWD-off variant: a typed 200 m can't be split into hull and bloom, so
+  // your scrambler has nothing to cut (the phone's custom target says the same).
+  if (tg.kind === "custom") {
+    const sig = num(tg.sig) ? Math.max(0, tg.sig) : IDEAL_SIG, vel = num(tg.vel) ? Math.max(0, tg.vel) : 0;
+    return { profileKey: "custom", sig, vel, noMwd: null, incoming: null, label: customLabel(tg) };
   }
   const base = profileTarget(tg.profile, !!tg.mwd);
   if (!base) return null;
@@ -101,13 +110,22 @@ function curveParams(cat, src, tgt, inp) {
     engRangeKm: inp.rangeKm ?? defaultEngRangeKm(cat === APP_PROFILE ? "damage" : cat, src.cs), timeWindowS: inp.windowS ?? DEFAULT_WINDOW_S };
 }
 
+// A typed X maximum has to widen the curve's DATA, not just the axis, or a line stops dead where its
+// own domain ended. generateCurve already does that through xZoom (the phone's axis zoom); the zoom
+// that lands one curve exactly on `xTo` is its own auto range over xTo, so each curve gets its own.
+function curveTo(cat, yKey, xKey, params, xTo) {
+  const r = generateCurve(cat, yKey, xKey, params);
+  if (!(xTo > 0) || !(r.xMax > 0) || Math.abs(r.xMax - xTo) < 1e-9) return r;
+  return generateCurve(cat, yKey, xKey, { ...params, xZoom: r.xMax / xTo });
+}
+
 /**
  * pyfa's Application Profile for one source and target: every damaging round the fit's main weapon
  * can load (filtered by meta), loaded into the whole rack in turn; at each range the best one wins.
  * Returns {pts, segments:[{ammo, color, from, to}], xMax}. One whole-fit calculation per round, so
  * the caller runs it off the render.
  */
-function appProfile(s, fit, src, tgt, inp, yKey, meta) {
+function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
   const racks = weaponRacks(fit.slots).sort((a, b) => b.mounts.length - a.mounts.length);
   const rack = racks[0];
   if (!rack) return null;
@@ -124,7 +142,7 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta) {
     for (const { key, index } of rack.mounts) slots[key][index] = { ...slots[key][index], ammo: c.name };
     const cs = src.calc(slots);
     if (!cs) continue;
-    const r = generateCurve("damage", yKey, "dist", curveParams(APP_PROFILE, { ...src, cs }, tgt, inp));
+    const r = curveTo("damage", yKey, "dist", curveParams(APP_PROFILE, { ...src, cs }, tgt, inp), xTo);
     curves.push({ name: c.name, pts: r.pts, xMax: r.xMax });
   }
   if (!curves.length) return null;
@@ -151,7 +169,8 @@ function niceTicks(max, n = 5) {
 }
 const fmt = (v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1)}k` : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 
-function Plot({ series, xLabel, yLabel, showY0 }) {
+// `xFixed` / `yFixed` are typed axis maximums (null = fit to the data). Lines past them are clipped.
+function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) {
   const box = useRef(null);
   const [size, setSize] = useState({ w: 600, h: 360 });
   useLayoutEffect(() => {
@@ -162,10 +181,12 @@ function Plot({ series, xLabel, yLabel, showY0 }) {
   const [hx, setHx] = useState(null);
   const pad = { l: 52, r: 14, t: 12, b: 34 };
   const W = size.w, H = size.h, iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-  const xMax = Math.max(1e-9, ...series.map(s => s.xMax ?? 0));
+  const xMax = xFixed > 0 ? xFixed : Math.max(1e-9, ...series.map(s => s.xMax ?? 0));
   const yMaxRaw = Math.max(0, ...series.flatMap(s => s.pts.map(p => p[1] ?? 0)));
-  const yMin = showY0 ? 0 : Math.min(...series.flatMap(s => s.pts.map(p => p[1] ?? 0)), yMaxRaw);
-  const yMax = yMaxRaw > yMin ? yMaxRaw * 1.05 : yMin + 1;
+  const yMinAuto = showY0 ? 0 : Math.min(...series.flatMap(s => s.pts.map(p => p[1] ?? 0)), yMaxRaw);
+  const yMin = yFixed > 0 ? Math.min(yMinAuto, yFixed * 0.999) : yMinAuto;
+  const yMax = yFixed > 0 ? yFixed : yMaxRaw > yMin ? yMaxRaw * 1.05 : yMin + 1;
+  const clipId = useRef(`gclip${Math.random().toString(36).slice(2)}`).current;
   const X = (x) => pad.l + (x / xMax) * iw, Y = (y) => pad.t + ih - ((y - yMin) / (yMax - yMin)) * ih;
   const path = (pts) => pts.filter(p => p[1] != null).map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
   const xt = niceTicks(xMax), yt = niceTicks(yMax).filter(v => v >= yMin);
@@ -183,6 +204,8 @@ function Plot({ series, xLabel, yLabel, showY0 }) {
           <text x={X(v)} y={H - pad.b + 16} textAnchor="middle" fontSize="11" fill={C.textMid}>{fmt(v)}</text></g>)}
         <text x={pad.l + iw / 2} y={H - 4} textAnchor="middle" fontSize="11.5" fill={C.textMid}>{xLabel}</text>
         <text x={12} y={pad.t + ih / 2} textAnchor="middle" fontSize="11.5" fill={C.textMid} transform={`rotate(-90 12 ${pad.t + ih / 2})`}>{yLabel}</text>
+        <defs><clipPath id={clipId}><rect x={pad.l} y={pad.t - 2} width={iw + 1} height={ih + 4} /></clipPath></defs>
+        <g clipPath={`url(#${clipId})`}>
         {series.map(s => s.segments
           ? s.segments.map((g, i) => {
               const seg = s.pts.filter(p => p[0] >= g.from - 1e-9 && p[0] <= g.to + (xMax / 200) + 1e-9);
@@ -192,6 +215,7 @@ function Plot({ series, xLabel, yLabel, showY0 }) {
               </g>;
             })
           : <path key={s.key} d={path(s.pts)} fill="none" stroke={s.color} strokeWidth="2" strokeDasharray={s.dash} />)}
+        </g>
         {hx != null && <line x1={X(hx)} x2={X(hx)} y1={pad.t} y2={pad.t + ih} stroke={C.textMid} strokeDasharray="3 3" />}
         {hx != null && series.map(s => { const y = interpCurveAt(s.pts, hx); return y == null ? null : <circle key={`c${s.key}`} cx={X(hx)} cy={Y(y)} r="3.5" fill={s.color} />; })}
       </svg>
@@ -235,6 +259,38 @@ const ListRow = ({ swatch, label, onRemove, children }) => (
   </div>
 );
 const addBtn = { height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid };
+const fieldStyle = { width: 64, height: 24, boxSizing: "border-box", padding: "0 6px", borderRadius: 5, fontSize: 12.5, textAlign: "right",
+                     fontVariantNumeric: "tabular-nums", background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" };
+
+// The phone's flight-vector wheel (GraphTab's VectorCompass, same drag, same double-click to park,
+// same frame: east is along the line between the ships), drawn larger and with the desktop's readout.
+// Speeds stay a PERCENT of each fit's own top speed, as the sliders were, because one setting drives
+// every source and target on the graph; the wheel shows it in m/s against the first of them.
+function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct }) {
+  const vel = Math.round(refVel * pct / 100);
+  const cardinal = COMPASS_DIRS[((Math.round((angle + 90) / 45) % 8) + 8) % 8];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 0 }}>
+      <span style={{ fontSize: 12, color: C.textMid }}>{label}</span>
+      <VectorCompass bare size={104} value={angle} velocity={vel} maxVelocity={refVel} enemyPos={enemyPos}
+        onChange={onAngle} onVelocityChange={v => onPct(refVel > 0 ? Math.round((v / refVel) * 1000) / 10 : 0)} />
+      <span style={{ fontSize: 12, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+        {refVel > 0 ? `${angle}° ${cardinal}` : "—"}</span>
+      <span style={{ fontSize: 11.5, color: C.textMid, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+        {refVel > 0 ? `${vel} m/s · ${Math.round(pct)}%` : t("immobilised")}</span>
+    </div>
+  );
+}
+// A number you can type or press-and-slide (the phone's ScrubField). Empty means `blank` (∞, Auto).
+function NumField({ value, onChange, blank, anchor = 0, title, unit }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <ScrubField value={num(value) ? value : null} display={num(value) ? Math.round(value * 100) / 100 : ""} placeholder={blank} anchor={anchor} title={title}
+        onType={e => { const v = e.target.value; onChange(v === "" ? null : Math.max(0, Number(v))); }} onScrub={n => onChange(n)} style={fieldStyle} />
+      {unit && <span style={{ fontSize: 11.5, color: C.textMid }}>{unit}</span>}
+    </span>
+  );
+}
 
 export default function GraphsPanel({ s }) {
   const saved = useMemo(readPrefs, []);
@@ -247,6 +303,9 @@ export default function GraphsPanel({ s }) {
   const [meta, setMeta] = useState(saved.meta ?? "navy");
   const [ignoreResists, setIgnoreResists] = useState(!!saved.ignoreResists);
   const [showY0, setShowY0] = useState(saved.showY0 ?? true);
+  // Typed axis maximums, per graph and axis pair: a range scale that suits Damage vs distance means
+  // nothing on Capacitor vs time. {"damage|dps|dist": {x: 60, y: null}}; null is Auto.
+  const [scales, setScales] = useState(saved.scales ?? {});
   const [picker, setPicker] = useState(null);   // "source" | "target"
   // Compact (plot only) or expanded (controls beside it). "auto" follows the window: under 640 px the
   // controls fold away, so the graph can sit small in a general workspace and still read; a Controls
@@ -260,7 +319,7 @@ export default function GraphsPanel({ s }) {
     ro.observe(el); return () => ro.disconnect();
   }, []);
   const showPanel = panelMode === "shown" || (panelMode === "auto" && rootW >= 640);
-  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode]);
+  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales]);
 
   // With no sources chosen, graph the fit being edited.
   const srcList = sources.length ? sources : (s.activeFit?.ship ? [{ ship: s.activeFit.ship, fitName: s.activeFit.fitName, auto: true }] : []);
@@ -271,6 +330,8 @@ export default function GraphsPanel({ s }) {
   const x = xAxes.find(a => a.key === xKey)?.key ?? xAxes[0].key;
   const hasTargets = TARGET_CATS.has(cat);
   const tgtList = hasTargets ? targets : [null];
+  const scaleKey = `${cat}|${y}|${x}`, scale = scales[scaleKey] ?? {};
+  const setScale = (axis, v) => setScales(m => ({ ...m, [scaleKey]: { ...(m[scaleKey] ?? {}), [axis]: v > 0 ? v : null } }));
 
   const srcData = useMemo(() => srcList.map(sc => {
     const fit = s.fitsDB?.[sc.ship]?.find(f => f.name === sc.fitName);
@@ -286,14 +347,14 @@ export default function GraphsPanel({ s }) {
     srcData.forEach((sd, i) => { if (!sd) return; tgtList.forEach((tg, j) => {
       const td = tgtData[j];
       if (hasTargets && !td) return;
-      const r = generateCurve(cat, y, x, curveParams(cat, sd.d, td, inp));
+      const r = curveTo(cat, y, x, curveParams(cat, sd.d, td, inp), scale.x);
       out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
                  short: hasTargets ? `${sd.sc.ship} → ${td.label}` : `${sd.sc.ship} · ${sd.sc.fitName}`, i, j });
     }); });
     return out;
-  }, [cat, y, x, srcData, tgtData, inp, hasTargets]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cat, y, x, srcData, tgtData, inp, hasTargets, scale.x]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [profiles, setProfiles] = useState({ key: null, series: [] });
-  const profKey = cat === APP_PROFILE ? JSON.stringify([srcList, tgtList, inp, meta, y, ignoreResists]) : null;
+  const profKey = cat === APP_PROFILE ? JSON.stringify([srcList, tgtList, inp, meta, y, ignoreResists, scale.x ?? null]) : null;
   useEffect(() => {
     if (!profKey) return;
     let dead = false;
@@ -304,7 +365,7 @@ export default function GraphsPanel({ s }) {
       if (dead) return;
       if (k >= jobs.length) { setProfiles({ key: profKey, series: done }); return; }
       const [sd, i, td, j] = jobs[k];
-      const r = appProfile(s, sd.fit, sd.d, td, inp, y, meta);
+      const r = appProfile(s, sd.fit, sd.d, td, inp, y, meta, scale.x);
       // Round names only on each fit's first target: its other targets' curves run alongside and the labels pile up.
       if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${sd.sc.ship} → ${td.label}` });
       setTimeout(() => step(k + 1), 0);
@@ -319,9 +380,19 @@ export default function GraphsPanel({ s }) {
   const showRange = cat !== APP_PROFILE && usesEngRange(cat, x);
   const showWindow = cat !== APP_PROFILE && usesTimeWindow(cat, y, x);
   const setI = (k, v) => setInp(p => ({ ...p, [k]: v }));
+  // The wheels read in m/s against the first fit and the first target; the percent applies to all.
+  const selfRef = firstCs?.maxVelocityAB ?? firstCs?.maxVelocity ?? srcData.find(Boolean)?.d.ship?.maxVelocity ?? 0;
+  const tgtRef = tgtData.find(Boolean)?.vel ?? 0;
+  const transversal = Math.abs(selfRef * inp.atkSpeed / 100 * Math.sin(inp.atkAngle * Math.PI / 180) - tgtRef * inp.tgtSpeed / 100 * Math.sin(inp.tgtAngle * Math.PI / 180));
+  const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
+  // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
+  const addCustom = () => { const td = tgtData.find(Boolean);
+    setTargets(l => [...l, { kind: "custom", sig: td && td.sig < IDEAL_SIG ? Math.round(td.sig) : 150, vel: Math.round(td?.vel ?? 300) }]); };
   const swatch = (i) => <span style={{ width: 14, height: 3, borderRadius: 2, background: SRC_COLORS[i % SRC_COLORS.length], flex: "none" }} />;
   const dashSwatch = (j) => <svg width="18" height="6" style={{ flex: "none" }}><line x1="0" y1="3" x2="18" y2="3" stroke={C.text} strokeWidth="2" strokeDasharray={DASHES[j % DASHES.length]} /></svg>;
   const xLabel = xAxes.find(a => a.key === x)?.label() ?? "";
+  // Where a scrub of an Auto axis starts: the maximum the data is showing now.
+  const axisAnchor = (axis) => Math.max(1, Math.round(axis === "x" ? Math.max(0, ...series.map(sr => sr.xMax ?? 0)) : Math.max(0, ...series.flatMap(sr => sr.pts.map(p => p[1] ?? 0)))));
   const yLabel = yAxes.find(a => a.key === y)?.label() ?? "";
 
   return (
@@ -347,26 +418,44 @@ export default function GraphsPanel({ s }) {
           {targets.map((tg, j) => {
             const P = tg.kind === "profile" ? TARGET_PROFILES[tg.profile] : null;
             return (
-              <ListRow key={j} swatch={dashSwatch(j)} label={tg.kind === "fit" ? `${tg.ship} · ${tg.fitName}` : P?.label() ?? tg.profile}
+              <div key={j}>
+              <ListRow swatch={dashSwatch(j)} label={tg.kind === "fit" ? `${tg.ship} · ${tg.fitName}` : tg.kind === "custom" ? t("Custom") : P?.label() ?? tg.profile}
                 onRemove={targets.length > 1 ? () => setTargets(l => l.filter((_, k) => k !== j)) : undefined}>
-                {P?.mwdSig != null && <button type="button" aria-pressed={!!tg.mwd} onClick={() => setTargets(l => l.map((x2, k) => k === j ? { ...x2, mwd: !x2.mwd } : x2))}
+                {P?.mwdSig != null && <button type="button" aria-pressed={!!tg.mwd} onClick={() => setTarget(j, { mwd: !tg.mwd })}
                   style={{ ...addBtn, height: 20, padding: "0 6px", color: tg.mwd ? C.accent : C.textMid, borderColor: tg.mwd ? C.accent : C.borderStrong }}>MWD</button>}
+                {P && <button type="button" title={t("Edit this target's signature and speed")} onClick={() => { const p = profileTarget(tg.profile, !!tg.mwd);
+                    setTarget(j, { kind: "custom", sig: p.sig < IDEAL_SIG ? p.sig : null, vel: p.vel, profile: undefined, mwd: undefined }); }}
+                  style={{ ...addBtn, height: 20, padding: "0 6px" }}>{t("Edit")}</button>}
               </ListRow>
+              {tg.kind === "custom" && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", padding: "2px 0 6px 25px", fontSize: 12, color: C.textMid }}>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{t("Sig")}
+                    <NumField value={tg.sig} blank="∞" anchor={1000} unit="m" title={t("Type a signature, or press and slide sideways to sweep it")} onChange={v => setTarget(j, { sig: v })} /></label>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>{t("Speed")}
+                    <NumField value={tg.vel} blank="0" unit="m/s" title={t("Type a speed, or press and slide sideways to sweep it")} onChange={v => setTarget(j, { vel: v ?? 0 })} /></label>
+                </div>
+              )}
+              </div>
             );
           })}
           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
             <Menu label={`+ ${t("Profile")}`} align="left" buttonStyle={{ ...addBtn }} items={Object.keys(TARGET_PROFILES).map(k => ({
-              label: TARGET_PROFILES[k].label(), onSelect: () => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }]) }))} />
+              label: TARGET_PROFILES[k].label(), onSelect: () => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }]) })).concat([
+              { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
             <button type="button" style={addBtn} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
           </div>
         </>}
 
         {(hasTargets || cat === "damage") && <>
           <Label>{t("Engagement")}</Label>
-          <Slider label={t("Your speed")} value={inp.atkSpeed} onChange={v => setI("atkSpeed", v)} />
-          <Slider label={t("Your angle")} value={inp.atkAngle} max={180} unit="°" onChange={v => setI("atkAngle", v)} />
-          <Slider label={t("Target speed")} value={inp.tgtSpeed} onChange={v => setI("tgtSpeed", v)} />
-          <Slider label={t("Target angle")} value={inp.tgtAngle} max={180} unit="°" onChange={v => setI("tgtAngle", v)} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+            <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
+            <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, fontSize: 12.5, color: C.textMid }}>
+            <span title={t("Drag a wheel to set heading and speed; double-click it to stop")}>{t("Transversal")}</span>
+            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>{Math.round(transversal)} m/s</span>
+          </div>
         </>}
         {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
         {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
@@ -379,6 +468,15 @@ export default function GraphsPanel({ s }) {
             ))}
           </div>
         </>}
+        <Label>{t("Axis scale")}</Label>
+        {[["x", xLabel], ["y", yLabel]].map(([axis, lab]) => (
+          <div key={axis} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 28, fontSize: 12.5, color: C.textMid }}>
+            <span style={{ width: 14, color: C.text }}>{axis.toUpperCase()}</span>
+            <span title={lab} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lab}</span>
+            <NumField value={scale[axis]} blank={t("Auto")} anchor={axisAnchor(axis)}
+              title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
+          </div>
+        ))}
         <Label>{t("Display")}</Label>
         {(cat === "damage" || cat === APP_PROFILE) && <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
           <input type="checkbox" checked={ignoreResists} onChange={() => setIgnoreResists(v => !v)} style={{ accentColor: C.accent }} />{t("Ignore target resists")}
@@ -404,7 +502,7 @@ export default function GraphsPanel({ s }) {
         </div>
         {!series.length && !busy
           ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
-          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} />}
+          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null} />}
         {series.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "6px 4px 0", fontSize: 12 }}>
             {series.map(sr => (

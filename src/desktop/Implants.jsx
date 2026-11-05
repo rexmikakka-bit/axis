@@ -10,6 +10,7 @@ import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { implantTarget, typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
+import { useItemDrop, DropHint } from "./items-context.jsx";
 
 // The desktop Implants window: the ten slots as a numbered list in two groups, a search across every
 // slot that fits straight into the right one, implant sets, and saved loadouts (save, load, rename,
@@ -26,6 +27,7 @@ export default function ImplantsPanel({ s }) {
   const [loadoutsOpen, setLoadoutsOpen] = useState(false);
   const results = useMemo(() => searchImplants(query), [query]);
   const rs = useRowSelect();
+  const drop = useItemDrop("implants");
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const implants = s.implants ?? [];
   const set = s.setImplants;
@@ -45,7 +47,8 @@ export default function ImplantsPanel({ s }) {
   const showDetail = (imp, slot, tab) => insp.inspect(implantTarget(insp.fitRef, slot, imp.typeID ?? tidByName(imp.name)), tab);
   const showType = (item, tab) => insp.inspect(typeTarget(item.typeID ?? tidByName(item.name)), tab);
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+      <DropHint over={drop.over} ok={drop.ok} label={t("Plug in")} />
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <span style={{ fontSize: TYPE.label, color: C.textMid, flex: 1 }}>{t("{n}/10 fitted", { n: filled })}</span>
         {naming == null

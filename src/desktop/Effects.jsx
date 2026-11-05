@@ -11,6 +11,7 @@ import { useRowSelect } from "./ContextMenu.jsx";
 import { tabFits } from "./tab-fits.js";
 import { useInspect } from "./inspect-context.jsx";
 import { boosterTarget } from "./inspect.js";
+import { useItemDrop, DropHint } from "./items-context.jsx";
 
 // The phone's Effects screen, split into four desktop windows (Owen floated splitting it):
 // Boosters, Projected, Command links, Environment. Each edits the same session state the phone's
@@ -36,7 +37,12 @@ const Remove = ({ onClick, label }) => (
   <button type="button" onClick={onClick} aria-label={label} title={label}
     style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 15, padding: "0 2px", flex: "none" }}>×</button>
 );
-const Shell = ({ children }) => <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>{children}</div>;
+// `drop` (useItemDrop) makes the whole window a drop target for browser items.
+const Shell = ({ children, drop, dropLabel }) => (
+  <div {...drop?.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+    {drop && <DropHint over={drop.over} ok={drop.ok} label={dropLabel} />}{children}
+  </div>
+);
 const Body = ({ children, list }) => <div {...list} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>{children}</div>;
 const None = ({ children }) => <div style={{ padding: "12px", fontSize: TYPE.label, color: C.textMid }}>{children}</div>;
 
@@ -45,6 +51,7 @@ export function BoostersPanel({ s }) {
   const [picker, setPicker] = useState(false);
   const insp = useInspect();
   const rs = useRowSelect();
+  const drop = useItemDrop("boosters");
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = [...(s.boosters ?? [])].sort((a, b) => boosterSlotOf(a) - boosterSlotOf(b));
   const set = (fn) => s.setBoosters(prev => fn(prev ?? []));
@@ -53,7 +60,7 @@ export function BoostersPanel({ s }) {
   const bTarget = (b) => boosterTarget(insp.fitRef, b.id, tidByName(b.name));
   const show = (b, tab) => insp.inspect(bTarget(b), tab);
   return (
-    <Shell>
+    <Shell drop={drop} dropLabel={t("Add booster")}>
       <Header onAdd={() => setPicker(true)} addLabel={t("Booster")}>{t("Toggle boosters to simulate their stat effects on this fit.")}</Header>
       <Body list={rs.listProps({ onDelete: remove })}>
         {!list.length && <None>{t("No boosters added")}</None>}

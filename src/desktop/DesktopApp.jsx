@@ -7,7 +7,7 @@ import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame } from "../components/ui.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
 import { deskCss } from "./kit.jsx";
-import { useBackdrop, Backdrop, BackdropDialog } from "./Backdrop.jsx";
+import { useBackdrop, Backdrop } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
@@ -32,6 +32,8 @@ import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from ".
 import { WINDOWS, isFloatId, readLayoutState } from "./layout.js";
 import { activeFitRef, targetKey } from "./inspect.js";
 import { InspectContext } from "./inspect-context.jsx";
+import { ItemsContext } from "./items-context.jsx";
+import { addItem, accepts as itemAccepts } from "./items.js";
 import { InspectorView, inspectorTitle } from "./Inspector.jsx";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
@@ -98,7 +100,7 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
@@ -110,7 +112,21 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
   const hullAttrs = TYPES[tidByName(s.activeFit?.ship)]?.attrs ?? null;
   const shipFighter = { cap: hullAttrs?.fighterCapacity ?? 0, tubes: hullAttrs?.fighterTubes ?? 0, light: hullAttrs?.fighterLightSlots ?? 0,
                         heavy: hullAttrs?.fighterHeavySlots ?? 0, support: hullAttrs?.fighterSupportSlots ?? 0 };
-  const renderWindow = (id) => {
+  // Adding any item from anywhere (Browser double-click, a drop on a window): items.js, with this
+  // window's session, the fit's own stats (drone bandwidth, max drones) and the Fitting window.
+  const hasFighters = shipFighter.tubes > 0;
+  const items = {
+    hasFighters,
+    accepts: (to, item) => itemAccepts(to, item, { hasFighters }),
+    add: (item, to, extra) => {
+      const msg = addItem({ s, cs, shipFighter, ...extra,
+        fitModule: (rack, mod) => { if (adderRef?.current) adderRef.current(rack, mod); else remoteAdd?.(rack, mod); } }, item, to);
+      if (msg) notify?.("none", msg, 2500);
+      return msg;
+    },
+  };
+  const renderWindow = (id) => <ItemsContext.Provider value={items}>{renderInner(id)}</ItemsContext.Provider>;
+  const renderInner = (id) => {
     // A floating inspector shows the item it was opened on; the full-time windows, the selection.
     if (isFloatId(id)) {
       const w = windows?.[id];
@@ -192,7 +208,7 @@ function SatelliteApp({ id }) {
   const insp = useInspectorState(s, { post: sync.post, adderRef, remoteAdd });
   const { renderWindow, windowTitle } = useWindowContents(s, (w) => w === id, null,
     { adderRef, remoteAdd, selection: insp.value.selection, windows: floatWin ? { [id]: floatWin } : undefined,
-      setFloatTab: (_, tab) => setFloatWin(w => w && { ...w, tab }), inspect: insp.value.inspect });
+      setFloatTab: (_, tab) => setFloatWin(w => w && { ...w, tab }), inspect: insp.value.inspect, notify: (k, m, ms) => banner.notify(k, m, ms) });
   const title = windowTitle(id);
   useEffect(() => { document.title = `${title} · Axis`; }, [title]);
   return (
@@ -265,7 +281,7 @@ function DesktopApp() {
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile"),
-      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd });
+      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const id of Object.keys(layoutState.windows)) if (layoutState.windows[id]?.detached) dockWindow(setLayoutState, id);
@@ -384,7 +400,6 @@ function DesktopApp() {
             { label: t("Optimize Fit Price"), onSelect: () => s.optimizeFitPrice(), disabled: !hasFit, hint: "Ctrl+D" },
             { label: t("Shopping List"), onSelect: () => setSheet("shopping"), disabled: !hasFit },
             { divider: true },
-            { label: t("Workspace background…"), onSelect: () => setSheet("backdrop") },
             { label: t("Settings"), onSelect: () => openWindow(setLayoutState, "settings") },
             { label: t("Send Feedback"), onSelect: () => setSheet("feedback") },
           ]} />
@@ -418,7 +433,6 @@ function DesktopApp() {
         cs={stats.snapshot} drones={s.drones} fighters={s.fighters} implants={s.implants} boosters={s.boosters} cmdFits={s.cmdFits} projFits={s.projFits}
         fitsDB={s.fitsDB} sourceSkills={s.sourceSkills} skillLabel={s.fitSkillLabel} dmgProfile={s.dmgProfile} priceHub={s.priceHub} priceSource={s.priceSource} />}
       {sheet === "shopping" && <ShoppingListSheet slots={s.slots} onClose={close} />}
-      {sheet === "backdrop" && <BackdropDialog bd={bd} onClose={close} />}
       {sheet === "feedback" && <FeedbackModal activeFit={s.activeFit} slots={s.slots} implants={s.implants} boosters={s.boosters} drones={s.drones}
         fighters={s.fighters} cargo={s.cargoItems} projFits={s.projFits} cmdFits={s.cmdFits} fitsDB={s.fitsDB} onClose={close} />}
     </SkillsProvider></SheetFrame.Provider></InspectContext.Provider>

@@ -3,7 +3,10 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
-import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, generateEmptySlots, lookupShip } from "../lib/core.js";
+import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS, MT_ALL_ITEMS,
+         generateEmptySlots, lookupShip } from "../lib/core.js";
+import marketTreeData from "../data/market-tree.json";
+import { nameMatchesQuery, searchScore } from "../lib/jargon.js";
 import { metaOf, META_COLORS } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
@@ -13,6 +16,8 @@ import Menu from "./Menu.jsx";
 import { ContextMenu, useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
+import { useItems } from "./items-context.jsx";
+import { itemKind, defaultAction, dragProps } from "./items.js";
 
 // The desktop Browser (docs/desktop-handoff.md, "Browser"): one window, Market and Ships, as in
 // pyfa. Both are trees that EXPAND IN PLACE — a caret per category, children indented beneath it —
@@ -22,6 +27,11 @@ import { typeTarget } from "./inspect.js";
 // Reads the same data the phone's pickers do: REAL_MODULE_BROWSER for modules (with the phone's
 // rig-size pruning), buildShipTaxonomy for hulls, the session's fit library for fits. Fitting a
 // module goes through the Fitting window's own addMod (FitTab adderRef), so every fitting rule holds.
+//
+// With no rack chosen (click the lit one again), Market is CCP's whole market tree — the cargo
+// picker's — so drones, implants, boosters, charges and plain cargo are all here. Double-click does
+// what that item is for (items.js defaultAction: fit, load, launch, plug in, or put in the hold),
+// right-click offers every other place it can go, and any row can be dragged onto a window.
 
 const RACKS = [["high", "High"], ["mid", "Mid"], ["low", "Low"], ["rigs", "Rig"]];
 const STRUCTURE_RACKS = [["high", "High"], ["mid", "Mid"], ["low", "Low"], ["rigs", "Rig"], ["services", "Service"]];
@@ -74,29 +84,48 @@ function useMarketTree(rack, isStructure, hullRigSize) {
   }, [rack, isStructure, hullRigSize]);
 }
 
+// CCP's market groups (market-tree.json, the cargo picker's tree) in the module tree's node shape.
+let everything = null;
+function marketEverything() {
+  if (everything) return everything;
+  const node = (gid) => ({ id: `mt:${gid}`, name: marketTreeData.g[gid]?.n ?? String(gid), iconTid: marketTreeData.g[gid]?.i ?? null,
+                           mods: MT_ITEMS[gid] ?? [], children: (MT_CHILDREN[gid] ?? []).map(node) });
+  return (everything = MT_ROOTS.map(node));
+}
+// Every item the All search reaches: the market tree, plus the fittable modules CCP does not sell.
+let searchable = null;
+const allItems = () => searchable ??= [...MT_ALL_ITEMS, ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
+const RACK_KEY = "axis_desk_browser_rack";
+const KIND_LABEL = { module: "Module", charge: "Charge", drone: "Drone", fighter: "Fighter", implant: "Implant", booster: "Booster", ship: "Ship" };
+
 const allMods = (nodes) => nodes.flatMap(n => [...(n.mods ?? []), ...allMods(n.children ?? [])]);
 const isk = (n) => n == null ? "" : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n));
 
-// Click selects, double click (or Enter) fits, right click: Fit / Show info / Variations.
-function ItemRow({ mod, price, onFit, onInfo, rowProps, rack }) {
+// Click selects, double click (or Enter) does the item's own action, right click lists every place
+// it can go; drag it onto a window to put it there. `actions` is [{label, onSelect}], primary first.
+function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind }) {
   const a = TYPES[String(mod.typeID)]?.a ?? {};
   const meta = metaOf(mod.typeID, mod.meta);
-  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, rack) : undefined, onOpen: () => onFit(mod), items: [
-    { label: t("Fit"), hint: t("Double-click"), onSelect: () => onFit(mod) },
-    { divider: true },
+  const primary = actions[0];
+  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, kind === "module" ? rack : undefined) : undefined, onOpen: () => primary?.onSelect(), items: [
+    ...actions.map((x, i) => ({ ...x, hint: i === 0 ? t("Double-click") : undefined })),
+    actions.length > 0 && { divider: true },
     { label: t("Show info"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "info" }) },
-    { label: t("Variations"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "variations" }) },
-  ] });
+    kind !== "ship" && { label: t("Variations"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "variations" }) },
+  ].filter(Boolean) });
   return (
-    <div role="option" tabIndex={0} {...rp} onKeyDown={e => { if (e.key === "Enter") onFit(mod); }} title={t("Double-click to fit")}
+    <div role="option" tabIndex={0} {...rp} {...dragProps(mod)} onKeyDown={e => { if (e.key === "Enter") primary?.onSelect(); }}
+      title={primary ? t("Double-click: {action} · drag onto a window", { action: primary.label }) : undefined}
       style={{ ...rp.style, display: "grid", gridTemplateColumns: "16px minmax(0,1fr) auto", columnGap: 8, rowGap: 1, padding: "5px 10px", outline: "none",
                borderBottom: `1px solid ${C.border}99` }}>
       <img className="eve-icon" src={eveIcon(mod.typeID, 32)} width={16} height={16} alt="" style={{ gridRow: "1 / 3", alignSelf: "center" }} onError={e => { e.target.style.visibility = "hidden"; }} />
       <span style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", gridColumn: "2 / 4" }}>{mod.name}</span>
       <span style={{ fontSize: 12, color: C.textMid, display: "flex", gap: 8, fontVariantNumeric: "tabular-nums" }}>
-        <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>
-        {a.cpu != null && <span style={{ color: resourceColor("cpu") }}>{+(+a.cpu).toFixed(1)} tf</span>}
-        {a.power != null && <span style={{ color: resourceColor("pg") }}>{+(+a.power).toFixed(1)} MW</span>}
+        {kind && kind !== "module" && kind !== "cargo" && <span>{t(KIND_LABEL[kind])}</span>}
+        {(kind === "module" || kind === "charge" || kind === "drone" || kind === "fighter") && <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>}
+        {kind === "cargo" && mod.vol != null && <span>{+(+mod.vol).toFixed(2)} m³</span>}
+        {kind === "module" && a.cpu != null && <span style={{ color: resourceColor("cpu") }}>{+(+a.cpu).toFixed(1)} tf</span>}
+        {kind === "module" && a.power != null && <span style={{ color: resourceColor("pg") }}>{+(+a.power).toFixed(1)} MW</span>}
       </span>
       <span style={{ fontSize: 12, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{isk(price)}</span>
     </div>
@@ -105,26 +134,44 @@ function ItemRow({ mod, price, onFit, onInfo, rowProps, rack }) {
 
 function MarketPane({ s, ship, adderRef, remoteAdd }) {
   const isStructure = (TYPES[ship?.typeID]?.c ?? TYPES[ship?.typeID]?.category) === 65;
-  const [rack, setRack] = useState("high");
+  // null = no rack: everything. Remembered, like the window's other choices.
+  const [rack, setRackState] = useState(() => { try { const v = localStorage.getItem(RACK_KEY); return v === "all" ? null : v || null; } catch { return null; } });
+  const setRack = (r) => { setRackState(r); try { localStorage.setItem(RACK_KEY, r ?? "all"); } catch { /* private mode */ } };
+  const itemOps = useItems();
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const insp = useInspect();
   // A market row opens as a type with its rack, so its Variations window can fit a variant.
-  const setInfo = ({ typeID, tab }) => insp.inspect(typeTarget(typeID, rack), tab);
+  const setInfo = ({ typeID, tab }) => insp.inspect(typeTarget(typeID, rack && itemKind({ typeID }).kind === "module" ? rack : undefined), tab);
   const rs = useRowSelect();
-  const tree = useMarketTree(rack, isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
+  const rackTree = useMarketTree(rack ?? "high", isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
+  const tree = rack ? rackTree : marketEverything();
   const prices = getCachedPrices(s.priceHub, s.priceSource);
   const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
 
   const find = (nodes, id) => { for (const n of nodes) { if (n.id === id) return n; const f = find(n.children ?? [], id); if (f) return f; } return null; };
   const q = search.trim().toLowerCase();
-  const items = q ? allMods(tree).filter(m => m.name.toLowerCase().includes(q)).slice(0, 200) : (selected ? find(tree, selected)?.mods ?? [] : []);
+  const items = q
+    ? (rack ? allMods(tree).filter(m => m.name.toLowerCase().includes(q))
+            : allItems().filter(m => nameMatchesQuery(m.name, q)).sort((a, b) => searchScore(b.name, q) - searchScore(a.name, q) || a.name.localeCompare(b.name))).slice(0, 200)
+    : (selected ? find(tree, selected)?.mods ?? [] : []);
 
   const fit = (mod) => {
     if (!ship) return;
     if (adderRef?.current) return adderRef.current(rack, mod);
     remoteAdd?.(rack, mod);
+  };
+  // A rack's own list fits into that rack, as before; otherwise the item goes where it belongs, and
+  // the menu offers every other destination that would take it.
+  const DEST_LABEL = { fitting: null, drones: t("Add to drone bay"), fighters: t("Add to fighter bay"), implants: t("Plug in"), boosters: t("Add booster"), cargo: t("Add to cargo") };
+  const actionsFor = (m) => {
+    const it = { typeID: m.typeID, name: m.name, vol: m.vol };
+    if (rack) return [{ label: t("Fit"), onSelect: () => fit(m) }, { label: t("Add to cargo"), onSelect: () => itemOps.add(it, "cargo") }];
+    const d = defaultAction(it, { slots: s.slots, hasFighters: itemOps.hasFighters });
+    const out = d.to ? [{ label: d.label, onSelect: () => itemOps.add(it, d.to) }] : [];
+    for (const to of Object.keys(DEST_LABEL)) if (to !== d.to && to !== "fitting" && itemOps.accepts(to, it)) out.push({ label: DEST_LABEL[to], onSelect: () => itemOps.add(it, to) });
+    return out;
   };
   const toggle = (n) => {
     const hasKids = (n.children ?? []).length > 0;
@@ -148,18 +195,20 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
     <>
       <div style={{ display: "flex", gap: 6, padding: "8px 10px 0", flex: "none", flexWrap: "wrap" }}>
         {(isStructure ? STRUCTURE_RACKS : RACKS).map(([k, label]) => (
-          <button key={k} type="button" aria-pressed={rack === k} onClick={() => { setRack(k); setSelected(null); setOpen(new Set()); }}
+          <button key={k} type="button" aria-pressed={rack === k} title={rack === k ? t("Show everything") : undefined}
+            onClick={() => { setRack(rack === k ? null : k); setSelected(null); setOpen(new Set()); }}
             style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
                      background: rack === k ? C.accentLight : "transparent", border: `1px solid ${rack === k ? C.accent : C.borderStrong}`,
                      color: rack === k ? C.accent : C.textMid }}>{t(label)}</button>
         ))}
       </div>
-      <SearchBox value={search} onChange={setSearch} placeholder={t("Search modules")} />
+      <SearchBox value={search} onChange={setSearch} placeholder={rack ? t("Search modules") : t("Search everything")} />
       {!q && <div role="tree" style={{ flex: "1 1 50%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>{renderNodes(tree, 0)}</div>}
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
-          ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} onFit={fit} onInfo={setInfo} rowProps={rs.rowProps} rack={rack} />)
-          : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? t("No modules found") : t("Pick a category above.")}</div>}
+          ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} actions={actionsFor(m)} onInfo={setInfo} rowProps={rs.rowProps} rack={rack}
+              kind={rack ? "module" : itemKind(m).kind} />)
+          : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? (rack ? t("No modules found") : t("Nothing found")) : t("Pick a category above.")}</div>}
       </div>
       {rs.view}
     </>

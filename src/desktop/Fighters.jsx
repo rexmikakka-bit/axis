@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { TYPES, tidByName } from "../calc.js";
+import { tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { FighterBrowserSheet } from "../components/drones.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { UsageBar, Empty, TYPE } from "./kit.jsx";
+import { addFighter, fighterAttrs, fighterClassOf } from "./items.js";
+import { useItemDrop, DropHint } from "./items-context.jsx";
 
 // The desktop Fighters window, for carriers, supercarriers and structures with fighter tubes: the
 // bay, the tubes and the per-class launch limits on top, then one row per squadron — launched,
@@ -20,14 +22,14 @@ import { UsageBar, Empty, TYPE } from "./kit.jsx";
 
 const CLASSES = [["Light", "light", C.rig], ["Heavy", "heavy", C.warning], ["Support", "support", C.accent]];
 const KIND_COLOR = { damage: C.high, speed: C.accent, tackle: C.warning };
-const attrsOf = (f) => { const tid = f.typeID ?? (f.name ? tidByName(f.name) : null); return tid != null ? (TYPES[tid]?.attrs ?? TYPES[String(tid)]?.attrs ?? null) : null; };
-export const fighterClassOf = (f) => { const a = attrsOf(f); return a?.fighterSquadronIsHeavy ? "Heavy" : a?.fighterSquadronIsSupport ? "Support" : "Light"; };
+const attrsOf = fighterAttrs;
 const fmtK = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n ?? 0));
 
 export default function FightersPanel({ s, stats, shipFighter }) {
   const [picker, setPicker] = useState(false);
   const rs = useRowSelect();
   const insp = useInspect();
+  const drop = useItemDrop("fighters");
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const fighters = s.fighters ?? [];
   const info = stats.fighterInfo ?? [];
@@ -41,11 +43,8 @@ export default function FightersPanel({ s, stats, shipFighter }) {
     return a + (f.qty ?? 1) * (info[i]?.sqSize ?? at?.fighterSquadronMaxSize ?? 0) * (at?.volume ?? 0);
   }, 0);
   const dps = info.reduce((a, d) => a + (d?.active !== false ? (d?.dps || 0) : 0), 0);
-  const add = (f) => {
-    const cls = fighterClassOf(f);
-    const free = (shipFighter.tubes - tubesUsed) > 0 && ((shipFighter[cls.toLowerCase()] ?? 0) - launched[cls]) > 0;
-    set(prev => [...prev, { id: Date.now(), name: f.name, tier: f.tier, typeID: f.typeID, role: f.role || null, qty: 1, active: free, abilities: {} }]);
-  };
+  // The add rule lives in items.js, shared with the Browser and drag-and-drop.
+  const add = (f) => addFighter(s, f, shipFighter, classOf);
   const toggle = (id) => set(l => l.map(f => f.id === id ? { ...f, active: f.active === false } : f));
   const setQty = (id, n) => set(l => l.map(f => f.id === id ? { ...f, qty: Math.max(1, n) } : f));
   const remove = (id) => set(l => l.filter(f => f.id !== id));
@@ -54,7 +53,8 @@ export default function FightersPanel({ s, stats, shipFighter }) {
   const cell = { fontSize: TYPE.small, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
   const int = (n) => String(Math.round(n));
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+      <DropHint over={drop.over} ok={drop.ok} label={t("Add to fighter bay")} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "8px 16px", padding: "10px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <UsageBar label={t("Fighter bay")} used={bayUsed} total={shipFighter.cap} unit="m³" fmt={fmtK} />
         <UsageBar label={t("Tubes")} used={tubesUsed} total={shipFighter.tubes} fmt={int} color={C.high} />
