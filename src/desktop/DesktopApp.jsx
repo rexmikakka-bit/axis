@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { tidByName } from "../calc.js";
+import { tidByName, TYPES } from "../calc.js";
 import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText } from "../lib/core.js";
 import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking } from "../components/ui.jsx";
@@ -23,6 +23,7 @@ import CargoPanel from "./Cargo.jsx";
 import GraphsPanel from "./Graphs.jsx";
 import PricePanel from "./Price.jsx";
 import ImplantsPanel from "./Implants.jsx";
+import DronesPanel from "./Drones.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
@@ -88,7 +89,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "validation": return <ValidationPanel cs={cs} issues={issues} />;
       case "targeting": return <TargetingPanel s={s} cs={cs} />;
       case "cargo": return <CargoPanel s={s} capacity={cs?.cargoCapacity ?? stats.snapshot?.cargoCapacity ?? 0} />;
-      case "drones": return <DronesWindow s={s} stats={stats} />;
+      // Carriers keep the phone's screen for now: fighter squadrons need their tube and ability layout.
+      case "drones": return (TYPES[tidByName(s.activeFit?.ship)]?.attrs?.fighterCapacity ?? 0) > 0 ? <DronesWindow s={s} stats={stats} /> : <DronesPanel s={s} stats={stats} />;
       case "implants": return <ImplantsPanel s={s} />;
       case "projected": return <ProjectedPanel s={s} jamTarget={{ strength: cs?.sensorStrength ?? 0, type: cs?.sensorType ?? "", resist: s.projectedEffects?.ecmResist ?? 1 }} />;
       case "command": return <CommandPanel s={s} />;
