@@ -93,3 +93,16 @@ export function missileRangeTip(e) {
   const outcome = (pct, m) => t('{pct}% chance to fly {km}km', { pct: sig3(pct), km: sig3(m / 1000) });
   return `${heading}\n${outcome(100 - p, e.lowerRange)}\n${outcome(p, e.higherRange)}`;
 }
+
+/**
+ * A resource margin as a SIGNED share of the total: negative is a deficit, positive headroom. The
+ * precision steps with the size, and only where it is actionable — "62% left" never needs a decimal,
+ * a hair over powergrid does (that is the difference between a 3% and a 5% implant). An exact 0 is
+ * "0%", and anything non-zero never rounds to "-0.00%". Shared by the phone's ResourceStrip and the
+ * desktop's Resources window.
+ */
+export function fmtMarginPct(rem, total) {
+  const p = (rem / total) * 100, a = Math.abs(p);
+  const s = a === 0 ? "0" : a < 1 ? Math.max(a, 0.01).toFixed(2) : a < 10 ? a.toFixed(1) : Math.round(a);
+  return `${p < 0 ? "-" : ""}${s}%`;
+}

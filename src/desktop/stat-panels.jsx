@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { calcFitStats, peakRegen, PEAK_REGEN_AT_PCT, TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
@@ -45,7 +45,11 @@ function droneUse(drones) {
   };
 }
 
+const LEFT_KEY = "axis_desk_resleft";
 export function ResourcesPanel({ s, ship, cs }) {
+  // One switch for every bar, as on the phone: click any of them for what is left. Remembered.
+  const [remaining, setRemaining] = useState(() => { try { return localStorage.getItem(LEFT_KEY) === "1"; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem(LEFT_KEY, remaining ? "1" : "0"); } catch { /* private mode */ } }, [remaining]);
   if (!ship || !cs) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const hard = (s.slots?.high ?? []).reduce((acc, m) => {
     if (!m || m.type === "empty") return acc;
@@ -54,18 +58,19 @@ export function ResourcesPanel({ s, ship, cs }) {
     return acc;
   }, { turrets: 0, launchers: 0 });
   const d = droneUse(s.drones);
+  const bar = { remaining, onToggle: () => setRemaining(v => !v) };
   const int = (n) => String(Math.round(n));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px", padding: "10px 12px" }}>
-      <UsageBar label={t("CPU")} labelColor={resourceColor("cpu")} used={cs.cpuUsed ?? 0} total={cs.cpuTotal ?? 0} unit="tf" />
-      <UsageBar label={t("PG")} labelColor={resourceColor("pg")} used={cs.pgUsed ?? 0} total={cs.pgTotal ?? 0} unit="MW"
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: "10px 24px", padding: "10px 12px" }}>
+      <UsageBar {...bar} showPct margin label={t("CPU")} labelColor={resourceColor("cpu")} used={cs.cpuUsed ?? 0} total={cs.cpuTotal ?? 0} unit="tf" />
+      <UsageBar {...bar} showPct margin label={t("PG")} labelColor={resourceColor("pg")} used={cs.pgUsed ?? 0} total={cs.pgTotal ?? 0} unit="MW"
         fmt={(n) => n.toLocaleString(undefined, { maximumFractionDigits: n >= 1000 ? 0 : 1 })} />
-      <UsageBar label={t("Calibration")} used={cs.calUsed ?? 0} total={cs.calTotal ?? 400} color={resourceColor("cal")} fmt={int} />
-      <UsageBar label={t("Drone bay")} used={d.bay} total={cs.droneBay ?? 0} unit="m³" fmt={int} />
-      <UsageBar label={t("Bandwidth")} used={d.bandwidth} total={cs.droneBandwidth ?? 0} unit="Mbit/s" fmt={int} />
-      <UsageBar label={t("Drones")} used={d.inSpace} total={cs.maxActiveDrones ?? 0} fmt={int} />
-      <UsageBar label={t("Turrets")} used={hard.turrets} total={ship.turrets ?? 0} fmt={int} />
-      <UsageBar label={t("Launchers")} used={hard.launchers} total={ship.launchers ?? 0} fmt={int} />
+      <UsageBar {...bar} label={t("Calibration")} used={cs.calUsed ?? 0} total={cs.calTotal ?? 400} color={resourceColor("cal")} fmt={int} />
+      <UsageBar {...bar} label={t("Drone bay")} used={d.bay} total={cs.droneBay ?? 0} unit="m³" fmt={int} />
+      <UsageBar {...bar} label={t("Bandwidth")} used={d.bandwidth} total={cs.droneBandwidth ?? 0} unit="Mbit/s" fmt={int} />
+      <UsageBar {...bar} label={t("Active drones")} used={d.inSpace} total={cs.maxActiveDrones ?? 0} fmt={int} />
+      <UsageBar {...bar} label={t("Turrets")} used={hard.turrets} total={ship.turrets ?? 0} fmt={int} />
+      <UsageBar {...bar} label={t("Launchers")} used={hard.launchers} total={ship.launchers ?? 0} fmt={int} />
     </div>
   );
 }
@@ -89,7 +94,7 @@ export function CapacitorPanel({ cs }) {
   const capIn = regen + (cs.capFillPS ?? 0);
   const neut = (1 - (cs.energyWarfareResist ?? 1)) * 100;
   return (
-    <KV cols={2} rows={[
+    <KV min={180} rows={[
       [t("State"), stable ? t("Stable") : t("Unstable"), { color: tone }],
       [stable ? t("Stable at") : t("Lasts"), stable ? `${((cs.capLevel ?? 1) * 100).toFixed(1)}%` : fmtDur(cs.capTime), { color: tone }],
       [t("Delta"), `${(cs.capDelta ?? 0) >= 0 ? "+" : ""}${fmtF(cs.capDelta ?? 0)} GJ/s`, { color: tone, title: exact(cs.capDelta, 3, " GJ/s") }],
@@ -112,7 +117,7 @@ export function TargetingPanel({ s, cs }) {
   return (
     <>
       <SectionLabel>{t("Targeting")}</SectionLabel>
-      <KV cols={2} rows={[
+      <KV min={180} rows={[
         [t("Lock range"), `${fmtF(cs.targetRange ?? 0)} km`, { title: exact(x.targetRange, 3, " km") }],
         [t("Scan res."), `${fmtN(cs.scanRes ?? 0)} mm`, { title: exact(x.scanRes, 2, " mm") }],
         [t("Targets"), String(Math.round(cs.maxTargets ?? 0))],
@@ -122,7 +127,7 @@ export function TargetingPanel({ s, cs }) {
         cs.droneBay > 0 && [t("Drone range"), `${fmtN(Math.round((cs.droneControlRange ?? 0) / 1000))} km`],
       ]} />
       <SectionLabel>{t("Mobility")}</SectionLabel>
-      <KV cols={2} rows={[
+      <KV min={180} rows={[
         [t("Speed"), `${Math.round(abOn ? cs.maxVelocityAB : (cs.maxVelocity ?? 0))} m/s`, { title: exact(abOn ? x.maxVelocityAB : x.maxVelocity, 2, " m/s") }],
         [t("Align time"), `${fmtF(cs.alignTime ?? 0)} s`, { title: exact(x.alignTime, 3, " s") }],
         [t("Signature radius"), `${fmtN(cs.sigRadius ?? 0)} m`, { title: exact(x.sigRadius, 2, " m") }],
@@ -202,7 +207,7 @@ export function DefensePanel({ s, cs, onPickProfile }) {
         </div>
       ))}
       <SectionLabel style={{ borderTop: `1px solid ${C.border}`, marginTop: 4 }}>{t("Recharge Rates")}</SectionLabel>
-      <KV cols={2} rows={[
+      <KV min={180} rows={[
         [t("Shield regen"), eps(peak.regen), { color: dim(peak.regen) }],
         [t("Shield rep"), eps(peak.shield), { color: dim(peak.shield) }],
         [t("Armor rep"), eps(peak.armor), { color: dim(peak.armor) }],

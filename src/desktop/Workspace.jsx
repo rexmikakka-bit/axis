@@ -3,7 +3,9 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import DeskWindow from "./DeskWindow.jsx";
 import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, rescue, canvasSize,
-         readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat } from "./layout.js";
+         readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat,
+         renameNamed, overwriteNamed, deleteNamed, setPresetHidden } from "./layout.js";
+import { ContextMenu } from "./ContextMenu.jsx";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
 // holding the detached tray and the layout controls. What a window CONTAINS is the caller's
@@ -41,9 +43,9 @@ export const openWindow = (setState, id) => setState(s => ({
 }));
 
 // Chip: 22 px, radius 11. On = accent tint; off = transparent with a strong border.
-export function Chip({ on, onClick, children, title, pressed = true }) {
+export function Chip({ on, onClick, children, title, pressed = true, onContextMenu, onDoubleClick }) {
   return (
-    <button type="button" onClick={onClick} title={title} aria-pressed={pressed ? !!on : undefined}
+    <button type="button" onClick={onClick} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} title={title} aria-pressed={pressed ? !!on : undefined}
       style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap",
                background: on ? C.accentLight : "transparent", border: `1px solid ${on ? C.accent : C.borderStrong}`,
                color: on ? C.accent : C.textMid }}>
@@ -163,10 +165,27 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     setState(s => ({ ...s, named: { ...s.named, [name]: dockedOf(s.windows) }, preset: `named:${name}` }));
     setNaming(null);
   };
-  const deleteNamed = (name) => setState(s => {
-    const named = { ...s.named }; delete named[name];
-    return { ...s, named, preset: s.preset === `named:${name}` ? null : s.preset };
-  });
+  // A saved layout's chip: double click renames it in place; right click for the rest. A built-in
+  // one cannot be renamed or deleted, but it can be taken off the bar and put back.
+  const [renaming, setRenaming] = useState(null);   // {from, text}
+  const [chipMenu, setChipMenu] = useState(null);   // {x, y, items}
+  const commitRename = () => { if (renaming) setState(s => renameNamed(s, renaming.from, renaming.text)); setRenaming(null); };
+  const hiddenPresets = state.hidden ?? [];
+  const restoreItems = hiddenPresets.length ? [{ divider: true }, { heading: t("Hidden layouts") },
+    ...hiddenPresets.map(id => ({ label: t("Show {name}", { name: t(PRESETS.find(p => p.id === id)?.title ?? id) }), onSelect: () => setState(s => setPresetHidden(s, id, false)) }))] : [];
+  const openChipMenu = (e, items) => { e.preventDefault(); setChipMenu({ x: e.clientX, y: e.clientY, items: [...items, ...restoreItems] }); };
+  const namedMenu = (name) => [
+    { label: t("Apply"), onSelect: () => applyNamed(name) },
+    { label: t("Rename…"), hint: t("Double-click"), onSelect: () => setRenaming({ from: name, text: name }) },
+    { label: t("Update to the current arrangement"), onSelect: () => setState(s => overwriteNamed(s, name)) },
+    { divider: true },
+    { label: t("Delete"), danger: true, onSelect: () => { if (window.confirm(t('Delete the layout "{name}"?', { name }))) setState(s => deleteNamed(s, name)); } },
+  ];
+  const presetMenu = (p) => [
+    { label: t("Apply"), onSelect: () => applyPreset(p.id) },
+    { label: t("Built-in layouts can't be renamed or deleted"), disabled: true },
+    { label: t("Hide from the bar"), onSelect: () => setState(s => setPresetHidden(s, p.id, true)) },
+  ];
   const setFlag = (k) => setState(s => ({ ...s, [k]: !s[k] }));
 
   const shown = (w) => w.open && !w.detached;
@@ -213,14 +232,16 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
           : <span style={{ fontSize: 12, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>
-        {PRESETS.map(p => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}>{t(p.title)}</Chip>)}
-        {Object.keys(state.named).map(name => (
-          <span key={name} style={{ display: "inline-flex", alignItems: "center" }}>
-            <Chip on={state.preset === `named:${name}`} onClick={() => applyNamed(name)}>{name}</Chip>
-            <button type="button" aria-label={t("Delete layout {name}", { name })} title={t("Delete layout {name}", { name })} onClick={() => deleteNamed(name)}
-              style={{ border: "none", background: "none", color: C.textMute, cursor: "pointer", fontSize: 13, padding: "0 2px" }}>×</button>
-          </span>
-        ))}
+        {PRESETS.filter(p => !hiddenPresets.includes(p.id)).map(p => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}
+          title={t("Right-click for options")} onContextMenu={(e) => openChipMenu(e, presetMenu(p))}>{t(p.title)}</Chip>)}
+        {Object.keys(state.named).map(name => renaming?.from === name
+          ? <input key={name} autoFocus value={renaming.text} aria-label={t("Layout name")} onChange={(e) => setRenaming(r => ({ ...r, text: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenaming(null); }} onBlur={commitRename}
+              style={{ height: 22, width: 140, boxSizing: "border-box", padding: "0 8px", borderRadius: 11, fontSize: 11.5,
+                       background: C.bg, border: `1px solid ${C.accent}`, color: C.text, outline: "none" }} />
+          : <Chip key={name} on={state.preset === `named:${name}`} onClick={() => applyNamed(name)} title={t("Double-click to rename · right-click for options")}
+              onDoubleClick={() => setRenaming({ from: name, text: name })} onContextMenu={(e) => openChipMenu(e, namedMenu(name))}>{name}</Chip>)}
+        {chipMenu && <ContextMenu x={chipMenu.x} y={chipMenu.y} items={chipMenu.items} onClose={() => setChipMenu(null)} />}
         {naming == null
           ? <Chip pressed={false} onClick={() => setNaming("")}>{t("Save layout as…")}</Chip>
           : <form onSubmit={(e) => { e.preventDefault(); saveNamed(); }} style={{ display: "flex", gap: 6 }}>

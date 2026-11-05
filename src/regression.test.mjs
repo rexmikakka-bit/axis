@@ -9019,6 +9019,19 @@ Nanofiber Internal Structure II
   check('insp', 'float: snaps only to its own layer', L.snapMove(c.layout, a.id, base.fitting.x + 3, 300, { windows: true }).x, base.fitting.x + 3, 0);
   let many = base; for (let i = 0; i < L.MAX_FLOATS + 3; i++) many = L.openFloat(many, { target: I.typeTarget(i + 1), tab: 'info', key: `t:${i}` }, { seq: 100 + i }).layout;
   check('insp', 'float: capped, oldest goes first', Object.keys(L.floatsOf(many)).length, L.MAX_FLOATS, 0);
+  // Saved layouts: rename keeps the order and the active chip; a taken or blank name is refused.
+  const st0 = { ...L.defaultLayoutState(), windows: c.layout, named: { A: base, B: base, C: base }, preset: 'named:B' };
+  const rn = L.renameNamed(st0, 'B', '  Mining  ');
+  check('insp', 'layouts: rename keeps its place in the bar', Object.keys(rn.named).join(), 'A,Mining,C');
+  check('insp', 'layouts: rename carries the active layout', rn.preset, 'named:Mining');
+  check('insp', 'layouts: a taken name is refused', L.renameNamed(st0, 'B', 'A') === st0 ? 1 : 0, 1, 0);
+  check('insp', 'layouts: a blank name is refused', L.renameNamed(st0, 'B', '   ') === st0 ? 1 : 0, 1, 0);
+  check('insp', 'layouts: update leaves the inspectors out', Object.keys(L.floatsOf(L.overwriteNamed(st0, 'A').named.A)).length, 0, 0);
+  const del = L.deleteNamed(st0, 'B');
+  check('insp', 'layouts: delete drops it and the active mark', `${Object.keys(del.named).join()}:${del.preset}`, 'A,C:null');
+  const hid = L.setPresetHidden(st0, 'focus', true);
+  check('insp', 'layouts: a hidden built-in survives a reload', L.readLayoutState({ getItem: () => JSON.stringify(hid) }).hidden.join(), 'focus');
+  check('insp', 'layouts: an unknown hidden id is dropped', L.readLayoutState({ getItem: () => JSON.stringify({ ...hid, hidden: ['focus', 'zzz'] }) }).hidden.join(), 'focus');
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

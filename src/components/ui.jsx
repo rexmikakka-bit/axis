@@ -27,7 +27,7 @@ import mutaplasmidData from "../data/mutaplasmids.json";
 import { TYPES, tidByName, calcFitStats, subsystemsForHull , usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { DMG, DMG_COLOR, DOUBLE_TAP_MS, MUTA_BY_NAME, MUTA_BY_TYPE, OFF_MARKET_MODULES, REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, STATE_COLORS, STATE_GLOW, STATE_LABELS, getCompatibleCharges, groupChargesForBrowser, haptic, moduleByName, moduleTakesCharges, moduleVariations, shipTraits, validStatesFor, variantsOf, mutaAttrRanges, snapToBase, parseEFT, readClipboardText, fitCostRatioOf, fitCostFits, variantCostFits, canLoadCharge } from "../lib/core.js";
 import { jargonSearch } from "../lib/jargon.js";
-import { fmtResource, fmtPriceAge } from "../lib/fmt.js";
+import { fmtResource, fmtPriceAge, fmtMarginPct } from "../lib/fmt.js";
 import { fetchPrices, priceAsOf } from "../prices.js";
 import { sortCompareRows, directionOf, filterLockedRows, bestFirstDirection } from "../lib/compare.js";
 import { abyssalGrade } from "../lib/eft-export.js";
@@ -508,11 +508,7 @@ function ResourceStrip({ship,slots,skills,implants,boosters,drones,factorInReloa
   // non-zero must not round down to a flat "-0.00%", which shows a minus sign against a magnitude of
   // nothing and reads as broken. Summing float module costs against an equal total lands a hair
   // either side of zero, so a fit that is exactly full genuinely can register as over by 1e-13.
-  const fmtMarginPct=(rem,total)=>{
-    const p=(rem/total)*100, a=Math.abs(p);
-    const s=a===0?"0":a<1?Math.max(a,0.01).toFixed(2):a<10?a.toFixed(1):Math.round(a);
-    return `${p<0?"-":""}${s}%`;
-  };
+  // (lib/fmt.js fmtMarginPct, shared with the desktop's Resources window.)
 
   return(
     // STICKY, and full-bleed rather than a floating rounded card. The three meters were stacked

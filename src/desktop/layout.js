@@ -319,7 +319,7 @@ export function cleanLayout(raw) {
 
 export function defaultLayoutState() {
   return { v: LAYOUT_VERSION, windows: presetLayout('default'), preset: 'default',
-           snapGrid: true, snapWindows: true, locked: false, cols: {}, named: {} };
+           snapGrid: true, snapWindows: true, locked: false, cols: {}, named: {}, hidden: [] };
 }
 
 /** The saved layout state, or the default when there is none or it does not parse. */
@@ -346,6 +346,7 @@ export function readLayoutState(storage) {
     preset: typeof raw.preset === 'string' ? raw.preset : null,
     snapGrid: raw.snapGrid !== false, snapWindows: raw.snapWindows !== false, locked: raw.locked === true,
     cols, named,
+    hidden: Array.isArray(raw.hidden) ? raw.hidden.filter(id => PRESETS.some(p => p.id === id)) : [],
   };
 }
 
@@ -358,4 +359,32 @@ export function canvasSize(layout) {
   let w = 0, h = 0;
   for (const win of Object.values(layout)) if (win.open && !win.detached && !win.float) { w = Math.max(w, win.x + win.w); h = Math.max(h, win.y + win.h); }
   return { w: w + GRID, h: h + GRID };
+}
+
+// ── Saved layouts: rename, overwrite, delete; built-ins hidden ─────────────────────────────────
+// Pure, over the whole layout state, so the status bar's menu and the suite share one rule each.
+
+/** `from` renamed to `to` (trimmed). Refused — the same state back — for a blank name or one taken. */
+export function renameNamed(state, from, to) {
+  const name = (to ?? '').trim();
+  if (!state.named[from] || !name || name === from || state.named[name]) return state;
+  // Rebuilt in the same order, so a rename does not move the chip to the end of the bar.
+  const named = Object.fromEntries(Object.entries(state.named).map(([k, v]) => [k === from ? name : k, v]));
+  return { ...state, named, preset: state.preset === `named:${from}` ? `named:${name}` : state.preset };
+}
+/** `name` overwritten with the workspace as it is now (its inspector windows left out). */
+export function overwriteNamed(state, name) {
+  if (!state.named[name]) return state;
+  return { ...state, named: { ...state.named, [name]: dockedOf(state.windows) }, preset: `named:${name}` };
+}
+export function deleteNamed(state, name) {
+  if (!state.named[name]) return state;
+  const named = { ...state.named }; delete named[name];
+  return { ...state, named, preset: state.preset === `named:${name}` ? null : state.preset };
+}
+/** A built-in layout taken off the status bar (they cannot be deleted), or put back. */
+export function setPresetHidden(state, id, hide) {
+  const cur = state.hidden ?? [];
+  const hidden = hide ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
+  return { ...state, hidden };
 }

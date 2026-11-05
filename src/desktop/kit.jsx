@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { C } from "../theme.js";
+import { t } from "../lib/i18n.js";
+import { fmtMarginPct } from "../lib/fmt.js";
 
 // The desktop's own small building blocks, sized for a monitor at arm's length rather than a phone
 // in the hand. Owen's readability rules (2026-11-04): nothing you have to read under 12 px, textMid
@@ -21,8 +23,8 @@ export function SectionLabel({ children, right, style }) {
 /**
  * Label/value grid: 26 px rows, 20 px gutter. `rows` is [[label, value, opts?]], opts = {color,
  * title, weight} — `title` carries the unrounded figure as a tooltip, the desktop's version of the
- * phone's tap-to-unround. `cols` fixes the column count (Capacitor, Targeting: two, which is what
- * keeps them short); without it, as many `min`-wide columns as fit.
+ * phone's tap-to-unround. Without `cols`, as many `min`-wide columns as the window has room for, so a
+ * stat window reflows from one column to three as it is resized (Owen, 2026-11-05). `cols` fixes it.
  */
 export function KV({ rows, min = 190, cols }) {
   const template = cols ? `repeat(${cols}, minmax(0, 1fr))` : `repeat(auto-fill, minmax(${min}px, 1fr))`;
@@ -39,17 +41,34 @@ export function KV({ rows, min = 190, cols }) {
   );
 }
 
-/** A labelled usage bar: label left, `used / total unit` right, 4 px bar beneath. Red when over. */
-export function UsageBar({ label, labelColor, used, total, unit = "", fmt = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 }), color }) {
+/**
+ * A labelled usage bar: label left, `used / total unit` right, 4 px bar beneath. Red when over.
+ * `showPct` adds the share of the maximum in use beside the label (CPU, powergrid). `remaining`
+ * swaps the readout for the phone's other one, "x left" / "x over" with the signed margin, and
+ * `onToggle` makes the bar the switch between them, as tapping the phone's strip is.
+ */
+export function UsageBar({ label, labelColor, used, total, unit = "", fmt = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 }), color,
+                           showPct = false, remaining = false, margin = false, onToggle }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   const over = total >= 0 && used > total + 1e-6;
+  const rem = (total ?? 0) - (used ?? 0);
   return (
-    <div style={{ minWidth: 0 }}>
+    <div style={{ minWidth: 0, cursor: onToggle ? "pointer" : undefined }} onClick={onToggle}
+      title={onToggle ? `${label}: ${fmt(used)} / ${fmt(total)}${unit ? ` ${unit}` : ""} — ${remaining ? t("click for used / total") : t("click for what is left")}` : undefined}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <span style={{ fontSize: TYPE.label, fontWeight: WEIGHT.value, color: labelColor ?? C.textMid }}>{label}</span>
-        <span style={{ fontSize: TYPE.value, fontWeight: WEIGHT.value, color: over ? C.danger : C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-          {fmt(used)} <span style={{ color: C.textMid, fontWeight: WEIGHT.text }}>/ {fmt(total)}{unit ? ` ${unit}` : ""}</span>
+        <span style={{ fontSize: TYPE.label, fontWeight: WEIGHT.value, color: labelColor ?? C.textMid, whiteSpace: "nowrap" }}>
+          {label}
+          {showPct && total > 0 && <span style={{ marginLeft: 6, fontWeight: WEIGHT.text, color: over ? C.danger : C.textMid, fontVariantNumeric: "tabular-nums" }}>
+            {(used / total * 100).toFixed(used / total >= 0.995 && used / total < 1.1 ? 1 : 0)}%</span>}
         </span>
+        {remaining
+          ? <span style={{ fontSize: TYPE.value, fontWeight: WEIGHT.value, color: over ? C.danger : C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+              {fmt(Math.abs(rem))}{unit ? ` ${unit}` : ""} <span style={{ color: over ? C.danger : C.textMid, fontWeight: WEIGHT.text }}>{over ? t("over") : t("left")}
+                {margin && total > 0 ? ` · ${fmtMarginPct(rem, total)}` : ""}</span>
+            </span>
+          : <span style={{ fontSize: TYPE.value, fontWeight: WEIGHT.value, color: over ? C.danger : C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+              {fmt(used)} <span style={{ color: C.textMid, fontWeight: WEIGHT.text }}>/ {fmt(total)}{unit ? ` ${unit}` : ""}</span>
+            </span>}
       </div>
       <div style={{ height: 4, borderRadius: 2, background: C.border, marginTop: 5, overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", background: over ? C.danger : (color ?? labelColor ?? C.textMid) }} />
@@ -88,3 +107,20 @@ export function Dialog({ title, onClose, width = 560, children }) {
     </div>
   );
 }
+
+/**
+ * Desktop-only page CSS, laid over the phone's getGlobalCss(). Scrollbars: the platform's grey bar
+ * with arrows sat in every window like a second border. Here they are 8 px, no track, the thumb a
+ * theme border colour that only firms up while you are over the pane it scrolls. The -webkit-
+ * pseudo-elements rather than the standard scrollbar-color/width: in Chromium (and so WebView2, the
+ * Tauri shell on Windows) setting the standard pair switches these off, and they are the only way to
+ * get the rounded, inset thumb.
+ */
+export const deskCss = () => `
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-thumb { background-color: ${C.border}; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; min-height: 28px; }
+  *:hover::-webkit-scrollbar-thumb { background-color: ${C.borderStrong}; }
+  *::-webkit-scrollbar-thumb:hover { background-color: ${C.textMute}; }
+  *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+`;

@@ -175,7 +175,7 @@ export function FirepowerPanel({ s, ship, cs }) {
         </button>
       </div>
       <div style={{ flex: "none" }}>
-        <KV cols={2} rows={[
+        <KV min={180} rows={[
           [t("Weapon DPS"), rangeOf(w.total ?? 0, (tgt ? eff.weaponDpsMax : cs.weaponDpsMax) ?? 0), { color: C.accent }],
           [t("Drone DPS"), fmtDps((d?.total ?? 0) + (f?.total ?? 0))],
           [t("Total DPS"), rangeOf(tot.total ?? 0, (tgt ? eff.totalDpsMax : cs.totalDpsMax) ?? 0), { color: C.text, weight: 600 }],

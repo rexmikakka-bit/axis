@@ -6,6 +6,7 @@ import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText } from ".
 import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame } from "../components/ui.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
+import { deskCss } from "./kit.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
@@ -188,7 +189,7 @@ function SatelliteApp({ id }) {
   return (
     <InspectContext.Provider value={insp.value}>
     <SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
-      <style>{getGlobalCss()}</style>
+      <style>{getGlobalCss() + deskCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.surface, color: C.text, fontSize: 13 }}>
         <div style={{ height: 28, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px", background: C.surfaceAlt,
                       borderBottom: `1px solid ${C.border}` }}>
@@ -322,7 +323,7 @@ function DesktopApp() {
 
   return (
     <InspectContext.Provider value={insp.value}><SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
-      <style>{getGlobalCss()}</style>
+      <style>{getGlobalCss() + deskCss()}</style>
       <div style={{ height: "100%", display: "flex", flexDirection: "column", background: C.bg, color: C.text, fontSize: 13 }}>
         <header style={{ height: 44, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 12px 0 16px",
                          background: C.surface, borderBottom: `1px solid ${C.border}` }}>
