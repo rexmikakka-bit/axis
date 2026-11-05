@@ -9,6 +9,7 @@ import { tidByName, TYPES } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { byNewestFitting } from "../lib/fit-order.js";
 import { useSheetDrag, sheetTransform, SheetGrabber, dismissKeyboardOnScroll } from "../lib/use-sheet-drag.jsx";
+import { useDeskSheet, DESK_OVERLAY, deskPanel } from "../lib/sheet-frame.js";
 import { SheetSearchBar, useVisualViewport } from "./ui.jsx";
 import { t } from "../lib/i18n.js";
 
@@ -213,6 +214,7 @@ export function EsiSkillAlignPanel({ setSkills }) {
 // ─── Hamburger menu > Import from ESI ──────────────────────────────────────────────────────────
 export function EsiImportModal({ onClose, onImport }) {
   const sheet = useSheetDrag(onClose);
+  const desk = useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   const { characters, activeId, switchActive } = useEsiCharacters();
   const [fittings, setFittings] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -255,11 +257,11 @@ export function EsiImportModal({ onClose, onImport }) {
     // Sized to the strip the keyboard leaves, as the tag sheet is (FittingsScreen). On the layout
     // viewport a search narrowed to a few rows left the whole sheet, search box included, under the
     // keyboard. maxHeight is a percentage of that strip for the same reason: 88vh is taller than it.
-    <div style={{ position: "fixed", ...frame, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
+    <div style={desk ? DESK_OVERLAY : { position: "fixed", ...frame, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
       {/* The grabber sits OUTSIDE the scroller: it is the sheet's own control, and a handle that
           scrolls off with the fit list stops being reachable exactly when the sheet is longest. */}
-      <div ref={sheet.sheetRef} style={{ width: "100%", maxHeight: "88%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet) }} onClick={e => e.stopPropagation()}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers}/>
+      <div ref={sheet.sheetRef} style={{ width: "100%", maxHeight: "88%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet), ...(desk ? { ...deskPanel(560), overflowY: "hidden", paddingTop: 12 } : {}) }} onClick={e => e.stopPropagation()}>
+        {!desk && <SheetGrabber grabHandlers={sheet.grabHandlers}/>}
         <div onScroll={dismissKeyboardOnScroll} style={{ overflowY: "auto", padding: "6px 20px 20px" }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Import from EVE")}</div>
         {/* Same underline tabs as the slot sheet's State / Charge / Info row. */}
@@ -445,6 +447,7 @@ function ShipsPane({ character, onImport, onClose }) {
 // ─── Hamburger menu > Export to EVE ────────────────────────────────────────────────────────────
 export function EsiExportModal({ activeFit, slots, drones, cargoItems, fighters, implants, boosters, onClose }) {
   const sheet = useSheetDrag(onClose);
+  const desk = useDeskSheet();
   const { characters, activeId, switchActive } = useEsiCharacters();
   const [incCharges, setIncCharges] = useState(true);
   const [incImplants, setIncImplants] = useState(false);
@@ -478,9 +481,9 @@ export function EsiExportModal({ activeFit, slots, drones, cargoItems, fighters,
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
-      <div ref={sheet.sheetRef} style={{ width: "100%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", padding: "4px 20px 20px", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet) }} onClick={e => e.stopPropagation()}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers} style={{ margin: "0 -20px" }}/>
+    <div style={desk ? DESK_OVERLAY : { position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
+      <div ref={sheet.sheetRef} style={{ width: "100%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", padding: "4px 20px 20px", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet), ...(desk ? { ...deskPanel(480), paddingTop: 16 } : {}) }} onClick={e => e.stopPropagation()}>
+        {!desk && <SheetGrabber grabHandlers={sheet.grabHandlers} style={{ margin: "0 -20px" }}/>}
         <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Export to EVE")}</div>
         <div style={{ fontSize: 11, color: C.textMute, marginBottom: 12 }}>{t("Saves this fit into the selected character's in-game Fittings.")}</div>
         {!activeFit?.ship ? (

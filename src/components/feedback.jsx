@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { C } from "../theme.js";
 import { useSheetDrag, sheetTransform, SheetGrabber } from "../lib/use-sheet-drag.jsx";
+import { useDeskSheet, DESK_OVERLAY, deskPanel } from "../lib/sheet-frame.js";
 import { fitToEFT } from "../lib/eft-export.js";
 import { t } from "../lib/i18n.js";
 
@@ -40,6 +41,7 @@ function effectsContext(slots, projFits, cmdFits) {
 export function FeedbackModal({activeFit, slots, implants, boosters, drones, fighters, cargo,
                                projFits, cmdFits, fitsDB, onClose}) {
   const sheet = useSheetDrag(onClose);
+  const desk = useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   const [title, setTitle] = useState("");
   const [details, setDetails] = useState("");
   const [copied, setCopied] = useState(false);
@@ -125,9 +127,9 @@ export function FeedbackModal({activeFit, slots, implants, boosters, drones, fig
   };
 
   return (
-    <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={sheet.dismiss}>
-      <div ref={sheet.sheetRef} style={{width:"100%",maxHeight:"88vh",boxSizing:"border-box",background:C.surface,borderRadius:"16px 16px 0 0",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 -8px 32px rgba(0,0,0,.5)",...sheetTransform(sheet)}} onClick={e=>e.stopPropagation()}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers}/>
+    <div style={desk?DESK_OVERLAY:{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"flex-end"}} onClick={sheet.dismiss}>
+      <div ref={sheet.sheetRef} style={{width:"100%",maxHeight:"88vh",boxSizing:"border-box",background:C.surface,borderRadius:"16px 16px 0 0",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 -8px 32px rgba(0,0,0,.5)",...sheetTransform(sheet),...(desk?{...deskPanel(560),overflowY:"hidden",paddingTop:14}:{})}} onClick={e=>e.stopPropagation()}>
+        {!desk&&<SheetGrabber grabHandlers={sheet.grabHandlers}/>}
         <div style={{overflowY:"auto",padding:"6px 20px 20px"}}>
         <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{t("Send Feedback")}</div>
         <div style={{fontSize:11,color:C.textMute,marginBottom:14,lineHeight:1.5}}>

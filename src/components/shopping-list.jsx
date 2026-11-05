@@ -10,6 +10,7 @@ import { contractLinkList, stationSystems } from '../lib/contract-links.js';
 import { useOnline } from '../lib/use-online.js';
 import { mutaMarketUrl, JITA_4_4_STATION_ID } from '../lib/mutamarket.js';
 import { useSheetDrag, sheetTransform, SheetGrabber } from '../lib/use-sheet-drag.jsx';
+import { useDeskSheet, DESK_OVERLAY, deskPanel } from '../lib/sheet-frame.js';
 
 // Everything in the fit you would still have to BUY, with the contract attached. The fit itself only
 // remembers an item id, so this screen is the join between that and the listing cache — see
@@ -35,6 +36,7 @@ function openUrl(url){
 export function ShoppingListSheet({slots,onClose}){
   const online=useOnline();
   const sheet=useSheetDrag(onClose);
+  const desk=useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   const [listings,setListings]=useState([]),[owned,setOwned]=useState([]);
   const [characters,setCharacters]=useState(listCharacters),[characterId,setCharacterId]=useState('');
   const [error,setError]=useState(''),[opened,setOpened]=useState({}),[copied,setCopied]=useState(false);
@@ -93,9 +95,9 @@ export function ShoppingListSheet({slots,onClose}){
   const primary={...button,borderColor:C.accentBorder,background:C.accentLight,color:C.accent};
   const badge=(text,color)=><span style={{fontSize:10,fontWeight:700,color,border:`1px solid ${color}55`,borderRadius:5,padding:'1px 5px',flexShrink:0}}>{text}</span>;
 
-  return <div style={{position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end'}} onClick={sheet.dismiss}>
-    <div ref={sheet.sheetRef} style={{width:'100%',maxHeight:'80vh',boxSizing:'border-box',display:'flex',flexDirection:'column',background:C.surface,borderRadius:'16px 16px 0 0',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',...sheetTransform(sheet)}} onClick={e=>e.stopPropagation()}>
-      <SheetGrabber grabHandlers={sheet.grabHandlers}/>
+  return <div style={desk?DESK_OVERLAY:{position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end'}} onClick={sheet.dismiss}>
+    <div ref={sheet.sheetRef} style={{width:'100%',maxHeight:'80vh',boxSizing:'border-box',display:'flex',flexDirection:'column',background:C.surface,borderRadius:'16px 16px 0 0',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',...sheetTransform(sheet),...(desk?{...deskPanel(640),overflowY:'hidden',paddingTop:16}:{})}} onClick={e=>e.stopPropagation()}>
+      {!desk&&<SheetGrabber grabHandlers={sheet.grabHandlers}/>}
       <div style={{padding:'0 20px'}}>
         <div style={{fontSize:15,fontWeight:700,color:C.text}}>{t('Shopping list')}</div>
         <div style={{fontSize:11,color:C.textMute,marginTop:2}}>

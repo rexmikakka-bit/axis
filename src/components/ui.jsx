@@ -9,6 +9,7 @@ import { AbyssalSources } from './abyssal-sources.jsx';
 import { readAbyssals, readListings, editAbyssal, rememberListings } from '../lib/abyssal-store.js';
 import { variationItems, variationRoll, filterVariationItems, withinPriceCeiling, MARKET_SOURCE } from '../lib/variation-items.js';
 import { variantSwapPatch } from '../lib/fit-ops.js';
+import { SheetFrame } from '../lib/sheet-frame.js';
 import { SourceBadge, BADGE_STYLE } from './source-badge.jsx';
 import { abyssalTypeIds, listingCost, JITA_4_4_STATION_ID, savedMarketListings } from '../lib/mutamarket.js';
 import { useOnline } from '../lib/use-online.js';
@@ -184,7 +185,8 @@ export function useVisualViewport(){
 // Desktop only: a component to draw sheets with instead (the desktop app provides a dialog). Every
 // sheet in the app goes through BottomSheet, so this one switch moves all of them — pickers, info,
 // variations — into desktop dialogs without touching any of them. The phone provides nothing.
-export const SheetFrame=createContext(null);
+// (Defined in lib/sheet-frame.js so the bare sheets in other files can read it without importing ui.jsx.)
+export { SheetFrame };
 function BottomSheet(props){
   const Alt=useContext(SheetFrame);
   return Alt?<Alt {...props}/>:<PhoneBottomSheet {...props}/>;
