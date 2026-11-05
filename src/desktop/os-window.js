@@ -16,7 +16,9 @@ export async function openOsWindow(id, { url, width, height, title }) {
     const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
     const existing = await WebviewWindow.getByLabel(label(id));
     if (existing) { await existing.setFocus(); return { close: () => existing.close() }; }
-    const win = new WebviewWindow(label(id), { url, width, height, title, minWidth: 200, minHeight: 120 });
+    // dragDropEnabled: false, as on the main window (tauri.conf.json): Tauri's own file-drop handler
+    // otherwise takes every drag on Windows, and dragging items between windows stops working.
+    const win = new WebviewWindow(label(id), { url, width, height, title, minWidth: 200, minHeight: 120, dragDropEnabled: false });
     const ok = await new Promise((resolve) => {
       win.once("tauri://created", () => resolve(true));
       win.once("tauri://error", (e) => { console.error("pop-out failed", e); resolve(false); });

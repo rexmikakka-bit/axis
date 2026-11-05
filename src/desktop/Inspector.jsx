@@ -65,7 +65,7 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
 
   // ── Where this item is ───────────────────────────────────────────────────────────────────────
   const fitLabel = target.kind !== "type" ? `${target.ship} · ${target.fitName ?? ""}` : null;
-  const where = target.kind === "module" ? t(SEC_LABELS[target.sec]) : target.kind === "drone" ? t("Drone bay") : target.kind === "implant" ? t("Implant slot {n}", { n: target.slot })
+  const where = target.kind === "module" ? t(SEC_LABELS[target.sec]) : target.kind === "charge" ? (item ? t("Loaded in {name}", { name: item.name }) : null) : target.kind === "drone" ? t("Drone bay") : target.kind === "implant" ? t("Implant slot {n}", { n: target.slot })
               : target.kind === "booster" ? t("Booster") : target.rack ? t("Market") : null;
   const notes = [];
   if (r.status === "nofit") notes.push(t("That fit no longer exists."));
@@ -88,6 +88,17 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
         onRemove={() => s.setSlots(prev => applyRemove(prev, target.sec, target.slot, row?.groupIds))} onDuplicate={null} fillCount={0}
         resourceHeadroom={headroom} engineItem={cs?.fittedItems?.get(target.slot)} chargeStats={cs?.fittedChargeStats?.get(target.slot)}
         usedAbyssalIds={fittedAbyssalIds(s.slots, target.slot)} onShowInfo={showInfo} />;
+    }
+    // The loaded charge, as the fit's engine computed it: the phone's loaded-charge info (ui.jsx
+    // ModuleMenu chargeInfo) — current values with the fit's modifiers next to the base ones.
+    if (cur === "info" && target.kind === "charge") {
+      const engineMod = editable ? cs?.fittedItems?.get(target.slot) : null;
+      const loaded = engineMod?._charge && Number(engineMod._charge.typeID) === Number(typeID) ? engineMod._charge : null;
+      return (
+        <div style={{ padding: 14 }}>
+          <ItemInfoPanel typeID={typeID} item={loaded} overrides={loaded ? cs?.fittedChargeStats?.get(target.slot) : null} bleed={14} />
+        </div>
+      );
     }
     if (cur === "info") {
       const engine = editable ? (target.kind === "drone" ? cs?.fittedDrones?.get(target.id) : target.kind === "module" ? cs?.fittedItems?.get(target.slot) : null) : null;

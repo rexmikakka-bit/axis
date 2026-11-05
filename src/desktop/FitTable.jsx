@@ -6,7 +6,7 @@ import { TYPES } from "../calc.js";
 import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge } from "../lib/core.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
-import { moduleTarget } from "./inspect.js";
+import { moduleTarget, chargeTarget } from "./inspect.js";
 import { useItems, useItemDrop, DropHint } from "./items-context.jsx";
 import { currentDrag, draggedItem, isItemDrag, itemKind } from "./items.js";
 import { resourceColor } from "../components/ui.jsx";
@@ -168,6 +168,7 @@ export function FitTable({ api }) {
           onSelect: () => setRowState(secKey, row, st), hint: st === "overheated" ? t("right-click dot") : st === "offline" ? t("ctrl-click dot") : undefined })),
         { divider: true },
         takesCharges && { label: row.ammo ? t("Change charge…") : t("Load charge…"), onSelect: () => inspectRow(secKey, row, "charge") },
+        row.ammo && { label: t("Show charge info…"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, secKey, row.id), "info") },
         row.ammo && { label: t("Unload charge"), onSelect: () => { const ids = new Set(row.groupIds ?? [row.id]);
           setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); } },
         takesCharges && { divider: true },

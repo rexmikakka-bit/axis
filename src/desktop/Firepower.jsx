@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
-import { DMG, validStatesFor } from "../lib/core.js";
+import { DMG, validStatesFor, NAVY_AMMO_PREFIXES } from "../lib/core.js";
+import { META_COLORS } from "../lib/meta.js";
 import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { TargetProfileSheet } from "../components/ui.jsx";
 import { KV, Empty, Dialog, TYPE, WEIGHT } from "./kit.jsx";
@@ -58,7 +59,7 @@ function AmmoSection({ s, ship, opts }) {
         </div>
       ))}
       {open != null && racks[open] && (
-        <Dialog title={`${t("Ammo")} · ${racks[open].mounts.length}× ${racks[open].name}`} onClose={() => setOpen(null)} width={620}>
+        <Dialog title={`${t("Ammo")} · ${racks[open].mounts.length}× ${racks[open].name}`} onClose={() => setOpen(null)} width={760}>
           <AmmoTable s={s} ship={ship} opts={opts} rack={racks[open]} onPicked={() => setOpen(null)} />
         </Dialog>
       )}
@@ -66,8 +67,44 @@ function AmmoSection({ s, ship, opts }) {
   );
 }
 
+// Which kind of round a row is, so a list of thirty reads as a handful of choices. The phone shows
+// the same split as a badge per row (tabs.jsx: NAVY / T2 / T1, with the two T2 lines coloured): T2
+// splits into its two lines by lib/ammo-compare's `line` — more damage than the family's T1 round
+// (Conflagration, Fury, Rage) or less, bought for range or application (Aurora, Spike, Javelin,
+// Precision). Navy is the same round as T1 hitting harder; Faction here is the pirate rounds.
+const TIERS = [
+  { key: "t2dmg", label: () => t("T2 · damage"), color: META_COLORS.T2 },
+  // null: the theme's C.low, read at render so a theme switch reaches it (see tierColor).
+  { key: "t2app", label: () => t("T2 · range"), color: null },
+  { key: "t2prec", label: () => t("T2 · precision"), color: null },
+  { key: "t2", label: () => "T2", color: META_COLORS.T2 },
+  { key: "navy", label: () => t("Navy"), color: META_COLORS.Faction },
+  { key: "faction", label: () => t("Faction"), color: META_COLORS.Officer },
+  { key: "storyline", label: () => t("Storyline"), color: META_COLORS.Storyline },
+  { key: "t1", label: () => "T1", color: META_COLORS.T1 },
+];
+const TIER = Object.fromEntries(TIERS.map(x => [x.key, x]));
+const tierColor = (x) => x.color ?? C.low;
+const isNavyRound = (name) => NAVY_AMMO_PREFIXES.some(p => name.startsWith(p + " "));
+function tierOf(r) {
+  if (isNavyRound(r.name)) return "navy";
+  if (r.meta === "T2") return r.line === "dmg" ? "t2dmg" : r.line === "app" ? (/Precision/.test(r.name) ? "t2prec" : "t2app") : "t2";
+  if (r.meta === "Faction") return "faction";
+  if (r.meta === "Storyline") return "storyline";
+  return "t1";
+}
+const GROUP_KEY = "axis_desk_ammo_group";
+const TierBadge = ({ tier }) => (
+  <span style={{ justifySelf: "start", padding: "1px 7px", borderRadius: 9, fontSize: 11.5, whiteSpace: "nowrap", color: tierColor(TIER[tier]),
+                 border: `1px solid ${tierColor(TIER[tier])}66`, background: `${tierColor(TIER[tier])}14` }}>{TIER[tier].label()}</span>
+);
+
 function AmmoTable({ s, ship, opts, rack, onPicked }) {
   const [result, setResult] = useState(null);
+  // Grouped by kind of round (remembered), or one list by DPS; a chip narrows it to one kind.
+  const [grouped, setGrouped] = useState(() => { try { return localStorage.getItem(GROUP_KEY) !== "0"; } catch { return true; } });
+  const flipGrouped = () => setGrouped(v => { try { localStorage.setItem(GROUP_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
+  const [only, setOnly] = useState(null);
   const rackKey = rack ? `${rack.name}|${rack.mounts.length}|${rack.ammo}` : "";
   useEffect(() => {
     if (!rack) return;
@@ -76,8 +113,22 @@ function AmmoTable({ s, ship, opts, rack, onPicked }) {
     const id = setTimeout(() => { if (!dead) setResult(rankAmmo(ship, s.slots, s.drones ?? [], s.fitSkills, opts, rack, false)); }, 0);
     return () => { dead = true; clearTimeout(id); };
   }, [ship, s.slots, s.drones, s.fitSkills, opts, rackKey]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const rows = [...(result?.rows ?? [])].flatMap(r => (r.variants ?? [r]).filter(v => !v.unscored)).sort((a, b) => (b.dps ?? 0) - (a.dps ?? 0));
-  const best = rows[0];
+  const all = [...(result?.rows ?? [])].flatMap(r => (r.variants ?? [r]).filter(v => !v.unscored)).sort((a, b) => (b.dps ?? 0) - (a.dps ?? 0))
+    .map(r => ({ ...r, tier: tierOf(r) }));
+  // A T2 family with no T1 round to measure damage against (lib/ammo-compare's `line` is null) is
+  // split by reach instead: within the rack, the T2 rounds that reach further than the shortest are
+  // the range line (Barrage, Tremor, Aurora, Spike), the shortest the damage line (Hail, Quake, Scorch).
+  const reach = (r) => (r.optimal ?? 0) + (r.falloff ?? 0);
+  const plainT2 = all.filter(r => r.tier === "t2");
+  if (plainT2.length > 1) {
+    const shortest = Math.min(...plainT2.map(reach));
+    for (const r of plainT2) r.tier = reach(r) > shortest + 1e-6 ? "t2app" : "t2dmg";
+  }
+  const best = all[0];
+  const present = TIERS.filter(x => all.some(r => r.tier === x.key));
+  const rows = only ? all.filter(r => r.tier === only) : all;
+  // Grouped: the kinds in TIERS order, each by DPS, under a heading naming it and its best figure.
+  const sections = grouped ? present.filter(x => !only || x.key === only).map(x => ({ tier: x, rows: rows.filter(r => r.tier === x.key) })) : [{ tier: null, rows }];
   const load = (row) => {
     s.setSlots(prev => {
       const next = { ...prev };
@@ -88,16 +139,38 @@ function AmmoTable({ s, ship, opts, rack, onPicked }) {
     onPicked?.();
   };
   const range = (r) => r.optimal == null ? "" : r.falloff > 0 ? `${Math.round(r.optimal)} + ${Math.round(r.falloff)} km` : `${Math.round(r.optimal)} km`;
-  const cols = "4px minmax(0,1fr) 70px 70px 110px";
+  const cols = "4px minmax(0,1fr) 112px 70px 70px 110px";
+  const chip = (on, label, onClick, color = C.accent) => (
+    <button type="button" aria-pressed={on} onClick={onClick}
+      style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap",
+               background: on ? `${color}22` : "transparent", border: `1px solid ${on ? color : C.borderStrong}`, color: on ? color : C.textMid }}>{label}</button>
+  );
   return (
     <div style={{ padding: "4px 0 8px" }}>
-      <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 12, padding: "6px 16px", position: "sticky", top: 0, background: C.surface,
+      {present.length > 1 && (
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, padding: "6px 16px 8px" }}>
+          {chip(!only, t("All"), () => setOnly(null))}
+          {present.map(x => <span key={x.key}>{chip(only === x.key, x.label(), () => setOnly(o => o === x.key ? null : x.key), tierColor(x))}</span>)}
+          <span style={{ flex: 1 }} />
+          {chip(grouped, t("Group by kind"), flipGrouped)}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 12, padding: "6px 16px", position: "sticky", top: 0, background: C.surface, zIndex: 1,
                     fontSize: TYPE.section, fontWeight: WEIGHT.value, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, borderBottom: `1px solid ${C.border}` }}>
-        <span /><span>{t("Charge")}</span><span style={{ textAlign: "right" }}>{result?.targeted ? t("Applied") : t("DPS")}</span>
+        <span /><span>{t("Charge")}</span><span>{t("Kind")}</span><span style={{ textAlign: "right" }}>{result?.targeted ? t("Applied") : t("DPS")}</span>
         <span style={{ textAlign: "right" }}>{t("Volley")}</span><span style={{ textAlign: "right" }}>{t("Range")}</span>
       </div>
       {!result && <div style={{ padding: "10px 16px", fontSize: TYPE.label, color: C.textMid }}>{t("Comparing ammo…")}</div>}
-      {rows.map(r => {
+      {sections.map(sec => <div key={sec.tier?.key ?? "all"}>
+        {sec.tier && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 16px 4px", fontSize: TYPE.section, letterSpacing: ".05em",
+                        textTransform: "uppercase", color: tierColor(sec.tier), borderTop: `1px solid ${C.border}` }}>
+            <span style={{ width: 3, height: 12, borderRadius: 2, background: tierColor(sec.tier) }} />
+            {sec.tier.label()}
+            <span style={{ color: C.textMid, textTransform: "none", letterSpacing: 0 }}>· {t({ one: "{n} round", other: "{n} rounds" }, { n: sec.rows.length })}</span>
+          </div>
+        )}
+        {sec.rows.map(r => {
         const loaded = r.name === rack.ammo;
         return (
           <div key={r.name} role="button" tabIndex={0} onClick={() => load(r)} onKeyDown={e => { if (e.key === "Enter") load(r); }}
@@ -113,12 +186,14 @@ function AmmoTable({ s, ship, opts, rack, onPicked }) {
               {loaded && <span style={{ color: C.accent, fontSize: TYPE.small, marginLeft: 8 }}>{t("loaded")}</span>}
               {r === best && !loaded && <span style={{ color: C.success, fontSize: TYPE.small, marginLeft: 8 }}>{t("best")}</span>}
             </span>
+            <TierBadge tier={r.tier} />
             <span style={{ textAlign: "right", color: C.text }}>{fmtDps(r.dps)}</span>
             <span style={{ textAlign: "right", color: C.textMid }}>{fmtN(r.volley)}</span>
             <span style={{ textAlign: "right", color: C.rig, whiteSpace: "nowrap" }}>{range(r)}</span>
           </div>
         );
       })}
+      </div>)}
     </div>
   );
 }

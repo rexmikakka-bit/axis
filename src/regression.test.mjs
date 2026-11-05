@@ -8893,6 +8893,13 @@ Nanofiber Internal Structure II
   check('desk', 'rescue: lost window pulled back into reach', `${r.notes.x},${r.notes.y}`, `${1400 - D.RESCUE_STRIP},${900 - D.TITLE_H}`);
   check('desk', 'rescue: nothing to do returns the same layout', D.rescue(def, 3000, 3000) === def ? 1 : 0, 1, 0);
   check('desk', 'rescue: closed windows left alone', D.rescue({ ...def, notes: { ...def.notes, x: 9000 } }, 1400, 900).notes.x, 9000, 0);
+  // Drawing a window clamped into a smaller view never changes the saved rect: grow the view back
+  // and it is where it was (Owen: resizing the program window scrambled the workspace).
+  const far = { ...def.notes, open: true, x: 1300, y: 700 };
+  const drawn = D.clampIntoView(far, 1000, 600);
+  check('desk', 'clamp: drawn inside a smaller view', `${drawn.x},${drawn.y}`, `${1000 - D.RESCUE_STRIP},${600 - D.TITLE_H}`);
+  check('desk', 'clamp: the saved rect is untouched', `${far.x},${far.y}`, '1300,700');
+  check('desk', 'clamp: a window already in view is the same object', D.clampIntoView(far, 3000, 3000) === far ? 1 : 0, 1, 0);
   // Persistence: a garbage or partial value falls back per field instead of crashing the workspace.
   const store = (v) => ({ getItem: () => v });
   check('desk', 'persist: unparseable value -> Default', D.readLayoutState(store('{nope')).windows.fitting.x, 256, 0);

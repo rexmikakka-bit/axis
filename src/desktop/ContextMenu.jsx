@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { C } from "../theme.js";
 import { Dialog } from "./kit.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -23,7 +24,8 @@ export function ContextMenu({ x, y, items, onClose }) {
     window.addEventListener("blur", onClose);
     return () => { document.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key); window.removeEventListener("blur", onClose); };
   }, [onClose]);
-  return (
+  // Portalled for the same reason as kit.jsx Dialog: a docked window's menu must not open under an item window.
+  return createPortal(
     <div ref={ref} role="menu" onContextMenu={e => e.preventDefault()}
       style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 700, minWidth: 210, padding: 4, background: C.surface, border: `1px solid ${C.borderStrong}`,
                borderRadius: 7, boxShadow: "0 10px 28px rgba(0,0,0,.5)", lineHeight: 1.3 }}>
@@ -43,7 +45,8 @@ export function ContextMenu({ x, y, items, onClose }) {
           </button>
         );
       })}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

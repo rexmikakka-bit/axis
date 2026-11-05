@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { fmtMarginPct } from "../lib/fmt.js";
@@ -91,7 +92,9 @@ export function Dialog({ title, onClose, width = 560, children }) {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
-  return (
+  // Portalled to the page: drawn inside its window it would sit in the workspace's stacking layer, and
+  // the item-window layer above that would cover it (an open charge window over the ammo picker).
+  return createPortal(
     <div role="presentation" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: "fixed", inset: 0, zIndex: 600, background: "rgba(0,0,0,.5)", display: "grid", placeItems: "center" }}>
       <div role="dialog" aria-modal="true" aria-label={title}
@@ -104,7 +107,8 @@ export function Dialog({ title, onClose, width = 560, children }) {
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

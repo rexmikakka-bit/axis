@@ -23,7 +23,9 @@ export function useItemDrop(to, extra) {
   const items = useItems();
   const [over, setOver] = useState(false);
   const depth = useRef(0);
-  const okFor = () => { const it = currentDrag(); return !!it && items.accepts(to, it); };
+  // No remembered item means the drag started in another OS window (a popped-out Browser), whose
+  // module state this window cannot see: let it over, and judge it at drop time from the payload.
+  const okFor = () => { const it = currentDrag(); return !it || items.accepts(to, it); };
   const props = {
     onDragEnter: (e) => { if (!isItemDrag(e)) return; depth.current++; setOver(true); },
     onDragLeave: (e) => { if (!isItemDrag(e)) return; depth.current = Math.max(0, depth.current - 1); if (!depth.current) setOver(false); },

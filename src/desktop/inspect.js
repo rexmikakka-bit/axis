@@ -15,15 +15,21 @@
 //   drone    {ship, fitId, fitName, id, typeID}          a drone stack
 //   implant  {ship, fitId, fitName, slot, typeID}        implant slot 1–10
 //   booster  {ship, fitId, fitName, id, typeID}
-//   type     {typeID, rack?}                             any item by type: market, cargo, a charge, a variant
+//   charge   {ship, fitId, fitName, sec, slot, typeID}   the charge LOADED in a fitted module: follows the
+//                                                        slot, so reloading shows the new round
+//   type     {typeID, rack?, roll?}                      any item by type: market, cargo, a charge, a variant
 
-export const KINDS = ['module', 'drone', 'implant', 'booster', 'type'];
+import { tidByName } from '../calc.js';
+
+export const KINDS = ['module', 'drone', 'implant', 'booster', 'charge', 'type'];
 export const SECS = ['high', 'mid', 'low', 'rigs', 'services', 'subsystems'];
 const EMPTY_IMPLANT = '[Empty]';
 
 const fitOf = (fitRef) => ({ ship: fitRef?.ship ?? null, fitId: fitRef?.fitId ?? null, fitName: fitRef?.fitName ?? null });
 
 export const moduleTarget = (fitRef, sec, slot, typeID) => ({ kind: 'module', ...fitOf(fitRef), sec, slot, typeID: typeID ?? null });
+export const chargeTarget = (fitRef, sec, slot, typeID) => ({ kind: 'charge', ...fitOf(fitRef), sec, slot, typeID: typeID ?? null });
+const bareAmmo = (n) => String(n ?? '').replace(/\s*\(\d+\)$/, '');
 export const droneTarget = (fitRef, id, typeID) => ({ kind: 'drone', ...fitOf(fitRef), id, typeID: typeID ?? null });
 export const implantTarget = (fitRef, slot, typeID) => ({ kind: 'implant', ...fitOf(fitRef), slot, typeID: typeID ?? null });
 export const boosterTarget = (fitRef, id, typeID) => ({ kind: 'booster', ...fitOf(fitRef), id, typeID: typeID ?? null });
@@ -54,6 +60,7 @@ export function targetKey(t) {
   const fit = `${t.ship}#${t.fitId ?? t.fitName}`;
   switch (t.kind) {
     case 'module': return `m:${fit}:${t.sec}:${t.slot}`;
+    case 'charge': return `c:${fit}:${t.sec}:${t.slot}`;
     case 'drone': return `d:${fit}:${t.id}`;
     case 'implant': return `i:${fit}:${t.slot}`;
     case 'booster': return `b:${fit}:${t.id}`;
@@ -71,6 +78,7 @@ export function cleanTarget(raw) {
   if (typeof raw.ship !== 'string' || !raw.ship) return null;
   const fit = { ship: raw.ship, fitId: raw.fitId ?? null, fitName: typeof raw.fitName === 'string' ? raw.fitName : null };
   if (raw.kind === 'module') return SECS.includes(raw.sec) && raw.slot != null ? moduleTarget(fit, raw.sec, raw.slot, tid) : null;
+  if (raw.kind === 'charge') return SECS.includes(raw.sec) && raw.slot != null ? chargeTarget(fit, raw.sec, raw.slot, tid) : null;
   if (raw.kind === 'implant') return Number.isInteger(raw.slot) && raw.slot >= 1 && raw.slot <= 10 ? implantTarget(fit, raw.slot, tid) : null;
   return raw.id != null ? (raw.kind === 'drone' ? droneTarget(fit, raw.id, tid) : boosterTarget(fit, raw.id, tid)) : null;
 }
@@ -102,7 +110,13 @@ export function resolveTarget(t, s) {
   const src = live ? { slots: s.slots, drones: s.drones, implants: s.implants, boosters: s.boosters }
                    : { slots: rec.slots, drones: rec.drones, implants: rec.implants, boosters: rec.boosters };
   let item = null;
-  if (t.kind === 'module') item = (src.slots?.[t.sec] ?? []).find(m => m.id === t.slot) ?? null;
+  if (t.kind === 'module' || t.kind === 'charge') item = (src.slots?.[t.sec] ?? []).find(m => m.id === t.slot) ?? null;
+  // A charge is whatever that module has loaded now; `item` stays the module, which holds the slot.
+  if (t.kind === 'charge') {
+    const ammo = item?.ammo ? bareAmmo(item.ammo) : null;
+    if (!ammo) return { status: 'empty', item: null, typeID: t.typeID, name: null, live };
+    return { status: 'ok', item, typeID: tidByName(ammo) ?? t.typeID, name: ammo, live };
+  }
   if (t.kind === 'drone') item = (src.drones ?? []).find(d => d.id === t.id) ?? null;
   if (t.kind === 'booster') item = (src.boosters ?? []).find(b => b.id === t.id) ?? null;
   if (t.kind === 'implant') item = (src.implants ?? []).find(i => i.slot === t.slot) ?? null;
@@ -124,6 +138,7 @@ export function inspectorTabs(t, r, { mutable = false, takesCharges = false, rah
   // on the menu too (Owen, 2026-11-05). What only that tab had — a Reactive Armor Hardener's
   // adaptation — keeps a tab of its own.
   if (t.kind === 'module' && editable && t.sec !== 'subsystems') { if (rah) tabs.push('rah'); if (takesCharges) tabs.push('charge'); }
+  if (t.kind === 'charge') return ['info'];
   tabs.push('info', 'variations');
   if ((t.kind === 'module' || t.kind === 'drone') && editable && (mutable || r.item?.mutaplasmid)) tabs.push('mutate');
   return tabs;

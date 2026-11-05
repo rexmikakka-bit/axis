@@ -261,9 +261,21 @@ export function snapResize(layout, id, r, edges, dx, dy, opts = {}) {
 }
 
 /**
+ * Where a window is DRAWN in a `viewW` x `viewH` view: pulled in far enough that RESCUE_STRIP px of
+ * its title bar is visible, without touching the saved rect, so the window goes back to where it was
+ * put when the view grows again. For the inspector layer, which does not scroll. A 0 view is no view.
+ */
+export function clampIntoView(w, viewW, viewH) {
+  if (!(viewW > 0 && viewH > 0)) return w;
+  const x = Math.max(0, Math.min(w.x, viewW - RESCUE_STRIP)), y = Math.max(0, Math.min(w.y, viewH - TITLE_H));
+  return x === w.x && y === w.y ? w : { ...w, x, y };
+}
+
+/**
  * Pull every docked, open window back far enough that RESCUE_STRIP px of its title bar is inside a
- * `viewW` x `viewH` workspace. Run on load, on a viewport resize and after a preset — never during a
- * drag. Returns the same object when nothing moved.
+ * `viewW` x `viewH` workspace, as a saved change. NOT run on resize, load or a preset any more (see
+ * Workspace.jsx): it is kept for an explicit "bring my windows back" action. Returns the same object
+ * when nothing moved.
  */
 export function rescue(layout, viewW, viewH) {
   if (!(viewW > 0 && viewH > 0)) return layout;

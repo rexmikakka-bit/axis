@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import DeskWindow from "./DeskWindow.jsx";
-import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, rescue, canvasSize,
+import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, clampIntoView, canvasSize,
          readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat,
          renameNamed, overwriteNamed, deleteNamed, setPresetHidden } from "./layout.js";
 import { ContextMenu } from "./ContextMenu.jsx";
@@ -82,12 +82,21 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   }), []);
   const layoutRef = useRef(layout); layoutRef.current = layout;
 
-  // ── Off-screen rescue: on load, on a viewport resize, and after a preset ──────────────────────
+  // ── Resizing the program window never moves a window ─────────────────────────────────────────
+  // It used to: an off-screen "rescue" ran on every resize (and on load, and after a preset) and
+  // WROTE each window back inside the new edge, so shrinking the window and growing it again left an
+  // arrangement squashed to the left — and Lock layout, which only stops your own drags, could not
+  // stop it (Owen, 2026-11-05). The workspace scrolls, so a window past the edge is still in reach and
+  // stays exactly where it was put. Only the inspector layer, which does not scroll, needs keeping in
+  // view, and that is done where it is DRAWN (clampIntoView below), never by changing the saved rect.
   const wsRef = useRef(null);
-  const doRescue = useCallback(() => {
-    const el = wsRef.current; if (!el) return;
-    setLayout(l => rescue(l, el.clientWidth, el.clientHeight));
-  }, [setLayout]);
+  const [view, setView] = useState({ w: 0, h: 0 });
+  const viewRef = useRef(view); viewRef.current = view;
+  useLayoutEffect(() => {
+    const el = wsRef.current; if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(([e]) => setView({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el); return () => ro.disconnect();
+  }, []);
   useLayoutEffect(() => {
     // An untouched built-in preset (first launch, or nothing moved since) is fitted to this
     // workspace's height; anything the user arranged is left exactly where they put it.
@@ -96,12 +105,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
       // From the preset itself, not s.windows: StrictMode runs this twice, and scaling the already
       // scaled layout again squeezed it twice over. Inspector windows ride along untouched.
       setState(s => PRESETS.some(p => p.id === s.preset) ? { ...s, windows: { ...fitToHeight(presetLayout(s.preset), el.clientHeight), ...floatsOf(s.windows) } } : s);
-    doRescue();
-  }, [doRescue]);   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    window.addEventListener("resize", doRescue);
-    return () => window.removeEventListener("resize", doRescue);
-  }, [doRescue]);
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Window operations ─────────────────────────────────────────────────────────────────────────
   const focus = useCallback((id) => setLayout(l => bringToFront(l, id)), [setLayout]);
@@ -127,7 +131,9 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   // the start rect would find it already gone on the second run.
   // Moving a workspace window means the layout is no longer the preset; moving an inspector does not.
   const dockedEdit = (id) => layoutRef.current[id]?.float ? undefined : { preset: null };
-  const onDragStart = useCallback((id) => { dragStart.current[id] = { ...layoutRef.current[id] }; }, []);
+  // An inspector is dragged from where it is DRAWN (clamped into view), not its saved spot off-screen.
+  const onDragStart = useCallback((id) => { const w = layoutRef.current[id];
+    dragStart.current[id] = w?.float ? { ...clampIntoView(w, viewRef.current.w, viewRef.current.h) } : { ...w }; }, []);
   const onDrag = useCallback((id, kind, edges, dx, dy) => setLayout(l => {
     const s = dragStart.current[id]; if (!s) return l;
     const r = kind === "move" ? { ...snapMove(l, id, s.x + dx, s.y + dy, optsRef.current), w: s.w, h: s.h }
@@ -151,11 +157,9 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   const applyPreset = (id) => {
     const h = wsRef.current?.clientHeight;
     setState(s => ({ ...s, windows: { ...fitToHeight(presetLayout(id), h), ...floatsOf(s.windows) }, preset: id }));
-    requestAnimationFrame(doRescue);
   };
   const applyNamed = (name) => {
     setState(s => s.named[name] ? { ...s, windows: { ...dockedOf(cleanLayout(s.named[name])), ...floatsOf(s.windows) }, preset: `named:${name}` } : s);
-    requestAnimationFrame(doRescue);
   };
   const [naming, setNaming] = useState(null);   // the "Save layout as…" field's text, or null when closed
   const saveNamed = () => {
@@ -218,7 +222,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
         </div>
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 2 }}>
           {floats.map(([id, g]) => shown(g)
-            ? <div key={id} style={{ pointerEvents: "auto" }}>{win(id, g, g.z === floatTop, windowTitle?.(id) ?? id)}</div>
+            ? <div key={id} style={{ pointerEvents: "auto" }}>{win(id, clampIntoView(g, view.w, view.h), g.z === floatTop, windowTitle?.(id) ?? id)}</div>
             : null)}
         </div>
       </div>
