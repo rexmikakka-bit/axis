@@ -22,6 +22,7 @@ import ExportDialog from "./ExportDialog.jsx";
 import CargoPanel from "./Cargo.jsx";
 import GraphsPanel from "./Graphs.jsx";
 import PricePanel from "./Price.jsx";
+import ImplantsPanel from "./Implants.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS } from "./layout.js";
 import { useSessionSync } from "./sync.js";
@@ -88,7 +89,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "targeting": return <TargetingPanel s={s} cs={cs} />;
       case "cargo": return <CargoPanel s={s} capacity={cs?.cargoCapacity ?? stats.snapshot?.cargoCapacity ?? 0} />;
       case "drones": return <DronesWindow s={s} stats={stats} />;
-      case "implants": return <ImplantsWindow s={s} />;
+      case "implants": return <ImplantsPanel s={s} />;
       case "projected": return <ProjectedPanel s={s} jamTarget={{ strength: cs?.sensorStrength ?? 0, type: cs?.sensorType ?? "", resist: s.projectedEffects?.ecmResist ?? 1 }} />;
       case "command": return <CommandPanel s={s} />;
       case "boosters": return <BoostersPanel s={s} />;
