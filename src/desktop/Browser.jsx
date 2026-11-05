@@ -11,7 +11,10 @@ import { metaOf, META_COLORS, compareForBrowser } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
 import { getCachedPrices } from "../prices.js";
-import { resourceColor } from "../components/ui.jsx";
+import { FitCost, fitCostParts } from "../components/ui.jsx";
+import { variantCostFits, fitCostRatioOf } from "../lib/core.js";
+import { fetchPrices } from "../prices.js";
+import { useHeadroom } from "./Inspector.jsx";
 import Menu from "./Menu.jsx";
 import { ContextMenu, useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -115,7 +118,9 @@ const isk = (n) => n == null ? "" : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >=
 
 // Click selects, double click (or Enter) does the item's own action, right click lists every place
 // it can go; drag it onto a window to put it there. `actions` is [{label, onSelect}], primary first.
-function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind }) {
+// A module's fitting cost is the phone's (ui.jsx FitCost: the PG and CPU glyphs, a red figure the fit
+// cannot afford) with "won't fit" spelled out beside it; the price sits bottom right.
+function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind, headroom }) {
   const a = TYPES[String(mod.typeID)]?.a ?? {};
   const meta = metaOf(mod.typeID, mod.meta);
   const primary = actions[0];
@@ -132,19 +137,22 @@ function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind }) {
                borderBottom: `1px solid ${C.border}99` }}>
       <img className="eve-icon" src={eveIcon(mod.typeID, 32)} width={16} height={16} alt="" style={{ gridRow: "1 / 3", alignSelf: "center" }} onError={e => { e.target.style.visibility = "hidden"; }} />
       <span style={{ fontSize: 13.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", gridColumn: "2 / 4" }}>{mod.name}</span>
-      <span style={{ fontSize: 12, color: C.textMid, display: "flex", gap: 8, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontSize: 12, color: C.textMid, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0 8px", minWidth: 0, fontVariantNumeric: "tabular-nums" }}>
         {kind && kind !== "module" && kind !== "cargo" && <span>{t(KIND_LABEL[kind])}</span>}
         {(kind === "module" || kind === "charge" || kind === "drone" || kind === "fighter") && <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>}
         {kind === "cargo" && mod.vol != null && <span>{+(+mod.vol).toFixed(2)} m³</span>}
-        {kind === "module" && a.cpu != null && <span style={{ color: resourceColor("cpu") }}>{+(+a.cpu).toFixed(1)} tf</span>}
-        {kind === "module" && a.power != null && <span style={{ color: resourceColor("pg") }}>{+(+a.power).toFixed(1)} MW</span>}
+        {/* desk-type: the phone glyph line at desktop type, no bold at this size (kit.jsx). */}
+        {kind === "module" && <span className="desk-type" style={{ display: "inline-flex" }}><FitCost item={mod} headroom={headroom} size={11} /></span>}
+        {kind === "module" && headroom && variantCostFits(fitCostParts(mod, mod.mutations), { cpu: 0, pg: 0, calib: 0 }, headroom, fitCostRatioOf(headroom, mod.typeID)) === false
+          && <span style={{ color: C.danger, whiteSpace: "nowrap" }}>{t("won't fit")}</span>}
       </span>
-      <span style={{ fontSize: 12, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{isk(price)}</span>
+      <span style={{ fontSize: 12, color: C.textMid, textAlign: "right", alignSelf: "end", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{isk(price)}</span>
     </div>
   );
 }
 
-function MarketPane({ s, ship, adderRef, remoteAdd }) {
+function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
+  const headroom = useHeadroom(s, ship, cs);
   const isStructure = (TYPES[ship?.typeID]?.c ?? TYPES[ship?.typeID]?.category) === 65;
   // null = no rack: everything. Remembered, like the window's other choices.
   const [rack, setRackState] = useState(() => { try { const v = localStorage.getItem(RACK_KEY); return v === "all" ? null : v || null; } catch { return null; } });
@@ -161,8 +169,11 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
   const abyssal = rack === "abyssal" && !isStructure;
   const rackTree = useMarketTree(rack && rack !== "abyssal" ? rack : "high", isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
   const tree = rack ? rackTree : marketEverything();
+  // Prices for what is on screen, fetched as the list changes (the shared cache answers what it has at
+  // once); nothing is fetched for the whole tree.
   const prices = getCachedPrices(s.priceHub, s.priceSource);
-  const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
+  const [fetched, setFetched] = useState(() => new Map());
+  const priceOf = (id) => fetched.get(Number(id)) ?? fetched.get(String(id)) ?? prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
 
   const find = (nodes, id) => { for (const n of nodes) { if (n.id === id) return n; const f = find(n.children ?? [], id); if (f) return f; } return null; };
   const q = search.trim().toLowerCase();
@@ -174,6 +185,14 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
     ? (jargonSearch(q, rack ? allMods(tree) : allItems()) ?? []).slice(0, 200)
     : (selected ? (rack ? find(tree, selected)?.mods ?? [] : [...(find(tree, selected)?.mods ?? [])].sort(compareForBrowser)) : []);
 
+  const listedIds = items.map(m => m.typeID).filter(Boolean);
+  const listedKey = listedIds.join(",");
+  useEffect(() => {
+    if (!listedIds.length) return;
+    let live = true;
+    fetchPrices(listedIds, s.priceHub, s.priceSource).then(m => { if (live && m) setFetched(prev => { const next = new Map(prev); for (const [k, v] of m) next.set(Number(k), v); return next; }); }).catch(() => {});
+    return () => { live = false; };
+  }, [listedKey, s.priceHub, s.priceSource]);   // eslint-disable-line react-hooks/exhaustive-deps
   const fit = (mod) => {
     if (!ship) return;
     if (adderRef?.current) return adderRef.current(rack, mod);
@@ -232,7 +251,7 @@ function MarketPane({ s, ship, adderRef, remoteAdd }) {
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
           ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} actions={actionsFor(m)} onInfo={setInfo} rowProps={rs.rowProps} rack={rack}
-              kind={rack ? "module" : itemKind(m).kind} />)
+              kind={rack ? "module" : itemKind(m).kind} headroom={headroom} />)
           : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? (rack ? t("No modules found") : t("Nothing found")) : t("Pick a category above.")}</div>}
       </div>
       </>}
@@ -367,7 +386,7 @@ function ShipsPane({ s }) {
 }
 
 // `modeRequest` ({mode, n}): switch to that mode now — the header's "+" asks for Ships.
-export default function DeskBrowser({ s, ship, adderRef, remoteAdd, modeRequest }) {
+export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequest }) {
   const [mode, setMode] = useState("ships");
   useEffect(() => { if (modeRequest?.mode) setMode(modeRequest.mode); }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
@@ -379,7 +398,7 @@ export default function DeskBrowser({ s, ship, adderRef, remoteAdd, modeRequest 
                      background: mode === id ? C.accentLight : "transparent", color: mode === id ? C.accent : C.textMid }}>{label}</button>
         ))}
       </div>
-      {mode === "market" ? <MarketPane s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} /> : <ShipsPane s={s} />}
+      {mode === "market" ? <MarketPane s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} /> : <ShipsPane s={s} />}
     </div>
   );
 }

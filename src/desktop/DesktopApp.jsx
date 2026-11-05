@@ -135,7 +135,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     if (INSPECTOR_WINDOWS.has(id)) return <InspectorView s={s} ship={ship} cs={cs} target={selection} only={id} />;
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
-      case "browser": return <DeskBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} modeRequest={browserMode} />;
+      case "browser": return <DeskBrowser s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} modeRequest={browserMode} />;
       case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} />;
       case "graphs": return <GraphsPanel s={s} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;

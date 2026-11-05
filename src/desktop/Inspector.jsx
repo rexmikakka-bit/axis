@@ -31,7 +31,9 @@ const Bare = ({ children }) => <>{children}</>;
 const noop = () => {};
 
 /** Fitting headroom for the Variations table, as FitTab builds it, with the probe pass on demand. */
-function useHeadroom(s, ship, cs) {
+// The fit's room left for one more module, in the shape FitCost / variantCostFits read — also the
+// Browser's, for its "won't fit" marks.
+export function useHeadroom(s, ship, cs) {
   const cache = useRef(null);
   return useMemo(() => cs && ship ? {
     pg: { used: cs.pgUsed ?? 0, total: cs.pgTotal ?? 0 }, cpu: { used: cs.cpuUsed ?? 0, total: cs.cpuTotal ?? 0 },
