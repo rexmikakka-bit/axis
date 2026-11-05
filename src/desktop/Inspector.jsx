@@ -150,7 +150,8 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
           ))}
         </div>
       )}
-      <div style={{ flex: 1, minHeight: 0, overflow: cur === "variations" ? "hidden" : "auto", lineHeight: 1.3 }}>{body()}</div>
+      {/* desk-type: the hosted phone panels at desktop type sizes (kit.jsx). Variations is native. */}
+      <div className={cur === "variations" ? undefined : "desk-type"} style={{ flex: 1, minHeight: 0, overflow: cur === "variations" ? "hidden" : "auto", lineHeight: 1.3 }}>{body()}</div>
     </div>
   );
 }

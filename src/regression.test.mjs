@@ -9008,6 +9008,9 @@ Nanofiber Internal Structure II
   const base = L.presetLayout('default');
   const a = L.openFloat(base, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 1 });
   check('insp', 'float: opens raised above every window', a.layout[a.id].z, L.topZ(base) + 1, 0);
+  const mid = L.openFloat(base, { target: tm, tab: 'info', key: 'mid' }, { seq: 9, view: { w: 1600, h: 1000 } }).layout;
+  const mw = Object.values(L.floatsOf(mid))[0];
+  check('insp', 'float: opens near the middle of the view, not at an edge', Math.abs(mw.x + mw.w / 2 - 800) <= 100 && Math.abs(mw.y + mw.h / 2 - 500) <= 100 ? 1 : 0, 1, 0);
   const b = L.openFloat(a.layout, { target: tm, tab: 'variations', key: I.targetKey(tm) }, { seq: 2 });
   check('insp', 'float: the same item reuses its window and switches tab', `${b.id === a.id}:${b.layout[a.id].tab}`, 'true:variations');
   const c = L.openFloat(a.layout, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 3, fresh: true });

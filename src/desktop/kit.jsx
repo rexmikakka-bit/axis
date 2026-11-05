@@ -123,4 +123,15 @@ export const deskCss = () => `
   *:hover::-webkit-scrollbar-thumb { background-color: ${C.borderStrong}; }
   *::-webkit-scrollbar-thumb:hover { background-color: ${C.textMute}; }
   *::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
-`;
+${PHONE_TYPE_CSS}`;
+
+// The phone panels an item window hosts (ItemInfoPanel and its modifier breakdowns, the charge and
+// adaptation tabs, the mutaplasmid editor) set their type inline at phone sizes, 7–13 px, often bold.
+// Inside \`.desk-type\` each of those sizes is lifted to the desktop scale and bold below 13 px is
+// eased to 500 (Owen: larger text, no bold at small sizes). An inline style can only be outranked by
+// !important, and matching on the serialised style is what keeps the phone files untouched. A size
+// not in the map is left as it is.
+const PHONE_SIZES = { 7: 10, 8: 10.5, 9: 11.5, 10: 12, 11: 12.5, 12: 13, 13: 13.5 };
+const PHONE_TYPE_CSS = Object.entries(PHONE_SIZES).map(([from, to]) =>
+  `.desk-type [style*="font-size: ${from}px"] { font-size: ${to}px !important; }` +
+  [600, 700, 800].map(w => `.desk-type [style*="font-size: ${from}px"][style*="font-weight: ${w}"]`).join(",") + ` { font-weight: 500 !important; }`).join("\n");

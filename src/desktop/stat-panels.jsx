@@ -144,8 +144,14 @@ export function TargetingPanel({ s, cs }) {
  * the ancillary clip, the resist table, then peak and sustained rep rates. EHP is weighted by the
  * picked damage profile exactly as the phone weights it (ehpForProfile), and rep rates fold in
  * incoming remote reps the same way.
+ *
+ * One HP column, not two: click its header (or the total) to switch it between EHP and raw HP.
+ * Remembered, like the Resources window's remaining/used switch.
  */
+const RAW_KEY = "axis_desk_defraw";
 export function DefensePanel({ s, cs, onPickProfile }) {
+  const [raw, setRaw] = useState(() => { try { return localStorage.getItem(RAW_KEY) === "1"; } catch { return false; } });
+  const flipRaw = () => setRaw(v => { try { localStorage.setItem(RAW_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
   if (!cs) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const p = s.dmgProfile?.p ?? [0.25, 0.25, 0.25, 0.25];
   const mult = (res) => 1 / Math.max(1e-4, p[0] * (1 - (res?.em ?? 0) / 100) + p[1] * (1 - (res?.th ?? 0) / 100) + p[2] * (1 - (res?.kin ?? 0) / 100) + p[3] * (1 - (res?.exp ?? 0) / 100));
@@ -153,10 +159,12 @@ export function DefensePanel({ s, cs, onPickProfile }) {
   const layers = [
     ["shield", t("Shield"), cs.shieldHP ?? 0], ["armor", t("Armor"), cs.armorHP ?? 0], ["hull", t("Hull"), cs.hullHP ?? 0],
   ].map(([k, label, hp]) => ({ k, label, hp, res: r[k] ?? {}, m: mult(r[k]), ehp: hp * mult(r[k]) }));
-  const total = layers.reduce((a, l) => a + l.ehp, 0);
+  const total = layers.reduce((a, l) => a + (raw ? l.hp : l.ehp), 0);
   const clip = cs.ancilClipEHP ?? 0;
   const pct = (v) => (v ?? 0).toFixed(1);
-  const cols = "56px repeat(4, minmax(0,1fr)) 56px 60px 48px";
+  const cols = "56px repeat(4, minmax(0,1fr)) 64px 48px";
+  const flipTitle = raw ? t("Raw hit points. Click for EHP against {profile}", { profile: s.dmgProfile?.name ?? "Uniform" }) : t("Effective HP against {profile}. Click for raw hit points", { profile: s.dmgProfile?.name ?? "Uniform" });
+  const flipBtn = { padding: 0, border: "none", background: "none", cursor: "pointer", font: "inherit", letterSpacing: "inherit", textTransform: "inherit" };
   const toEhp = (hps, k) => hps * mult(r[k]);
   const inc = { shield: toEhp(s.projectedReps?.shield ?? 0, "shield"), armor: toEhp(s.projectedReps?.armor ?? 0, "armor"), hull: toEhp(s.projectedReps?.hull ?? 0, "hull") };
   const peak = {
@@ -176,19 +184,28 @@ export function DefensePanel({ s, cs, onPickProfile }) {
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px 6px" }}>
-        <span style={{ fontSize: TYPE.label, color: C.textMid }}>{t("Total EHP")}</span>
-        <span style={{ fontSize: 15, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }} title={Math.round(total).toLocaleString()}>{fmtN(total)}</span>
+        <button type="button" onClick={flipRaw} title={flipTitle} style={{ ...flipBtn, display: "inline-flex", alignItems: "baseline", gap: 10 }}>
+          <span style={{ fontSize: TYPE.label, color: C.textMid }}>{raw ? t("Total HP") : t("Total EHP")}</span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }} title={Math.round(total).toLocaleString()}>{fmtN(total)}</span>
+        </button>
         {clip > 0 && <span style={{ fontSize: TYPE.label, color: C.high }} title={t("Ancillary booster clip — EHP you get once per reload")}>+{fmtN(clip)} {t("ancil.")}</span>}
         <span style={{ flex: 1 }} />
         <button type="button" onClick={onPickProfile}
-          style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12.5, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.text }}>
-          {t("Incoming")}: {s.dmgProfile?.name ?? "Uniform"}
+          style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12.5, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.text,
+                   display: "inline-flex", alignItems: "center", gap: 7 }}>
+          {/* The phone's profile dots (tabs.jsx StatsTab): one per damage type, brighter the larger its share. */}
+          <span aria-hidden="true" style={{ display: "inline-flex", gap: 3 }}>
+            {["em", "th", "kin", "exp"].map((k, i) => { const v = p[i] ?? 0;
+              return <span key={k} style={{ width: 6, height: 6, borderRadius: 99, background: DMG[k].color, opacity: v > 0.001 ? 0.4 + v * 0.6 : 0.12 }} />; })}
+          </span>
+          <span>{t("Incoming")}: {s.dmgProfile?.name ?? "Uniform"}</span>
         </button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "end", padding: "2px 12px 4px", fontSize: TYPE.section, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
         <span>{t("Layer")}</span>
         {[["EM", DMG.em.color], ["Th", DMG.th.color], ["Kin", DMG.kin.color], ["Exp", DMG.exp.color]].map(([l, c]) => <span key={l} style={{ color: c }}>{l}</span>)}
-        <span style={{ textAlign: "right" }}>HP</span><span style={{ textAlign: "right" }}>EHP</span><span style={{ textAlign: "right" }}>×</span>
+        <button type="button" onClick={flipRaw} title={flipTitle} aria-pressed={raw}
+          style={{ ...flipBtn, textAlign: "right", color: C.accent }}>{raw ? "HP" : "EHP"} ⇄</button><span style={{ textAlign: "right", textTransform: "none", letterSpacing: 0 }} title={t("Resist multiplier: HP × this = EHP")}>resX</span>
       </div>
       {layers.map(l => (
         <div key={l.k} style={{ display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 38, padding: "0 12px", borderTop: `1px solid ${C.border}99` }}>
@@ -201,8 +218,8 @@ export function DefensePanel({ s, cs, onPickProfile }) {
               </span>
             </span>
           ))}
-          <span style={{ textAlign: "right", fontSize: TYPE.label, color: C.textMid, fontVariantNumeric: "tabular-nums" }} title={Math.round(l.hp).toLocaleString()}>{fmtN(l.hp)}</span>
-          <span style={{ textAlign: "right", fontSize: TYPE.value, color: C.text, fontVariantNumeric: "tabular-nums" }} title={Math.round(l.ehp).toLocaleString()}>{fmtN(l.ehp)}</span>
+          <span style={{ textAlign: "right", fontSize: TYPE.value, color: C.text, fontVariantNumeric: "tabular-nums" }}
+            title={raw ? `${Math.round(l.hp).toLocaleString()} HP · ${Math.round(l.ehp).toLocaleString()} EHP` : `${Math.round(l.ehp).toLocaleString()} EHP · ${Math.round(l.hp).toLocaleString()} HP`}>{fmtN(raw ? l.hp : l.ehp)}</span>
           <span style={{ textAlign: "right", fontSize: TYPE.label, color: C.rig, fontVariantNumeric: "tabular-nums" }} title={t("Resist multiplier — HP × this = EHP against {profile}", { profile: s.dmgProfile?.name ?? "Uniform" })}>{l.m.toFixed(2)}</span>
         </div>
       ))}

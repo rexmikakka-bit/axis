@@ -151,8 +151,8 @@ export const dockedOf = (layout) => pick(layout, (id, w) => !w.float);
 /**
  * `layout` with an inspector on `target` open at `tab` and raised. One window per item: asking again
  * for an item that already has one raises that window and switches its tab, unless `fresh` (Open in
- * a new window), which always adds one. New windows cascade from the top-left of `view` (the visible
- * workspace's size), wrapping before they would leave it. Past MAX_FLOATS the oldest one goes.
+ * a new window), which always adds one. New windows open in the middle of `view` (the visible
+ * workspace's size), where the eye already is, and cascade down-right from there, clamped inside it. Past MAX_FLOATS the oldest one goes.
  * Returns {layout, id}.
  */
 export function openFloat(layout, { target, tab, key }, { view = { w: 1440, h: 900 }, fresh = false, seq = Date.now() } = {}) {
@@ -169,8 +169,9 @@ export function openFloat(layout, { target, tab, key }, { view = { w: 1440, h: 9
   }
   const n = floats.length % 8, step = 28;
   const w = Math.min(FLOAT_W, Math.max(MIN_W, view.w - 2 * GRID)), h = Math.min(FLOAT_H, Math.max(MIN_H, view.h - 2 * GRID));
-  const x = Math.max(GRID, Math.min(view.w - w - GRID, view.w - w - 3 * GRID - n * step));
-  const y = Math.max(GRID, Math.min(view.h - h - GRID, 4 * GRID + n * step));
+  // Started a little up-left of dead centre so the cascade's eight steps stay centred overall.
+  const x = Math.round(Math.max(GRID, Math.min(view.w - w - GRID, (view.w - w) / 2 - 3 * step + n * step)));
+  const y = Math.round(Math.max(GRID, Math.min(view.h - h - GRID, (view.h - h) / 2 - 3 * step + n * step)));
   const id = `${FLOAT_PREFIX}${seq.toString(36)}`;
   return { id, layout: { ...out, [id]: { x, y, w, h, open: true, detached: false, z: topZ(out) + 1, float: true, target, tab, key } } };
 }
