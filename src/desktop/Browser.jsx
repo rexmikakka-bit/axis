@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { TYPES } from "../calc.js";
+import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS, MT_ALL_ITEMS,
          generateEmptySlots, lookupShip } from "../lib/core.js";
@@ -41,15 +41,17 @@ const Caret = ({ open }) => (
   <span aria-hidden="true" style={{ width: 10, flex: "none", fontSize: 9, color: C.textMid, transform: open ? "rotate(90deg)" : "none", transition: "transform .12s" }}>▶</span>
 );
 
-function TreeRow({ depth, open, leaf, selected, icon, label, sub, onClick, onContextMenu, title }) {
+// `iconSize`: market categories keep 16 px; hulls and fits draw their ship at 24, big enough to tell a
+// Rifter from a Breacher at a glance, with the row grown to suit.
+function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub, onClick, onContextMenu, title }) {
   return (
     <div role="treeitem" aria-expanded={leaf ? undefined : open} aria-selected={selected} onClick={onClick} onContextMenu={onContextMenu} title={title}
-      style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 26, padding: `2px 10px 2px ${10 + depth * INDENT}px`, cursor: "pointer",
+      style={{ display: "flex", alignItems: "center", gap: iconSize > 16 ? 8 : 6, minHeight: iconSize > 16 ? iconSize + 8 : 26, padding: `2px 10px 2px ${10 + depth * INDENT}px`, cursor: "pointer",
                background: selected ? C.surfaceAlt : "transparent", boxShadow: selected ? `inset 2px 0 0 ${C.accent}` : "none", fontSize: 13.5 }}
       onMouseEnter={e => { if (!selected) e.currentTarget.style.background = `${C.surfaceAlt}99`; }}
       onMouseLeave={e => { if (!selected) e.currentTarget.style.background = "transparent"; }}>
       {leaf ? <span style={{ width: 10, flex: "none" }} /> : <Caret open={open} />}
-      {icon && <img className="eve-icon" src={icon} width={16} height={16} alt="" style={{ flex: "none" }} onError={e => { e.target.style.visibility = "hidden"; }} />}
+      {icon && <img className="eve-icon" src={icon} width={iconSize} height={iconSize} alt="" style={{ flex: "none", borderRadius: iconSize > 16 ? 4 : 0 }} onError={e => { e.target.style.visibility = "hidden"; }} />}
       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{label}</span>
       {sub && <span style={{ fontSize: 12, color: C.textMid, flex: "none" }}>{sub}</span>}
     </div>
@@ -275,7 +277,7 @@ function ShipsPane({ s }) {
     return (
       <div key={fit.id} style={{ display: "flex", alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <TreeRow depth={depth} leaf selected={on} label={fit.name} onClick={() => s.loadFit(ship, fit.name)}
+          <TreeRow depth={depth} leaf selected={on} label={fit.name} icon={eveIcon(tidByName(ship), 32)} iconSize={24} onClick={() => s.loadFit(ship, fit.name)}
             onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more")} />
         </div>
         <Menu label="⋯" ariaLabel={t("Fit actions")} buttonStyle={{ height: 22, padding: "0 6px", color: C.textMid }} items={actions} />
@@ -286,7 +288,7 @@ function ShipsPane({ s }) {
     const key = `ship:${sh.name}`, fits = fitsDB[sh.name] ?? [], isOpen = open.has(key);
     return (
       <div key={key} role="group">
-        <TreeRow depth={depth} open={isOpen} label={sh.name} icon={eveIcon(sh.typeID, 32)} sub={fits.length ? String(fits.length) : null} onClick={() => toggle(key)}
+        <TreeRow depth={depth} open={isOpen} label={sh.name} icon={eveIcon(sh.typeID, 32)} iconSize={24} sub={fits.length ? String(fits.length) : null} onClick={() => toggle(key)}
           onContextMenu={e => openCtx(e, [{ label: t("New Fit"), onSelect: () => createFit(sh.name) }, { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(key) }])} />
         {isOpen && <>
           {fits.map(f => fitRow(sh.name, f, depth + 1))}
