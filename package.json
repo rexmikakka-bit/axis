@@ -34,6 +34,7 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
     "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-http": "^2.8.3",
     "html2canvas": "^1.4.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"

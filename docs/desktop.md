@@ -109,10 +109,12 @@ Done:
   tabs.
 - **Pop-out:** real OS windows, kept in sync with the main window.
 - **Notes:** a desktop-only window saving free text as `notes` on the fit record.
-- **Tauri:** the shell is scaffolded (`src-tauri/`).
+- **Tauri:** the shell builds and runs (`src-tauri/`). MutaMarket sends no CORS headers, so its
+  requests go through `tauri-plugin-http` (scoped to `https://mutamarket.com/api/*` in
+  `capabilities/default.json`), injected at boot by `setMutaMarketFetch` in `desktop/main.jsx`.
+  The dev servers use Vite's `/mutamarket-api` proxy instead.
 
 Not done yet:
-- **Tauri never built:** Rust wasn't installed. First run: `npm run tauri dev`.
 - **Untested under Tauri:** pop-out. If Tauri doesn't honour `window.open`, switch it to
   `@tauri-apps/api`'s `WebviewWindow`. BroadcastChannel should work across Tauri windows (one
   origin, one WebView2 environment).

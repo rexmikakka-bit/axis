@@ -6,6 +6,8 @@ import DesktopApp from './DesktopApp.jsx'
 import { migrateLocalStorage } from '../lib/storage-migrate.js'
 import { FITS_KEY, initFitsStore, replaceFitsDB } from '../lib/fits-store.js'
 import { initLocale } from '../lib/i18n.js'
+import { setMutaMarketFetch } from '../lib/mutamarket-client.js'
+import { IS_TAURI } from './os-window.js'
 
 // The desktop app's boot. Same order as src/main.jsx and for the same reasons (read there): the fit
 // library has to be in memory before the first render, migrations run with it injected, and the
@@ -31,6 +33,10 @@ const mount = () => createRoot(document.getElementById('root')).render(
     }
   } catch (e) {
     console.error('boot: storage init failed', e)
+  }
+  // MutaMarket sends no CORS headers; in the Tauri shell its requests go through the HTTP plugin.
+  if (IS_TAURI) {
+    try { setMutaMarketFetch((await import('@tauri-apps/plugin-http')).fetch) } catch (e) { console.error('boot: http plugin unavailable', e) }
   }
   await initLocale()
   mount()

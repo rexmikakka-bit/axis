@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window and every popped-out window (satellite-<id>): create, focus and close windows for pop-out",
+  "description": "The main window and every popped-out window (satellite-<id>): create, focus and close windows for pop-out; MutaMarket API requests from Rust (no CORS there)",
   "windows": [
     "main",
     "satellite-*"
@@ -10,6 +10,10 @@
     "core:default",
     "core:webview:allow-create-webview-window",
     "core:window:allow-close",
-    "core:window:allow-set-focus"
+    "core:window:allow-set-focus",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "https://mutamarket.com/api/*" }]
+    }
   ]
 }
