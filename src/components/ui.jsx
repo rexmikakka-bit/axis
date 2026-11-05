@@ -2594,9 +2594,11 @@ function MutaplasmidEditor({mod,onUpdateMod}){
 // `chargeStats` is calc.js' effective-charge map for THIS slot — see `fittedChargeStats` there. Only
 // the loaded charge gets it: the ammo list offers every compatible charge, but the others aren't on
 // the fit, so type data alone is the honest answer for them.
-function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onReplaceMod,onRemove,onDuplicate,onFillHardpoints,fillCount=0,resourceHeadroom,engineItem,chargeStats,usedAbyssalIds}){
+// `Frame` / `initialTab` (desktop only): draw the same tabs inside the desktop's dialog instead of a
+// bottom sheet, opened on the tab a right-click menu asked for. The phone passes neither.
+function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onReplaceMod,onRemove,onDuplicate,onFillHardpoints,fillCount=0,resourceHeadroom,engineItem,chargeStats,usedAbyssalIds,Frame=BottomSheet,initialTab="state"}){
   const _hasMuta=(MUTA_BY_TYPE[mod.typeID]??MUTA_BY_TYPE[String(mod.typeID)]??[]).length>0||mod.mutaplasmid;
-  const[tab,setTab]=useState("state");
+  const[tab,setTab]=useState(initialTab);
   const[chargeInfo,setChargeInfo]=useState(null);
   // Ammo picker is a two-step drill-down (family, e.g. "Multifrequency S" -> variant, e.g. "Imperial
   // Navy Multifrequency S") rather than one long list of every tier/faction line at once — mirrors
@@ -2628,7 +2630,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
   const metaColor={T1:C.textMid,T2:C.accent,Deadspace:C.rig,Named:C.rig,Storyline:C.warning,Faction:C.danger,Officer:"#f0abfc"};
   const modData=moduleByName(mod.name);
   return(<>
-    <BottomSheet title={mod.name} onClose={onClose} height="78vh">
+    <Frame title={mod.name} onClose={onClose} height="78vh">
       <div style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
         {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:tab===tb?C.accent:C.textMute,borderBottom:tab===tb?`2px solid ${C.accent}`:"2px solid transparent"}}>{tabLabel[tb]}</button>)}
       </div>
@@ -2817,7 +2819,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
             scroll container — typing into a mutaplasmid's value box left it under the keyboard. */}
         {tab==="mutate"&&<MutaplasmidEditor mod={mod} onUpdateMod={next=>(onUpdateModLive||onUpdateMod)({...next,abyssalItemId:undefined})}/>}
       </div>
-    </BottomSheet>
+    </Frame>
     {/* The ammo list offers every compatible charge, but only the LOADED one exists on the fit — so
         only that one gets the engine item and the current/base columns. Tapping any other shows its
         type data alone, which is the honest answer: it isn't loaded, so it has no current value. */}

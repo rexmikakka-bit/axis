@@ -344,7 +344,7 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 // `TableView` (desktop only): a component that draws the racks in place of this tab's own rows and
 // resource strip. It gets `api` — the rows and every handler they need — while this tab keeps ALL
 // the logic, menus and sheets, so the desktop table edits a fit exactly as the phone does.
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null}){
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null,MenuFrame=null}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
   const _cs=(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{};
@@ -870,7 +870,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
         </div>
       )}
       {TableView?<TableView api={{SECS,getDisplayRows,slots,setSlots,ship,cs:_cs,engineStatsBySlotID,StateDot,gestureMemory,validStatesFor,
-          openMenu:(secKey,modId)=>setModuleMenu({secKey,modId}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),
+          openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
           openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
           setRowState,removeMod,duplicateMod,duplicateRoom,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
           undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
@@ -1140,7 +1140,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           </div>);
         })}
       </div>}
-      {menuMod&&<ModuleMenu mod={menuMod} groupCount={menuRow?.count??1} onClose={()=>setModuleMenu(null)} onUpdateMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u)} onUpdateModLive={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,true)} onReplaceMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,false,true,menuRow?.groupIds)} onRemove={()=>removeMod(moduleMenu.secKey,moduleMenu.modId,menuRow?.groupIds)} onDuplicate={duplicateRoom(moduleMenu.secKey,menuMod)>0?n=>duplicateMod(moduleMenu.secKey,menuMod,n):null} fillCount={hardpointRoom(moduleMenu.secKey,menuMod)} onFillHardpoints={()=>fillHardpoints(moduleMenu.secKey,menuMod)} resourceHeadroom={resourceHeadroom} engineItem={_cs.fittedItems?.get(moduleMenu.modId)} chargeStats={_cs.fittedChargeStats?.get(moduleMenu.modId)} usedAbyssalIds={fittedAbyssalIds(slots,menuMod.id)}/>}
+      {menuMod&&<ModuleMenu key={`${moduleMenu.modId}:${moduleMenu.tab??""}`} {...(MenuFrame?{Frame:MenuFrame,initialTab:moduleMenu.tab??"state"}:{})} mod={menuMod} groupCount={menuRow?.count??1} onClose={()=>setModuleMenu(null)} onUpdateMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u)} onUpdateModLive={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,true)} onReplaceMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,false,true,menuRow?.groupIds)} onRemove={()=>removeMod(moduleMenu.secKey,moduleMenu.modId,menuRow?.groupIds)} onDuplicate={duplicateRoom(moduleMenu.secKey,menuMod)>0?n=>duplicateMod(moduleMenu.secKey,menuMod,n):null} fillCount={hardpointRoom(moduleMenu.secKey,menuMod)} onFillHardpoints={()=>fillHardpoints(moduleMenu.secKey,menuMod)} resourceHeadroom={resourceHeadroom} engineItem={_cs.fittedItems?.get(moduleMenu.modId)} chargeStats={_cs.fittedChargeStats?.get(moduleMenu.modId)} usedAbyssalIds={fittedAbyssalIds(slots,menuMod.id)}/>}
       {/* The single subsystem menu: description AND the rest of the family, with the Variations tab
           doing the swapping that used to need a separate picker. */}
       {subInfo&&<ItemDetailSheet typeID={subInfo.typeID} name={subInfo.name}

@@ -1,8 +1,9 @@
-import { createContext, useContext, useRef } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
-import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges } from "../lib/core.js";
+import { ContextMenu } from "./ContextMenu.jsx";
 import { resourceColor } from "../components/ui.jsx";
 import { getCachedPrices } from "../prices.js";
 
@@ -95,7 +96,65 @@ export function FitTable({ api }) {
   const { hub, source, cols, setCols } = useContext(FitTableConfig);
     const { SECS, getDisplayRows, slots, setSlots, cs, engineStatsBySlotID, validStatesFor,
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
+            removeMod, duplicateMod, duplicateRoom, hardpointRoom, fillHardpoints,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
+
+    // ── Desktop mouse model: left click SELECTS (ctrl/cmd adds or removes one, shift extends within the
+    // rack), double click shows info, right click opens the context menu; Delete removes the
+    // selection, Escape clears it. The phone's tap-opens-the-sheet does not apply here.
+    const [sel, setSel] = useState(() => new Set());
+    const [anchor, setAnchor] = useState(null);
+    const [menu, setMenu] = useState(null);   // {x, y, secKey, row}
+    const rowKey = (secKey, id) => `${secKey}:${id}`;
+    const clickRow = (e, secKey, row, rows) => {
+      const k = rowKey(secKey, row.id);
+      if (e.shiftKey && anchor?.secKey === secKey) {
+        const ids = rows.map(r => r.id), a = ids.indexOf(anchor.id), b = ids.indexOf(row.id);
+        if (a >= 0 && b >= 0) { const [lo, hi] = a < b ? [a, b] : [b, a]; setSel(new Set(rows.slice(lo, hi + 1).filter(r => r.type !== "empty").map(r => rowKey(secKey, r.id)))); return; }
+      }
+      if (e.ctrlKey || e.metaKey) { setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; }); setAnchor({ secKey, id: row.id }); return; }
+      setSel(new Set([k])); setAnchor({ secKey, id: row.id });
+    };
+    // The selected modules, resolved to their rows (a grouped row carries its whole group).
+    const selectedRows = () => SECS.flatMap(sec => getDisplayRows(sec.key).filter(r => r.type !== "empty" && sel.has(rowKey(sec.key, r.id))).map(r => ({ secKey: sec.key, row: r })));
+    const removeSelected = () => { for (const { secKey, row } of selectedRows()) if (secKey !== "subsystems") removeMod(secKey, row.id, row.groupIds); setSel(new Set()); };
+    const onKey = (e) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && sel.size) { e.preventDefault(); removeSelected(); }
+      if (e.key === "Escape") setSel(new Set());
+    };
+    const menuItems = (secKey, row) => {
+      if (row.type === "empty") return [{ label: t("Add module…"), onSelect: () => openEmpty(secKey, row.id) }];
+      if (secKey === "subsystems") return [{ label: t("Change subsystem…"), onSelect: () => openSubsystem(row) }];
+      const src = (slots[secKey] ?? []).find(m => m.id === row.id);
+      const states = validStatesFor(row);
+      const many = sel.size > 1 && sel.has(rowKey(secKey, row.id));
+      const takesCharges = row.type === "weapon" || row.type === "capbooster" || getCompatibleCharges(row).length > 0;
+      const mutable = (MUTA_BY_TYPE[row.typeID] ?? MUTA_BY_TYPE[String(row.typeID)] ?? []).length > 0 || row.mutaplasmid;
+      const ORDER = ["overheated", "active", "online", "offline"];
+      return [
+        { heading: row.count > 1 ? `${row.count}× ${row.name}` : row.name },
+        ...ORDER.filter(st => states.includes(st)).map(st => ({ label: STATE_LABELS[st](), checked: (row.state ?? "online") === st,
+          onSelect: () => setRowState(secKey, row, st), hint: st === "overheated" ? t("right-click dot") : st === "offline" ? t("ctrl-click dot") : undefined })),
+        { divider: true },
+        takesCharges && { label: row.ammo ? t("Change charge…") : t("Load charge…"), onSelect: () => openMenu(secKey, row.id, "charge") },
+        row.ammo && { label: t("Unload charge"), onSelect: () => { const ids = new Set(row.groupIds ?? [row.id]);
+          setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); } },
+        takesCharges && { divider: true },
+        { label: t("Show info…"), hint: t("double-click"), onSelect: () => openMenu(secKey, row.id, "info") },
+        { label: t("Variations…"), onSelect: () => openMenu(secKey, row.id, "variations") },
+        mutable && { label: t("Mutate…"), onSelect: () => openMenu(secKey, row.id, "mutate") },
+        { divider: true },
+        src && duplicateRoom(secKey, src) > 0 && { label: t("Copy to an empty slot"), onSelect: () => duplicateMod(secKey, src, 1) },
+        src && hardpointRoom(secKey, src) > 0 && { label: t("Fill hardpoints ({n})", { n: hardpointRoom(secKey, src) }), onSelect: () => fillHardpoints(secKey, src) },
+        many ? { label: t("Remove {n} selected", { n: selectedRows().length }), hint: "Del", danger: true, onSelect: removeSelected }
+             : { label: row.count > 1 ? t("Remove all {n}", { n: row.count }) : t("Remove"), hint: "Del", danger: true, onSelect: () => removeMod(secKey, row.id, row.groupIds) },
+      ];
+    };
+    const openContext = (e, secKey, row) => {
+      e.preventDefault();
+      if (!sel.has(rowKey(secKey, row.id))) { setSel(new Set([rowKey(secKey, row.id)])); setAnchor({ secKey, id: row.id }); }
+      setMenu({ x: e.clientX, y: e.clientY, secKey, row });
+    };
     const widths = FIT_COLS.map(c => cols?.[c.id] ?? c.w);
     const template = `12px 20px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
     const prices = getCachedPrices(hub, source);
@@ -141,7 +200,8 @@ export function FitTable({ api }) {
           ))}
           <span />
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.secKey, menu.row)} onClose={() => setMenu(null)} />}
+        <div tabIndex={0} onKeyDown={onKey} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
           {SECS.map(sec => {
             const rows = getDisplayRows(sec.key);
             const fitted = (slots[sec.key] ?? []).filter(m => m?.typeID && !m.orphan && m.type !== "empty");
@@ -163,9 +223,11 @@ export function FitTable({ api }) {
                 </div>
                 {rows.map((row, rowIdx) => {
                   if (row.type === "empty") return (
-                    <div key={row.id} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }} onClick={() => openEmpty(sec.key, row.id)}
+                    <div key={row.id} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
+                      onClick={() => setSel(new Set())} onDoubleClick={() => openEmpty(sec.key, row.id)} onContextMenu={e => openContext(e, sec.key, row)}
+                      title={t("Double-click to add a module, or pick one in the Browser's Market")}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
-                               borderBottom: `1px solid ${C.border}99`, cursor: "pointer", color: C.textMid, fontSize: 13 }}>
+                               borderBottom: `1px solid ${C.border}99`, cursor: "default", color: C.textMid, fontSize: 13 }}>
                       <span /><span style={{ textAlign: "center", color: C.borderStrong }}>+</span>
                       <span style={{ gridColumn: "3 / -1" }}>{row.name}</span>
                     </div>
@@ -181,14 +243,18 @@ export function FitTable({ api }) {
                   const isDragSrc = dragUI?.secKey === sec.key && dragUI?.fromIdx === rowIdx;
                   const isDragOver = dragUI?.secKey === sec.key && dragUI?.overIdx === rowIdx && dragUI?.fromIdx !== rowIdx;
                   const charge = row.ammo ? row.ammo.replace(/\s*\(\d+\)$/, "") : null;
+                  const isSel = sel.has(rowKey(sec.key, row.id));
+                  const rowBg = row.orphan ? `${C.danger}14` : isDragOver ? C.accentLight : isSel ? C.accentLight : "transparent";
                   return (
                     <div key={row.rkey || row.id || row.name} ref={el => { rowRefs.current[sec.key + ":" + rowIdx] = el; }}
-                      onClick={() => sec.key === "subsystems" ? openSubsystem(row) : openMenu(sec.key, row.id)} className="no-select"
+                      onClick={ev => clickRow(ev, sec.key, row, rows)} onContextMenu={ev => openContext(ev, sec.key, row)}
+                      onDoubleClick={() => sec.key === "subsystems" ? openSubsystem(row) : openMenu(sec.key, row.id, "info")} className="no-select"
+                      aria-selected={isSel}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
-                               borderBottom: `1px solid ${isDragOver ? C.accent : row.orphan ? C.danger : `${C.border}99`}`, cursor: "pointer",
-                               opacity: isDragSrc ? 0.45 : 1, background: row.orphan ? `${C.danger}14` : isDragOver ? C.accentLight : "transparent" }}
-                      onMouseEnter={ev => { if (!row.orphan && !dragUI) ev.currentTarget.style.background = C.surfaceAlt; }}
-                      onMouseLeave={ev => { if (!row.orphan) ev.currentTarget.style.background = isDragOver ? C.accentLight : "transparent"; }}>
+                               borderBottom: `1px solid ${isDragOver ? C.accent : row.orphan ? C.danger : `${C.border}99`}`, cursor: "default",
+                               opacity: isDragSrc ? 0.45 : 1, background: rowBg, boxShadow: isSel ? `inset 2px 0 0 ${C.accent}` : "none" }}
+                      onMouseEnter={ev => { if (!row.orphan && !dragUI && !isSel) ev.currentTarget.style.background = C.surfaceAlt; }}
+                      onMouseLeave={ev => { ev.currentTarget.style.background = rowBg; }}>
                       <span onClick={ev => ev.stopPropagation()} style={{ display: "flex", justifyContent: "center" }}>
                         {sec.key === "subsystems" ? null
                           : <StateToggle row={row} states={validStatesFor(row)} onSet={st => setRowState(sec.key, row, st)} />}
