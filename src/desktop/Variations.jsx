@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES } from "../calc.js";
@@ -35,6 +35,10 @@ import { TYPE } from "./kit.jsx";
 //
 // `baseline` is the fitted item ({name, typeID, mutations?, mutaplasmid?, abyssalItemId?}) or, for an
 // item that is not fitted (a market row), the item itself — labelled REFERENCE, not FITTED.
+//
+// Too narrow for the table (an item window at its default width), the same rows become CARDS: name
+// and price on top, the chosen attributes in a grid beneath that reflows with the width, so nothing
+// hides behind a horizontal scroll. Sorting moves to a menu and the min/max boxes to a Filters panel.
 
 const SORT_KEY = "axis_desk_varsort", COLS_KEY = "axis_desk_varcols", BARS_KEY = "axis_desk_varbars";
 const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k) ?? "null") ?? d; } catch { return d; } };
@@ -57,8 +61,9 @@ function FilterBox({ k, value, onSet, onAtLeastRef }) {
           style={{ width: 50, height: 20, boxSizing: "border-box", padding: "0 4px", fontSize: 11.5, textAlign: "right", borderRadius: 4,
                    background: C.bg, border: `1px solid ${value?.[side] != null ? C.accent : C.border}`, color: C.text, outline: "none" }} />
       ))}
-      {onAtLeastRef && <button type="button" title={t("No worse than the reference")} aria-label={t("No worse than the reference")} onClick={onAtLeastRef}
-        style={{ width: 18, height: 20, padding: 0, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 11.5 }}>≥</button>}
+      {onAtLeastRef ? <button type="button" title={t("No worse than the reference")} aria-label={t("No worse than the reference")} onClick={onAtLeastRef}
+        style={{ width: 18, height: 20, padding: 0, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 11.5 }}>≥</button>
+        : <span aria-hidden="true" style={{ width: 18, flex: "none" }} />}
     </div>
   );
 }
@@ -73,9 +78,24 @@ function Bar({ span, v }) {
     </div>
   );
 }
-function Delta({ d, better, fmt }) {
+function Delta({ d, better, fmt, inline }) {
   if (d == null || Math.abs(d) < 1e-9) return null;
-  return <div style={{ fontSize: 11.5, color: better == null ? C.textMid : better ? C.success : C.danger }}>{d > 0 ? "+" : "−"}{fmt(Math.abs(d))}</div>;
+  const Tag = inline ? "span" : "div";
+  return <Tag style={{ fontSize: 11.5, color: better == null ? C.textMid : better ? C.success : C.danger }}>{d > 0 ? "+" : "−"}{fmt(Math.abs(d))}</Tag>;
+}
+// The table needs its name column plus roughly this much per value column before it stops fitting.
+const NAME_W = 240, COL_W = 96, CARD_MAX = 680;
+// A callback ref, so it attaches whenever the element appears (the empty state renders none).
+function useWidth() {
+  const ro = useRef(null), [w, setW] = useState(0);
+  useEffect(() => () => ro.current?.disconnect(), []);
+  const ref = useCallback((el) => {
+    ro.current?.disconnect(); ro.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    ro.current = new ResizeObserver(([e]) => setW(e.contentRect.width));
+    ro.current.observe(el);
+  }, []);
+  return [ref, w];
 }
 
 export default function DeskVariations({ typeID, baseline, fitted = true, resourceHeadroom, usedAbyssalIds = new Set(), onSwap, swapLabel, onInspect }) {
@@ -103,6 +123,8 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
   const [sel, setSel] = useState(null);
   const [menu, setMenu] = useState(null);
   const [editSources, setEditSources] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [rootRef, width] = useWidth();
   useEffect(() => { setFilters({}); setQuery(""); setRefKey("fitted"); setSel(null); }, [typeID]);
 
   // ── Data: prices, owned rolls, contracts — exactly the phone's three fetches ─────────────────
@@ -180,9 +202,13 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
     ? { by, dir: cur.dir === "asc" ? "desc" : "asc" }
     : { by, dir: by === "price" || by === "meta" ? "asc" : bestFirstDirection(by, kept.map(r => ({ value: r.values?.[by], typeID: r.typeID })), mutaToDisplay) });
 
+  // A chosen column no variant has a value for (an attribute of the mutaplasmid, not of this item)
+  // says nothing, so it is left out — judged before the filters, so columns don't come and go as you type.
+  const shownCols = visibleCols.filter(k => filters[k] || bySource.some(r => num(r.values?.[k])));
+
   // The range each column spans on screen, for the bars, and which end is the good one.
   const span = {};
-  for (const k of visibleCols) {
+  for (const k of shownCols) {
     const vals = rows.map(r => disp(k, r.values?.[k])).filter(num);
     if (vals.length < 2) continue;
     const lo = Math.min(...vals), hi = Math.max(...vals);
@@ -255,10 +281,60 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
   const fth = { position: "sticky", top: 27, zIndex: 2, background: C.surface, padding: "3px 4px", borderBottom: `1px solid ${C.border}` };
   const sortMark = (k) => activeSort === k ? <span style={{ color: C.accent }}>{sort.dir === "asc" ? " ▲" : " ▼"}</span> : null;
   const filterBox = (k) => <FilterBox k={k} value={filters[k]} onSet={setFilter} onAtLeastRef={k !== "price" && span[k] ? () => atLeastRef(k) : null} />;
+  const cards = width > 0 && width < Math.min(CARD_MAX, NAME_W + COL_W * (shownCols.length + 1));
+  const sortLabel = (k) => k === "meta" ? t("Meta level") : k === "price" ? t("Price") : colLabel(k);
+  const sortItems = ["meta", "price", ...attributes].map(k => ({
+    label: `${sortLabel(k)}${activeSort === k ? (sort.dir === "asc" ? "  ▲" : "  ▼") : ""}`, onSelect: () => sortBy(k) }));
+  const filterKeys = ["price", ...shownCols];
+
+  // The pieces both layouts share: who the row is, and one attribute's value against the reference.
+  const nameBlock = (r, meta, fits, inUse, isRef, maxW) => {
+    const v = r.mod, record = r.record, grade = abyssalGrade(v.mutaplasmid);
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <img className="eve-icon" src={eveIcon(v.typeID, 32)} width={20} height={20} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: r.isBaseline ? C.accent : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: maxW }} title={record?.label || v.name}>
+            {record?.label || v.name}
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 11.5, color: C.textMid, marginTop: 1 }}>
+            <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>
+            {r.isBaseline && <span style={{ color: C.accent }}>{fitted ? t("FITTED") : t("REFERENCE")}</span>}
+            {r.isStockBase && <span>{t("UNMUTATED")}</span>}
+            {!r.isBaseline && isRef && <span style={{ color: C.accent }}>{t("COMPARING")}</span>}
+            {v.mutations && grade && <AbyssalBadge grade={grade} />}
+            {record?.source === MARKET_SOURCE && <span style={{ color: C.success }}>{t("MutaMarket")}{record.contractKind === "bid" ? ` · ${t("BID")}` : ""}{record.contractItems > 1 ? ` · ${t("×{n} ITEMS", { n: record.contractItems })}` : ""}</span>}
+            {record && record.source !== MARKET_SOURCE && <span>{record.favorite ? "★ " : ""}{record.characterName} · {record.location}</span>}
+            {record?.source === MARKET_SOURCE && record.sellerName && <span>{record.sellerName}</span>}
+            {fits === false && <span style={{ color: C.danger }}>{t("won't fit")}</span>}
+            {inUse && <span style={{ color: C.warning }}>{t("Fitted elsewhere in this fit")}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+  const valueOf = (r, k, isRef) => {
+    const raw = r.values?.[k], val = disp(k, raw), rv = disp(k, ref?.values?.[k]);
+    const d = !isRef && val != null && rv != null ? val - rv : null;
+    const better = d == null || Math.abs(d) < 1e-9 ? null : directionOf(k, raw, ref.values[k], r.typeID);
+    return { raw, val, d, better, text: num(raw) ? fmtMutaVal(k, raw) : "—" };
+  };
+  const priceBlock = (r, price, isRef, align = "right") => (
+    <div style={{ textAlign: align }}>
+      <div style={{ color: price != null ? C.text : C.textMid }}>{price != null ? fmtResource(price) : "—"}</div>
+      {!isRef && price != null && refPrice != null && <Delta d={price - refPrice} better={price < refPrice} fmt={fmtResource} />}
+      {r.record?.estimatedValue != null && <div style={{ fontSize: 11, color: C.textMid }} title={t("MutaMarket's estimate")}>~{fmtResource(r.record.estimatedValue)}</div>}
+    </div>
+  );
+  const rowInfo = (r) => ({
+    meta: metaOf(r.mod.typeID, r.mod.meta), price: rowPrice(r), fits: fitsOf(r), isRef: r.key === ref?.key,
+    inUse: !!r.mod.abyssalItemId && usedAbyssalIds.has(r.mod.abyssalItemId) && !r.isBaseline,
+  });
+  const rowEvents = (r) => ({ onClick: () => setSel(r.key), onDoubleClick: () => swap(r), onContextMenu: e => rowMenu(e, r) });
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <style>{`.dv-row:hover td{background:${C.surfaceAlt}}.dv-row.sel td{background:${C.accentLight}}.dv-row.ref td{background:${C.accent}12}`}</style>
+    <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <style>{`.dv-row:hover td,.dv-card:hover{background:${C.surfaceAlt}}.dv-row.sel td,.dv-card.sel{background:${C.accentLight}}.dv-row.ref td,.dv-card.ref{background:${C.accent}12}`}</style>
       {/* Toolbar: what is in the list, then how it is shown. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "8px 10px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("Search name, seller, location")} aria-label={t("Search name, seller, location")}
@@ -271,8 +347,12 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
         </>}
         {resourceHeadroom && chip(fitsOnly, t("Only what fits"), () => setFitsOnly(v => !v))}
         <span style={{ flex: 1 }} />
+        {cards && <Menu label={`${t("Sort")}: ${sortLabel(activeSort)} ${sort.dir === "asc" ? "▲" : "▼"}`} ariaLabel={t("Sort by")} align="right"
+          buttonStyle={{ height: 24, border: `1px solid ${C.borderStrong}`, fontSize: 12, fontWeight: 400, borderRadius: 12 }} items={sortItems} />}
+        {cards && chip(showFilters || Object.keys(filters).length > 0,
+          Object.keys(filters).length ? t("Filters ({n})", { n: Object.keys(filters).length }) : t("Filters"), () => setShowFilters(v => !v))}
         {chip(bars, t("Bars"), () => setBars(v => !v))}
-        <Menu label={`${t("Columns")} ▾`} buttonStyle={{ height: 24, border: `1px solid ${C.borderStrong}`, fontSize: 12, borderRadius: 12 }} align="right"
+        <Menu label={`${t("Columns")} ▾`} buttonStyle={{ height: 24, border: `1px solid ${C.borderStrong}`, fontSize: 12, fontWeight: 400, borderRadius: 12 }} align="right"
           items={attributes.map(k => ({ label: colLabel(k), checked: visibleCols.includes(k), onSelect: () => toggleCol(k), keepOpen: true }))} />
         {Object.keys(filters).length > 0 && <button type="button" onClick={() => setFilters({})}
           style={{ height: 24, padding: "0 8px", borderRadius: 12, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.danger }}>{t("Clear filters")}</button>}
@@ -286,66 +366,83 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
         {marketOn && mstate.truncated && <span>{t("Showing the cheapest listings only — narrow the price range to see the rest.")}</span>}
         {ownedError && <span style={{ color: C.danger }}>{ownedError}</span>}
       </div>
+      {cards && showFilters && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: "4px 14px", padding: "6px 10px 8px",
+                      borderTop: `1px solid ${C.border}`, background: C.surfaceAlt, flex: "none", maxHeight: 180, overflowY: "auto" }}>
+          {filterKeys.map(k => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+              <span title={sortLabel(k)} style={{ flex: 1, minWidth: 0, fontSize: 12, color: filters[k] ? C.accent : C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sortLabel(k)}</span>
+              {filterBox(k)}
+            </div>
+          ))}
+        </div>
+      )}
+      {cards ? (
+        <div role="list" style={{ flex: 1, minHeight: 0, overflow: "auto", borderTop: `1px solid ${C.border}`, fontVariantNumeric: "tabular-nums", lineHeight: 1.25 }}>
+          {rows.map(r => {
+            const { meta, price, fits, isRef, inUse } = rowInfo(r);
+            return (
+              <div role="listitem" key={r.key} className={`dv-card${sel === r.key ? " sel" : ""}${isRef ? " ref" : ""}`} {...rowEvents(r)}
+                style={{ padding: "7px 10px 8px", borderBottom: `1px solid ${C.border}88`, cursor: "default", opacity: fits === false ? 0.6 : 1, fontSize: TYPE.label }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>{nameBlock(r, meta, fits, inUse, isRef, "100%")}</div>
+                  <div style={{ flex: "none", whiteSpace: "nowrap" }}>{priceBlock(r, price, isRef)}</div>
+                </div>
+                {shownCols.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: "5px 12px", marginTop: 6, paddingLeft: 28 }}>
+                    {shownCols.map(k => {
+                      const c = valueOf(r, k, isRef);
+                      return (
+                        <div key={k} style={{ minWidth: 0 }}>
+                          <div title={colLabel(k)} style={{ fontSize: 11, color: activeSort === k ? C.accent : C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(k)}</div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 6, whiteSpace: "nowrap" }}>
+                            <span style={{ color: num(c.raw) ? C.text : C.textMute }}>{c.text}</span>
+                            <Delta d={c.d} better={c.better} fmt={x => fmtMutaDisplay(k, x)} inline />
+                          </div>
+                          {bars && <Bar span={span[k]} v={c.val} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!rows.length && <div style={{ padding: 14, fontSize: TYPE.label, color: C.textMid }}>{t("Nothing matches these filters.")}</div>}
+        </div>
+      ) : (
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", borderTop: `1px solid ${C.border}` }}>
         <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", fontVariantNumeric: "tabular-nums", lineHeight: 1.25 }}>
           <thead>
             <tr>
               <th onClick={() => sortBy("meta")} style={{ ...th, textAlign: "left", left: 0, zIndex: 3, minWidth: 230 }}>{t("Item")}{sortMark("meta")}</th>
               <th onClick={() => sortBy("price")} style={th}>{t("Price")}{sortMark("price")}</th>
-              {visibleCols.map(k => <th key={k} onClick={() => sortBy(k)} title={colLabel(k)} style={th}>{colLabel(k)}{sortMark(k)}</th>)}
+              {shownCols.map(k => <th key={k} onClick={() => sortBy(k)} title={colLabel(k)} style={th}>{colLabel(k)}{sortMark(k)}</th>)}
             </tr>
             <tr>
               <th style={{ ...fth, left: 0, zIndex: 3 }} />
               <th style={fth}>{filterBox("price")}</th>
-              {visibleCols.map(k => <th key={k} style={fth}>{filterBox(k)}</th>)}
+              {shownCols.map(k => <th key={k} style={fth}>{filterBox(k)}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map(r => {
-              const v = r.mod, record = r.record, grade = abyssalGrade(v.mutaplasmid), meta = metaOf(v.typeID, v.meta);
-              const price = rowPrice(r), fits = fitsOf(r);
-              const inUse = !!v.abyssalItemId && usedAbyssalIds.has(v.abyssalItemId) && !r.isBaseline;
-              const isRef = r.key === ref?.key;
+              const { meta, price, fits, isRef, inUse } = rowInfo(r);
               const td = { padding: "5px 8px", borderBottom: `1px solid ${C.border}88`, textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap", fontSize: TYPE.label };
               return (
-                <tr key={r.key} className={`dv-row${sel === r.key ? " sel" : ""}${isRef ? " ref" : ""}`} onClick={() => setSel(r.key)}
-                  onDoubleClick={() => swap(r)} onContextMenu={e => rowMenu(e, r)} style={{ cursor: "default", opacity: fits === false ? 0.6 : 1 }}>
+                <tr key={r.key} className={`dv-row${sel === r.key ? " sel" : ""}${isRef ? " ref" : ""}`} {...rowEvents(r)}
+                  style={{ cursor: "default", opacity: fits === false ? 0.6 : 1 }}>
                   <td style={{ ...td, textAlign: "left", position: "sticky", left: 0, zIndex: 1, background: C.surface, whiteSpace: "normal" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <img className="eve-icon" src={eveIcon(v.typeID, 32)} width={20} height={20} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ color: r.isBaseline ? C.accent : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }} title={record?.label || v.name}>
-                          {record?.label || v.name}
-                        </div>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 11.5, color: C.textMid, marginTop: 1 }}>
-                          <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>
-                          {r.isBaseline && <span style={{ color: C.accent }}>{fitted ? t("FITTED") : t("REFERENCE")}</span>}
-                          {r.isStockBase && <span>{t("UNMUTATED")}</span>}
-                          {!r.isBaseline && isRef && <span style={{ color: C.accent }}>{t("COMPARING")}</span>}
-                          {v.mutations && grade && <AbyssalBadge grade={grade} />}
-                          {record?.source === MARKET_SOURCE && <span style={{ color: C.success }}>{t("MutaMarket")}{record.contractKind === "bid" ? ` · ${t("BID")}` : ""}{record.contractItems > 1 ? ` · ${t("×{n} ITEMS", { n: record.contractItems })}` : ""}</span>}
-                          {record && record.source !== MARKET_SOURCE && <span>{record.favorite ? "★ " : ""}{record.characterName} · {record.location}</span>}
-                          {record?.source === MARKET_SOURCE && record.sellerName && <span>{record.sellerName}</span>}
-                          {fits === false && <span style={{ color: C.danger }}>{t("won't fit")}</span>}
-                          {inUse && <span style={{ color: C.warning }}>{t("Fitted elsewhere in this fit")}</span>}
-                        </div>
-                      </div>
-                    </div>
+                    {nameBlock(r, meta, fits, inUse, isRef, 260)}
                   </td>
-                  <td style={td}>
-                    <div style={{ color: price != null ? C.text : C.textMid }}>{price != null ? fmtResource(price) : "—"}</div>
-                    {!isRef && price != null && refPrice != null && <Delta d={price - refPrice} better={price < refPrice} fmt={fmtResource} />}
-                    {record?.estimatedValue != null && <div style={{ fontSize: 11, color: C.textMid }} title={t("MutaMarket's estimate")}>~{fmtResource(record.estimatedValue)}</div>}
-                  </td>
-                  {visibleCols.map(k => {
-                    const raw = r.values?.[k], val = disp(k, raw), rv = disp(k, ref?.values?.[k]);
-                    const d = !isRef && val != null && rv != null ? val - rv : null;
-                    const better = d == null || Math.abs(d) < 1e-9 ? null : directionOf(k, raw, ref.values[k], r.typeID);
+                  <td style={td}>{priceBlock(r, price, isRef)}</td>
+                  {shownCols.map(k => {
+                    const c = valueOf(r, k, isRef);
                     return (
                       <td key={k} style={td}>
-                        <div style={{ color: num(raw) ? C.text : C.textMute }}>{num(raw) ? fmtMutaVal(k, raw) : "—"}</div>
-                        <Delta d={d} better={better} fmt={x => fmtMutaDisplay(k, x)} />
-                        {bars && <Bar span={span[k]} v={val} />}
+                        <div style={{ color: num(c.raw) ? C.text : C.textMute }}>{c.text}</div>
+                        <Delta d={c.d} better={c.better} fmt={x => fmtMutaDisplay(k, x)} />
+                        {bars && <Bar span={span[k]} v={c.val} />}
                       </td>
                     );
                   })}
@@ -356,6 +453,7 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
         </table>
         {!rows.length && <div style={{ padding: 14, fontSize: TYPE.label, color: C.textMid }}>{t("Nothing matches these filters.")}</div>}
       </div>
+      )}
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {editSources && <AbyssalSources Sheet={DialogFrame} records={owned} selection={sources} market={market}
         onMarketChange={next => setMarket(writeMarketSettings(next))} onRecordsChange={setOwned}
