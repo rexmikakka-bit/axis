@@ -8,6 +8,7 @@ import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, BoosterSide
          hasCommandBursts, boosterBonuses, boosterSlotOf } from "../components/effects.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
+import { tabFits } from "./tab-fits.js";
 import { useInspect } from "./inspect-context.jsx";
 import { boosterTarget } from "./inspect.js";
 
@@ -196,7 +197,7 @@ export function ProjectedPanel({ s, jamTarget }) {
           );
         })}
       </Body>
-      {picker && <FitPickerSheet title={t("Project a Fit")} fitsDB={s.fitsDB} pinned={s.openFitTabs}
+      {picker && <FitPickerSheet title={t("Project a Fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={(ship, fit) => add(ship, fit)} onClose={() => setPicker(false)} />}
     </Shell>
   );
@@ -240,7 +241,7 @@ export function CommandPanel({ s }) {
           );
         })}
       </Body>
-      {picker && <FitPickerSheet title={t("Select Command Ship Fit")} fitsDB={s.fitsDB} filterFn={hasCommandBursts} pinned={s.openFitTabs}
+      {picker && <FitPickerSheet title={t("Select Command Ship Fit")} fitsDB={s.fitsDB} filterFn={hasCommandBursts} pinned={tabFits(s.openFitTabs, s.fitsDB, hasCommandBursts)}
         onSelect={(ship, fit) => s.setCmdFits(prev => [...(prev ?? []), { ship, fitName: fit.name }])} onClose={() => setPicker(false)} />}
     </Shell>
   );

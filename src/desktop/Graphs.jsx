@@ -10,6 +10,7 @@ import { targetFitProfile } from "../lib/graph-target.js";
 import { GRAPH_CONFIG, generateCurve, TARGET_PROFILES, TARGET_FIT, profileTarget, interpCurveAt,
          defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S } from "../components/GraphTab.jsx";
 import { FitPickerSheet } from "../components/effects.jsx";
+import { tabFits } from "./tab-fits.js";
 import Menu from "./Menu.jsx";
 import { TYPE } from "./kit.jsx";
 
@@ -416,10 +417,15 @@ export default function GraphsPanel({ s }) {
         )}
       </div>
 
-      {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={s.openFitTabs}
+      {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={(ship, fit) => {
-          if (picker === "source") setSources(l => [...(l.length ? l : srcList.map(({ ship: a, fitName: b }) => ({ ship: a, fitName: b }))), { ship, fitName: fit.name }]);
-          else setTargets(l => [...l, { kind: "fit", ship, fitName: fit.name }]);
+          // A fit already on the graph is not added twice: two identical lines say nothing, and the
+          // pair is the line's identity (its React key and its legend entry).
+          if (picker === "source") setSources(l => {
+            const cur = l.length ? l : srcList.map(({ ship: a, fitName: b }) => ({ ship: a, fitName: b }));
+            return cur.some(x => x.ship === ship && x.fitName === fit.name) ? cur : [...cur, { ship, fitName: fit.name }];
+          });
+          else setTargets(l => l.some(x => x.kind === "fit" && x.ship === ship && x.fitName === fit.name) ? l : [...l, { kind: "fit", ship, fitName: fit.name }]);
         }} onClose={() => setPicker(null)} />}
     </div>
   );

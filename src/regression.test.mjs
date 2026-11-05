@@ -9031,6 +9031,13 @@ Nanofiber Internal Structure II
   check('insp', 'layouts: delete drops it and the active mark', `${Object.keys(del.named).join()}:${del.preset}`, 'A,C:null');
   const hid = L.setPresetHidden(st0, 'focus', true);
   check('insp', 'layouts: a hidden built-in survives a reload', L.readLayoutState({ getItem: () => JSON.stringify(hid) }).hidden.join(), 'focus');
+  // The fit pickers' "Open fits" list is {ship, fit} records, never the tabs themselves: passing
+  // {ship, name, id} straight through crashed Add fit in Graphs whenever a second tab was open.
+  const TF = await import('./desktop/tab-fits.js');
+  const tdb = { Rifter: [{ id: 1, name: 'a', slots: {} }], Tempest: [{ id: 2, name: 'b', slots: {} }] };
+  const tf = TF.tabFits([{ ship: 'Rifter', name: 'a', id: 1 }, { ship: 'Tempest', name: 'gone', id: 9 }, { ship: 'Tempest', name: 'b', id: 2 }], tdb);
+  check('insp', 'open-fit shortcuts carry the fit record, missing ones dropped', tf.map(x => `${x.ship}:${x.fit.name}`).join(), 'Rifter:a,Tempest:b');
+  check('insp', 'open-fit shortcuts honour the picker filter', TF.tabFits([{ ship: 'Rifter', name: 'a' }, { ship: 'Tempest', name: 'b' }], tdb, (sh) => sh === 'Tempest').length, 1, 0);
   check('insp', 'layouts: an unknown hidden id is dropped', L.readLayoutState({ getItem: () => JSON.stringify({ ...hid, hidden: ['focus', 'zzz'] }) }).hidden.join(), 'focus');
 }
 console.log('\n' + '─'.repeat(72));
