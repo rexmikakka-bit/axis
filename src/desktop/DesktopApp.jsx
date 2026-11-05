@@ -27,6 +27,7 @@ import GraphsPanel from "./Graphs.jsx";
 import PricePanel from "./Price.jsx";
 import ImplantsPanel from "./Implants.jsx";
 import DronesPanel from "./Drones.jsx";
+import FightersPanel from "./Fighters.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS, isFloatId, readLayoutState } from "./layout.js";
 import { activeFitRef, targetKey } from "./inspect.js";
@@ -106,6 +107,9 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     snapshot: isOpen("cargo") || isOpen("drones") || isOpen("projected") || sheet === "shipinfo" || sheet === "snapshot",
     drones: isOpen("drones"),
   });
+  const hullAttrs = TYPES[tidByName(s.activeFit?.ship)]?.attrs ?? null;
+  const shipFighter = { cap: hullAttrs?.fighterCapacity ?? 0, tubes: hullAttrs?.fighterTubes ?? 0, light: hullAttrs?.fighterLightSlots ?? 0,
+                        heavy: hullAttrs?.fighterHeavySlots ?? 0, support: hullAttrs?.fighterSupportSlots ?? 0 };
   const renderWindow = (id) => {
     // A floating inspector shows the item it was opened on; the full-time windows, the selection.
     if (isFloatId(id)) {
@@ -136,7 +140,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "targeting": return <TargetingPanel s={s} cs={cs} />;
       case "cargo": return <CargoPanel s={s} capacity={cs?.cargoCapacity ?? stats.snapshot?.cargoCapacity ?? 0} />;
       // Carriers keep the phone's screen for now: fighter squadrons need their tube and ability layout.
-      case "drones": return (TYPES[tidByName(s.activeFit?.ship)]?.attrs?.fighterCapacity ?? 0) > 0 ? <DronesWindow s={s} stats={stats} /> : <DronesPanel s={s} stats={stats} />;
+      // A hull with fighter tubes flies squadrons instead (the phone's rule: tubes, not bay size).
+      case "drones": return shipFighter.tubes > 0 ? <FightersPanel s={s} stats={stats} shipFighter={shipFighter} /> : <DronesPanel s={s} stats={stats} />;
       case "implants": return <ImplantsPanel s={s} />;
       case "projected": return <ProjectedPanel s={s} jamTarget={{ strength: cs?.sensorStrength ?? 0, type: cs?.sensorType ?? "", resist: s.projectedEffects?.ecmResist ?? 1 }} />;
       case "command": return <CommandPanel s={s} />;
@@ -150,6 +155,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
   const windowTitle = (id) => {
     if (isFloatId(id)) return inspectorTitle(windows?.[id]?.target, windows?.[id]?.tab, s);
     if (INSPECTOR_WINDOWS.has(id) && selection) return inspectorTitle(selection, id, s);
+    if (id === "drones" && shipFighter.tubes > 0) return t("Fighters");
     return id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : t(WINDOWS.find(w => w.id === id)?.title ?? id);
   };
   // The Fitting window's title bar carries the fit's validity, so the Validation window can stay
