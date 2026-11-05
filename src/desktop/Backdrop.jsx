@@ -65,8 +65,13 @@ export function Backdrop({ url, settings }) {
   );
 }
 
-/** Settings → Workspace background: pick, dim, blur, fit, remove. Changes apply live. */
+/** Menu > Workspace background: pick, dim, blur, fit, remove. Changes apply live. */
 export function BackdropDialog({ bd, onClose }) {
+  return <Dialog title={t("Workspace background")} onClose={onClose} width={460}><BackdropControls bd={bd} /></Dialog>;
+}
+
+/** The controls themselves, for the dialog and for Settings > Workspace. */
+export function BackdropControls({ bd }) {
   const { settings: st, setSettings } = bd;
   const set = (k, v) => setSettings(s => ({ ...s, [k]: v }));
   const row = { display: "grid", gridTemplateColumns: "110px 1fr 52px", alignItems: "center", gap: 12, padding: "8px 16px" };
@@ -74,7 +79,7 @@ export function BackdropDialog({ bd, onClose }) {
   const btn = (primary) => ({ height: 28, padding: "0 12px", borderRadius: 6, fontSize: 13, cursor: "pointer", background: primary ? C.accent : C.surfaceAlt,
                               border: `1px solid ${primary ? C.accent : C.borderStrong}`, color: primary ? C.bg : C.text });
   return (
-    <Dialog title={t("Workspace background")} onClose={onClose} width={460}>
+    <>
       <div style={{ padding: "12px 16px 4px", fontSize: TYPE.small, color: C.textMid }}>
         {t("A picture of your own behind the windows. It stays dimmed and blurred so the numbers keep their contrast.")}
       </div>
@@ -112,6 +117,6 @@ export function BackdropDialog({ bd, onClose }) {
         </div>
         <span />
       </div>
-    </Dialog>
+    </>
   );
 }

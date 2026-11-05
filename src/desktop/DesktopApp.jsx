@@ -11,7 +11,7 @@ import { useBackdrop, Backdrop, BackdropDialog } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
-import { SettingsOverlay } from "../components/settings.jsx";
+import DeskSettings from "./Settings.jsx";
 import { ChooserSheet, PilotSheet } from "../components/layout.jsx";
 import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
@@ -98,7 +98,7 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
@@ -148,12 +148,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "boosters": return <BoostersPanel s={s} />;
       case "environment": return <EnvironmentPanel s={s} />;
       case "notes": return <NotesWindow s={s} />;
-      // Settings is an ordinary window here; its own close is the window's.
-      case "settings": return <SettingsOverlay asWindow onClose={() => {}} skills={s.skills} setSkills={s.setSkills} skillProfiles={s.skillProfiles}
-        setSkillProfiles={s.setSkillProfiles} openInNewTab={s.openInNewTab} setOpenInNewTab={s.setOpenInNewTab} priceHub={s.priceHub}
-        setPriceHub={s.setPriceHub} priceSource={s.priceSource} setPriceSource={s.setPriceSource} themePref={s.themePref} setThemePref={s.setThemePref}
-        autoFillHardpoints={s.autoFillHardpoints} setAutoFillHardpoints={s.setAutoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd}
-        setCloseBrowserOnAdd={s.setCloseBrowserOnAdd} locale={s.locale} setLocale={s.setLocale} />;
+      // Settings is an ordinary window here, laid out for the desktop (Settings.jsx).
+      case "settings": return <DeskSettings s={s} bd={bd} />;
       default: return null;
     }
   };
@@ -269,7 +265,7 @@ function DesktopApp() {
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile"),
-      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect });
+      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const id of Object.keys(layoutState.windows)) if (layoutState.windows[id]?.detached) dockWindow(setLayoutState, id);
@@ -355,7 +351,7 @@ function DesktopApp() {
               return (
                 <div key={`${tb.ship}:${tb.id}:${tb.name}`} role="tab" aria-selected={on}
                   style={{ height: 32, display: "flex", alignItems: "center", gap: 8, padding: "0 10px 0 12px", borderRadius: "6px 6px 0 0",
-                           background: on ? C.bg : "transparent", border: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
+                           background: on ? C.bg : "transparent", borderTop: `1px solid ${on ? C.border : "transparent"}`, borderLeft: `1px solid ${on ? C.border : "transparent"}`, borderRight: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
                            marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}
                   onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? C.text : C.textMid }}>{tb.ship}</span>

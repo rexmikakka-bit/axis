@@ -391,3 +391,7 @@ export function SettingsOverlay({onClose,skills,setSkills,skillProfiles,setSkill
     </div>
   </div>);
 }
+
+// Read by the desktop's own Settings window (desktop/Settings.jsx), so the two apps list the same
+// skills in the same groups and offer the same presets.
+export { SKILL_GROUPS, GROUP_COLORS, PRESETS as SKILL_PRESETS, PRESET_COLORS };

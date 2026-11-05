@@ -64,7 +64,7 @@ const CLOSED_BY_DEFAULT = { drones: [296, 120, 500, 420, false], implants: [340,
                             command: [300, 640, 356, 300, false], boosters: [340, 600, 380, 360, false], environment: [380, 660, 340, 140, false],
                             graphs: [200, 40, 1000, 640, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false],
                             info: [984, 200, 448, 600, false], variations: [160, 96, 1000, 600, false], mutate: [536, 120, 440, 560, false],
-                            settings: [440, 64, 560, 760, false] };
+                            settings: [340, 64, 760, 760, false] };
 
 const PRESET_GEOMETRY = {
   default: {
