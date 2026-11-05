@@ -2,7 +2,7 @@ import { createContext, useContext, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
-import { TYPES } from "../calc.js";
+import { TYPES, tidByName } from "../calc.js";
 import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge } from "../lib/core.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -209,7 +209,8 @@ export function FitTable({ api }) {
       setMenu({ x: e.clientX, y: e.clientY, secKey, row });
     };
     const widths = FIT_COLS.map(c => cols?.[c.id] ?? c.w);
-    const template = `12px 20px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
+    // State dot, the LOADED CHARGE's icon, the module's icon, then the name and the stat columns.
+    const template = `12px 20px 20px minmax(0,1fr) ${widths.map(w => `${w}px`).join(" ")} 16px`;
     const prices = getCachedPrices(hub, source);
     const priceOf = (id) => prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
     const item = (id) => cs?.fittedItems?.get(id);
@@ -244,7 +245,7 @@ export function FitTable({ api }) {
         {/* Column header */}
         <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 24, padding: "0 12px", flex: "none",
                       borderBottom: `1px solid ${C.border}`, fontSize: 11.5, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
-          <span /><span /><span>{t("Module")} · {t("Charge")}</span>
+          <span /><span /><span /><span>{t("Module")} · {t("Charge")}</span>
           {FIT_COLS.map(c => (
             <span key={c.id} style={{ position: "relative", textAlign: "right", color: c.id === "cpu" ? resourceColor("cpu") : c.id === "pg" ? resourceColor("pg") : C.textMid }}>
               <span aria-hidden="true" onPointerDown={startResize(c.id)} onPointerMove={moveResize} onPointerUp={endResize} onPointerCancel={endResize}
@@ -267,11 +268,11 @@ export function FitTable({ api }) {
                 {/* Rack header: one colour for every rack (the handoff's rule), with its sums. */}
                 <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 22, padding: "0 12px",
                               background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.textMid }}>
-                  <span style={{ gridColumn: "1 / 4", fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden" }}>
+                  <span style={{ gridColumn: "1 / 5", fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden" }}>
                     {sec.label} <span style={{ fontWeight: 500 }}>{fitted.length} / {total}</span>
                   </span>
                   {sec.key === "rigs"
-                    ? <span style={{ ...cell, gridColumn: "4 / 6", color: C.textMid }}>{t("Cal")} {num(cs?.calUsed ?? 0, 0)} / {num(cs?.calTotal ?? 0, 0)}</span>
+                    ? <span style={{ ...cell, gridColumn: "5 / 7", color: C.textMid }}>{t("Cal")} {num(cs?.calUsed ?? 0, 0)} / {num(cs?.calTotal ?? 0, 0)}</span>
                     : <><span style={{ ...cell, color: C.textMid }}>{num(cpuSum)}</span><span style={{ ...cell, color: C.textMid }}>{num(pgSum)}</span></>}
                   <span /><span /><span /><span /><span />
                 </div>
@@ -282,8 +283,8 @@ export function FitTable({ api }) {
                       title={t("Double-click to add a module, or pick one in the Browser's Market")}
                       style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", minHeight: 26, padding: "0 12px",
                                borderBottom: `1px solid ${C.border}99`, cursor: "default", color: C.textMid, fontSize: 13 }}>
-                      <span /><span style={{ textAlign: "center", color: C.borderStrong }}>+</span>
-                      <span style={{ gridColumn: "3 / -1" }}>{row.name}</span>
+                      <span /><span /><span style={{ textAlign: "center", color: C.borderStrong }}>+</span>
+                      <span style={{ gridColumn: "4 / -1" }}>{row.name}</span>
                     </div>
                   );
                   const e = engineStatsBySlotID.get(row.id);
@@ -313,6 +314,14 @@ export function FitTable({ api }) {
                       <span onClick={ev => ev.stopPropagation()} style={{ display: "flex", justifyContent: "center" }}>
                         {sec.key === "subsystems" ? null
                           : <StateToggle row={row} states={validStatesFor(row)} onSet={st => setRowState(sec.key, row, st)} />}
+                      </span>
+                      {/* The loaded charge, so a rack's ammo reads at a glance down the column; click it for
+                          the charge as the fit computes it (Show charge info). */}
+                      <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
+                        {charge && tidByName(charge) && <img className="eve-icon" src={eveIcon(tidByName(charge), 32)} width={20} height={20} alt={charge}
+                          title={`${charge} · ${t("click for charge info")}`} style={{ cursor: "pointer" }}
+                          onClick={ev => { ev.stopPropagation(); insp.inspect(chargeTarget(insp.fitRef, sec.key, row.id), "info"); }}
+                          onDoubleClick={ev => ev.stopPropagation()} onError={ev => { ev.target.style.visibility = "hidden"; }} />}
                       </span>
                       <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
                         {row.typeID && <img className="eve-icon" src={eveIcon(row.typeID, 32)} width={20} height={20} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}

@@ -44,7 +44,7 @@ export function TitleButton({ label, onClick, children }) {
 // of the title bar to make it a window of its own (or onto another window's title bar to move it
 // there); right-click for the same as a menu; × closes just that one.
 const TEAR_PX = 8;
-function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu }) {
+function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide, onSlideEnd }) {
   const press = useRef(null);
   const [tearing, setTearing] = useState(false);
   const down = (e) => {
@@ -56,18 +56,20 @@ function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu }) {
   const move = (e) => {
     const p = press.current; if (!p || locked) return;
     if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) >= TEAR_PX) { p.moved = true; setTearing(true); }
+    if (p.moved) onSlide?.(id, e.clientX, e.clientY);
   };
   const up = (e) => {
     const p = press.current; press.current = null; setTearing(false);
     if (!p) return;
     if (!p.moved) { onSelect(id); return; }
-    // Released back on its own title bar: nothing to do. Anywhere else: out of the group.
+    // Released on its own title bar: a new place in the strip. Anywhere else: out of the group.
     const bar = e.currentTarget.closest("[data-titlebar]")?.getBoundingClientRect();
-    if (bar && e.clientX >= bar.left && e.clientX <= bar.right && e.clientY >= bar.top && e.clientY <= bar.bottom) return;
+    if (bar && e.clientX >= bar.left && e.clientX <= bar.right && e.clientY >= bar.top && e.clientY <= bar.bottom) { onSlideEnd?.(id, true); return; }
+    onSlideEnd?.(id, false);
     onOut(id, e.clientX, e.clientY);
   };
   return (
-    <div role="tab" data-tab aria-selected={on} title={locked ? title : `${title} · ${t("drag out to separate")}`}
+    <div role="tab" data-tab data-tabid={id} aria-selected={on} title={locked ? title : `${title} · ${t("drag out to separate")}`}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setTearing(false); }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onMenu(e, id); }}
       style={{ display: "flex", alignItems: "center", gap: 4, height: TITLE_H - 6, padding: "0 4px 0 9px", borderRadius: 5, minWidth: 0, flex: "0 1 auto",
@@ -87,8 +89,26 @@ function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu }) {
 // window is dragged over it (dropping there combines the two).
 export default function DeskWindow({ id, title, rect, z, focused, locked, floating = false, onFocus, onDragStart, onDrag, onDragEnd,
                                      onDragCancel, onKeyNudge, onClose, onPopOut, extra, children,
-                                     tabs = null, activeTab, onTab, onCloseTab, onTabOut, onTabMenu, collapsed = false, onToggleCollapse, dropTarget = false, ghost = false }) {
+                                     tabs = null, activeTab, onTab, onCloseTab, onTabOut, onTabMenu, onTabMove, collapsed = false, onToggleCollapse, dropTarget = false, ghost = false }) {
   const drag = useRef(null);
+
+  // Reordering tabs: while one is dragged along the strip, `slot` is where it would land (an index
+  // into the strip WITHOUT it) and an accent bar marks the spot; releasing on the bar puts it there.
+  const strip = useRef(null);
+  const [slot, setSlot] = useState(null);   // {id, index, x}
+  const slide = (tabId, cx, cy) => {
+    const el = strip.current; if (!el) return;
+    const box = el.getBoundingClientRect();
+    if (cy < box.top - 6 || cy > box.bottom + 6) { setSlot(null); return; }   // off the strip: it is being pulled out
+    const others = [...el.querySelectorAll("[data-tab]")].filter(n => n.dataset.tabid !== tabId);
+    let index = others.length, x = others.length ? others[others.length - 1].getBoundingClientRect().right - box.left : 0;
+    for (let i = 0; i < others.length; i++) {
+      const r = others[i].getBoundingClientRect();
+      if (cx < r.left + r.width / 2) { index = i; x = r.left - box.left - 2; break; }
+    }
+    setSlot(cur => (cur?.id === tabId && cur.index === index ? cur : { id: tabId, index, x }));
+  };
+  const slideEnd = (tabId, inBar) => { const sl = slot; setSlot(null); if (inBar && sl?.id === tabId) onTabMove?.(tabId, sl.index); };
 
   // Escape cancels a drag in progress, putting the window back where the gesture started.
   useEffect(() => {
@@ -155,9 +175,10 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, floati
                  color: C.textMute, cursor: locked ? "default" : "grab", userSelect: "none", touchAction: "none", outline: "none" }}>
         <Grip />
         {tabs?.length > 1
-          ? <div role="tablist" style={{ display: "flex", alignItems: "center", gap: 2, minWidth: 0, overflow: "hidden", flex: "0 1 auto" }}>
+          ? <div ref={strip} role="tablist" style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, minWidth: 0, overflow: "hidden", flex: "0 1 auto" }}>
               {tabs.map(tb => <Tab key={tb.id} id={tb.id} title={tb.title} on={tb.id === activeTab} locked={locked}
-                onSelect={onTab} onClose={onCloseTab} onOut={onTabOut} onMenu={onTabMenu} />)}
+                onSelect={onTab} onClose={onCloseTab} onOut={onTabOut} onMenu={onTabMenu} onSlide={slide} onSlideEnd={slideEnd} />)}
+              {slot && <span aria-hidden="true" style={{ position: "absolute", left: Math.max(0, slot.x), top: 3, bottom: 3, width: 2, borderRadius: 1, background: C.accent }} />}
             </div>
           /* An inspector is titled with an item name, which reads as a name only in its own case. */
           : <span style={floating ? { fontSize: 13, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : { fontSize: 12, fontWeight: 500, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,

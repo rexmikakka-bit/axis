@@ -364,6 +364,26 @@ export function ungroup(layout, id, at = null) {
   return bringToFront(out, id);
 }
 
+/**
+ * Tab `id` moved to position `to` in its window's strip. The first tab is the HOST, which holds the
+ * window's place and size, so moving another tab to the front hands that over: the window stays put.
+ */
+export function moveTab(layout, id, to) {
+  const host = hostOf(layout, id), stack = stackOf(layout, id);
+  const from = stack.indexOf(id);
+  if (stack.length < 2 || from < 0) return layout;
+  const next = stack.filter(x => x !== id);
+  next.splice(Math.max(0, Math.min(next.length, to)), 0, id);
+  if (next.every((x, i) => x === stack[i])) return layout;
+  const out = { ...layout }, g = layout[host], nh = next[0];
+  if (nh === host) { out[host] = { ...g, stack: next }; return out; }
+  // The new first tab takes the window over; the old host becomes a tab, its own rect the group's.
+  out[nh] = { ...stripMember(out[nh]), x: g.x, y: g.y, w: g.w, h: g.h, z: g.z, collapsed: !!g.collapsed, stack: next, active: g.active, open: true };
+  out[host] = { ...stripGroup(g), in: nh, collapsed: false };
+  for (const m of next.slice(1)) if (m !== host) out[m] = { ...out[m], in: nh };
+  return out;
+}
+
 /** Close one tab: it leaves its group (where it would go back to its own spot) and hides. */
 export function closeTab(layout, id) {
   const w = layout[id];

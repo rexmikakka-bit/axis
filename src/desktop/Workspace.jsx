@@ -5,7 +5,7 @@ import DeskWindow from "./DeskWindow.jsx";
 import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, clampIntoView, canvasSize,
          readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat,
          renameNamed, overwriteNamed, deleteNamed, setPresetHidden, TITLE_H, stackOf, isTabMember,
-         combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed } from "./layout.js";
+         combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed, moveTab } from "./layout.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
@@ -187,6 +187,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     return ungroup(l, id, at);
   }, { preset: null }), [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
   const onTab = useCallback((id) => setLayout(l => setActiveTab(l, id)), [setLayout]);
+  const onTabMove = useCallback((id, to) => setLayout(l => moveTab(l, id, to), { preset: null }), [setLayout]);
   const onCloseTab = useCallback((id) => setLayout(l => closeTab(l, id)), [setLayout]);
   const onToggleCollapse = useCallback((id) => setLayout(l => toggleCollapsed(l, id)), [setLayout]);
   const [tabMenu, setTabMenu] = useState(null);   // {x, y, id}
@@ -256,7 +257,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
         onFocus={focus} onDragStart={onDragStart} onDrag={onDrag} onDragEnd={onDragEnd} onDragCancel={onDragCancel}
         onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(active)}
         tabs={stack.length > 1 ? stack.map(x => ({ id: x, title: titleOf(x) })) : null} activeTab={active}
-        onTab={onTab} onCloseTab={onCloseTab} onTabOut={onTabOut} onTabMenu={(e, x) => setTabMenu({ x: e.clientX, y: e.clientY, id: x })}
+        onTab={onTab} onCloseTab={onCloseTab} onTabOut={onTabOut} onTabMove={onTabMove} onTabMenu={(e, x) => setTabMenu({ x: e.clientX, y: e.clientY, id: x })}
         collapsed={!g.float && !!g.collapsed} onToggleCollapse={g.float ? undefined : onToggleCollapse} dropTarget={dropTarget?.id === id} ghost={dropTarget?.from === id}>
         {renderWindow(active)}
       </DeskWindow>

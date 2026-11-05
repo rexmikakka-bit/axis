@@ -9055,6 +9055,9 @@ Nanofiber Internal Structure II
   check('insp', 'tabs: a group survives the saved layout', `${gBack.capacitor.stack.join(',')}|${gBack.defense.in}`, 'capacitor,targeting,defense|capacitor');
   const gBad = L.cleanLayout({ ...g2, capacitor: { ...g2.capacitor, stack: ['capacitor', 'nope'] } });
   check('insp', 'tabs: a broken group reads back as plain windows', `${gBad.capacitor.stack ?? 'none'}|${gBad.targeting.in ?? 'none'}`, 'none|none');
+  const gMv = L.moveTab(g2, 'defense', 0);
+  check('insp', 'tabs: a tab moved to the front takes the window over in place', `${gMv.defense.stack.join(',')}|${gMv.defense.x},${gMv.defense.y}|${gMv.capacitor.in}`, `defense,capacitor,targeting|${g0.capacitor.x},${g0.capacitor.y}|defense`);
+  check('insp', 'tabs: a reorder survives the saved layout', L.cleanLayout(JSON.parse(JSON.stringify(gMv))).defense.stack.join(','), 'defense,capacitor,targeting');
   const gOut = L.ungroup(g2, 'capacitor');
   check('insp', 'tabs: the host leaving hands its place to the next tab', `${gOut.targeting.x},${gOut.targeting.y}|${gOut.targeting.stack.join(',')}|${gOut.defense.in}`, `${g0.capacitor.x},${g0.capacitor.y}|targeting,defense|targeting`);
   check('insp', 'tabs: the last two apart are plain windows', L.ungroup(g1, 'targeting').capacitor.stack ?? 'none', 'none');
