@@ -195,6 +195,8 @@ function SkillsSection({ s }) {
   return (
     <>
       <Heading first>{t("Skill sheet")}</Heading>
+      <Note>{t("Your own skills. A fit uses them only when its pilot is set to “My skills” with the pilot button above the fit; every other fit is flown at All Skills V unless you pick a pilot for it.")}</Note>
+      <div style={{ height: 8 }} />
       <Choices>
         {SKILL_PRESETS.map(p => <Choice key={p.id} on={matches(p.map)} color={PRESET_COLORS[p.id]} onClick={() => setSkills({ ...p.map })}>{p.label()}</Choice>)}
       </Choices>

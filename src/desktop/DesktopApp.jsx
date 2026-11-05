@@ -100,7 +100,7 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
@@ -135,7 +135,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     if (INSPECTOR_WINDOWS.has(id)) return <InspectorView s={s} ship={ship} cs={cs} target={selection} only={id} />;
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
-      case "browser": return <DeskBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} />;
+      case "browser": return <DeskBrowser s={s} ship={ship} adderRef={adderRef} remoteAdd={remoteAdd} modeRequest={browserMode} />;
       case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} />;
       case "graphs": return <GraphsPanel s={s} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
@@ -190,7 +190,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
 /** One window, popped out into its own OS window. Closing it (or Dock) puts it back in the workspace. */
 function SatelliteApp({ id }) {
   const banner = useBanner();
-  const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify });
+  // Desktop: a fit with no pilot chosen is All Skills V (use-fit-session.js unassignedAllV).
+  const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify, unassignedAllV: true });
   const adderRef = useRef(null);
   const sync = useSessionSync(s, { onMessage: (m) => {
     if (m.type === "add") adderRef.current?.(m.secKey, m.mod);
@@ -236,6 +237,8 @@ function DesktopApp() {
     // The fit lives in its own window here, so opening one changes no navigation.
     onFitOpened: () => {},
     notify: banner.notify,
+    // A fit with no pilot chosen is flown at All Skills V; the pilot button sets this fit's alone.
+    unassignedAllV: true,
   });
   const flash = (kind, msg, ms = 3000) => banner.notify(kind, msg, ms);
   useEffect(() => { initKeyboardTracking(); }, []);
@@ -245,6 +248,7 @@ function DesktopApp() {
   const isOpen = (id) => layoutState.windows[id]?.open && !layoutState.windows[id]?.detached;
 
   const [sheet, setSheet] = useState(null);   // which header dialog is open
+  const [browserMode, setBrowserMode] = useState(null);   // {mode, n}: a request to the Browser ("+" opens it on Ships)
   const [importInitial, setImportInitial] = useState(null);
   const close = () => setSheet(null);
 
@@ -281,7 +285,7 @@ function DesktopApp() {
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile"),
-      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash });
+      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash, browserMode });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const id of Object.keys(layoutState.windows)) if (layoutState.windows[id]?.detached) dockWindow(setLayoutState, id);
@@ -344,7 +348,22 @@ function DesktopApp() {
     flash("success", t('Imported "{name}"', { name: parsed.fitName }));
   };
 
-  const newTab = () => { s.wantNewTab.current = true; s.setNewTabIntent(true); openWindow(setLayoutState, "browser"); };
+  // "+": a fresh, empty page. The fit you were on keeps its tab (seeded if it had none, so nothing is
+  // lost), nothing is open until you pick a fit, and the Browser comes up on Ships with your recent
+  // fits — whatever you open next lands in the new tab.
+  const newTab = () => {
+    const cur = s.activeFit;
+    if (cur?.ship && cur?.fitName) s.setOpenTabs(prev => {
+      const list = prev ?? [];
+      if (list.some(tb => tb.ship === cur.ship && tb.name === cur.fitName)) return list;
+      const f = s.fitsDB?.[cur.ship]?.find(x => x.name === cur.fitName);
+      return f ? [...list, { ship: cur.ship, id: f.id, name: cur.fitName }] : list;
+    });
+    s.wantNewTab.current = true; s.setNewTabIntent(true);
+    s.setActiveFit(null);
+    openWindow(setLayoutState, "browser");
+    setBrowserMode({ mode: "ships", n: Date.now() });
+  };
   const hasFit = !!s.activeFit?.ship;
 
   return (
@@ -378,6 +397,12 @@ function DesktopApp() {
                 </div>
               );
             })}
+            {!hasFit && s.newTabIntent && (
+              <div role="tab" aria-selected style={{ height: 32, display: "flex", alignItems: "center", padding: "0 12px", borderRadius: "6px 6px 0 0", background: C.bg,
+                                                      borderTop: `1px solid ${C.border}`, borderLeft: `1px solid ${C.border}`, borderRight: `1px solid ${C.border}`, marginBottom: -1, flex: "none" }}>
+                <span style={{ fontSize: 13.5, color: C.textMid }}>{t("New tab")}</span>
+              </div>
+            )}
             <button type="button" aria-label={t("Open a fit in a new tab")} title={t("Open a fit in a new tab")} onClick={newTab}
               style={{ height: 32, width: 30, flex: "none", border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 16 }}>+</button>
           </div>
@@ -427,7 +452,7 @@ function DesktopApp() {
       {sheet === "esiimport" && <EsiImportModal onClose={close} onImport={s.importFit} />}
       {sheet === "esiexport" && <EsiExportModal activeFit={s.activeFit} slots={s.slots} drones={s.drones} cargoItems={s.cargoItems} fighters={s.fighters} implants={s.implants} boosters={s.boosters} onClose={close} />}
       {sheet === "dmgprofile" && <DamageProfileSheet current={s.dmgProfile} onSelect={s.setDmgProfile} onClose={close} />}
-      {sheet === "pilot" && <PilotSheet pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
+      {sheet === "pilot" && <PilotSheet unsetIsAllV pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
         missing={s.skillCheck.missing} appSkills={s.skills} skillProfiles={s.skillProfiles} onClose={close} />}
       {sheet === "shipinfo" && hasFit && <ShipInfoSheet ship={ship ?? { name: s.activeFit.ship }} cs={stats.snapshot} onClose={close} />}
       {sheet === "snapshot" && <SnapshotModal onClose={close} assist={s.projectedEffects?.assist} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}

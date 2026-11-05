@@ -39,7 +39,10 @@ export const THEME_PREF_KEY = 'axis_theme_pref';
 const AUTOFILL_HARDPOINTS_KEY = 'axis_autofill_hardpoints';
 const CLOSE_BROWSER_ON_ADD_KEY = 'axis_close_browser_on_add';
 
-export function useFitSession({ onFitOpened, notify } = {}) {
+// `unassignedAllV` (desktop only): a fit that names no pilot is flown at All Skills V rather than the
+// app-wide sheet, so the sheet only ever applies to a fit that chose it ("me"), and a pilot picked on
+// one fit stays that fit's. The phone passes nothing and keeps the app-wide fallback.
+export function useFitSession({ onFitOpened, notify, unassignedAllV = false } = {}) {
   const banner = (kind, msg, ms) => notify?.(kind, msg, ms);
   const[_tick,_setTick]=useState(0);
   useEffect(()=>{
@@ -181,16 +184,17 @@ export function useFitSession({ onFitOpened, notify } = {}) {
   // The pre-release Synchronizer Rigging level (lib/prerelease-skill.js) is laid over every pilot:
   // no character has the skill yet, so this is the only place its level can come from.
   const syncSkill=useSyncSkillLevel();
-  const pilotSkills=useMemo(()=>resolvePilotSkills(slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:skills}),
-                          [slots?.pilot,skills,esiSkills,skillProfiles]);
+  const unassigned=unassignedAllV?SKILL_DEFAULTS:skills;
+  const pilotSkills=useMemo(()=>resolvePilotSkills(slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:unassigned}),
+                          [slots?.pilot,skills,esiSkills,skillProfiles,unassigned]);
   const fitSkills=useMemo(()=>({...pilotSkills,[PRERELEASE_SKILL_KEY]:syncSkill}),[pilotSkills,syncSkill]);
   // The sheet a SOURCE fit (projected / command) is flown with. Resolved exactly like `fitSkills`,
   // so a saved fit reads the same whether you are editing it or projecting it — the skills it was
   // last edited under are the skills it keeps. Shared with the Effects tab, which renders a card for
   // each of these: the card and the applied value have to resolve identically or they disagree, and
   // that has happened before (see the burst comment below).
-  const sourceSkills=useMemo(()=>(fit)=>({...resolvePilotSkills(fit?.slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:skills}),[PRERELEASE_SKILL_KEY]:syncSkill}),
-                             [skills,esiSkills,skillProfiles,syncSkill]);
+  const sourceSkills=useMemo(()=>(fit)=>({...resolvePilotSkills(fit?.slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:unassigned}),[PRERELEASE_SKILL_KEY]:syncSkill}),
+                             [skills,esiSkills,skillProfiles,syncSkill,unassigned]);
   // What the RESOLVED sheet is, in words, for the snapshot card's footer. Derived from the sheet
   // rather than from `slots.pilot`, so a fit with no pilot named still says whether the app-wide
   // sheet it fell back to is all V or someone's actual character.

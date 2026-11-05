@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
@@ -107,6 +107,7 @@ function marketEverything() {
 let searchable = null;
 const allItems = () => searchable ??= [...MT_ALL_ITEMS, ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
 const RACK_KEY = "axis_desk_browser_rack";
+const RECENT_KEY = "axis_desk_recent_shown";
 const KIND_LABEL = { module: "Module", charge: "Charge", drone: "Drone", fighter: "Fighter", implant: "Implant", booster: "Booster", ship: "Ship" };
 
 const allMods = (nodes) => nodes.flatMap(n => [...(n.mods ?? []), ...allMods(n.children ?? [])]);
@@ -274,7 +275,8 @@ function ShipsPane({ s }) {
   };
   const remove = (ship, fit) => { if (window.confirm(t('Delete "{name}"?', { name: fit.name }))) s.deleteFit(ship, fit); };
 
-  const fitRow = (ship, fit, depth) => {
+  // `withShip`: say which hull, for a row outside its hull's branch (Recent fits).
+  const fitRow = (ship, fit, depth, withShip = false) => {
     const on = s.activeFit?.ship === ship && s.activeFit?.fitName === fit.name;
     if (renaming?.ship === ship && renaming?.id === fit.id) return (
       <div key={fit.id} style={{ padding: `2px 10px 2px ${10 + depth * INDENT + 16}px` }}>
@@ -297,7 +299,7 @@ function ShipsPane({ s }) {
     return (
       <div key={fit.id} style={{ display: "flex", alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <TreeRow depth={depth} leaf selected={on} label={fit.name} icon={eveIcon(tidByName(ship), 32)} iconSize={24} onClick={() => s.loadFit(ship, fit.name)}
+          <TreeRow depth={depth} leaf selected={on} label={withShip ? <><span style={{ color: C.textMid }}>{ship}</span> {fit.name}</> : fit.name} icon={eveIcon(tidByName(ship), 32)} iconSize={24} onClick={() => s.loadFit(ship, fit.name)}
             onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more · drag onto Projected or Command")} drag={fitDragProps(ship, fit.name)} />
         </div>
         <Menu label="⋯" ariaLabel={t("Fit actions")} buttonStyle={{ height: 22, padding: "0 6px", color: C.textMid }} items={actions} />
@@ -334,10 +336,23 @@ function ShipsPane({ s }) {
     ...fits.filter(f => f.name.toLowerCase().includes(q)).map(fit => ({ ship, fit })),
   ]) : [];
   const shipHits = q ? tree.flatMap(n => shipsUnder(n)).filter(sh => sh.name.toLowerCase().includes(q)).slice(0, 60) : [];
+  // The fits you opened last (the session's recentFits, newest first), above the tree; a toggle hides
+  // them and is remembered. Each is a normal fit row, labelled with its hull since it sits outside it.
+  const [showRecent, setShowRecent] = useState(() => { try { return localStorage.getItem(RECENT_KEY) !== "0"; } catch { return true; } });
+  const flipRecent = () => setShowRecent(v => { try { localStorage.setItem(RECENT_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
+  const recent = (s.recentFits ?? []).map(r => ({ ship: r.ship, fit: (fitsDB[r.ship] ?? []).find(f => (r.id != null && f.id === r.id) || f.name === r.name) }))
+    .filter(r => r.fit);
   return (
     <>
       <SearchBox value={search} onChange={setSearch} placeholder={t("Search ships and fits")} />
       <div role="tree" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {!q && recent.length > 0 && (
+          <div role="group" aria-label={t("Recent fits")} style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: showRecent ? 4 : 0 }}>
+            <TreeRow depth={0} open={showRecent} label={<span style={{ fontWeight: 500 }}>{t("Recent fits")}</span>} sub={String(recent.length)} onClick={flipRecent}
+              title={showRecent ? t("Hide recent fits") : t("Show recent fits")} />
+            {showRecent && recent.map(r => fitRow(r.ship, r.fit, 1, true))}
+          </div>
+        )}
         {q
           ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.filter(h => h.fit).map(h => fitRow(h.ship, h.fit, 0))}
               {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
@@ -348,8 +363,10 @@ function ShipsPane({ s }) {
   );
 }
 
-export default function DeskBrowser({ s, ship, adderRef, remoteAdd }) {
+// `modeRequest` ({mode, n}): switch to that mode now — the header's "+" asks for Ships.
+export default function DeskBrowser({ s, ship, adderRef, remoteAdd, modeRequest }) {
   const [mode, setMode] = useState("ships");
+  useEffect(() => { if (modeRequest?.mode) setMode(modeRequest.mode); }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div role="tablist" style={{ display: "flex", margin: "8px 10px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 6, overflow: "hidden", flex: "none" }}>
