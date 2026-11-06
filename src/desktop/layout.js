@@ -319,6 +319,26 @@ export function clampIntoView(w, viewW, viewH) {
 }
 
 /**
+ * A window being opened, placed where it can be seen: `view` is the visible part of the workspace
+ * ({x, y, w, h} — its scroll offset and size). Already wholly inside: unchanged. Partly inside: moved
+ * the least that brings all of it in, so it stays near where it was put. Out of sight entirely (left
+ * where the workspace was scrolled to last time, or drawn for a wider screen): centred in the view.
+ * Shrunk to the view, with a gutter, when larger than it. Returns the same object when nothing moved.
+ */
+export function placeInView(w, view) {
+  if (!w || !view || !(view.w > 0 && view.h > 0)) return w;
+  const h = drawnHeight(w);
+  const right = view.x + view.w, bottom = view.y + view.h;
+  if (w.x >= view.x && w.y >= view.y && w.x + w.w <= right && w.y + h <= bottom) return w;
+  const W = Math.max(MIN_W, Math.min(w.w, view.w - 2 * GRID)), H = Math.max(MIN_H, Math.min(w.h, view.h - 2 * GRID));
+  const overlaps = w.x < right && w.x + w.w > view.x && w.y < bottom && w.y + h > view.y;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, hi));
+  const x = overlaps ? clamp(w.x, view.x + GRID, right - W - GRID) : view.x + (view.w - W) / 2;
+  const y = overlaps ? clamp(w.y, view.y + GRID, bottom - (w.collapsed ? TITLE_H : H) - GRID) : view.y + (view.h - H) / 2;
+  return { ...w, x: Math.max(0, roundTo(x, GRID)), y: Math.max(0, roundTo(y, GRID)), w: W, h: H };
+}
+
+/**
  * Pull every docked, open window back far enough that RESCUE_STRIP px of its title bar is inside a
  * `viewW` x `viewH` workspace, as a saved change. NOT run on resize, load or a preset any more (see
  * Workspace.jsx): it is kept for an explicit "bring my windows back" action. Returns the same object

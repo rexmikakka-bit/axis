@@ -102,13 +102,16 @@ function useBanner() {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode, openWindowFor } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
   const issues = useMemo(() => fitIssues(cs, s.slots, s.drones), [cs, s.slots, s.drones]);
   const stats = useDeskStats(s, {
-    snapshot: isOpen("cargo") || isOpen("drones") || isOpen("projected") || sheet === "shipinfo" || sheet === "snapshot",
+    // Only what reads them: the Drones window (bay, bandwidth, drone stats) and the two sheets. Cargo
+    // and Projected never did, and a Drones tab hidden behind another tab is not drawn — computing
+    // two extra full fit calculations for it on every edit was part of the booster lag.
+    snapshot: isOpen("drones") || sheet === "shipinfo" || sheet === "snapshot",
     drones: isOpen("drones"),
   });
   const hullAttrs = TYPES[tidByName(s.activeFit?.ship)]?.attrs ?? null;
@@ -121,7 +124,9 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     hasFighters,
     accepts: (to, item) => itemAccepts(to, item, { hasFighters }),
     add: (item, to, extra) => {
-      const msg = addItem({ s, cs, shipFighter, ...extra,
+      // Whatever took the item comes up (Owen): its window opens, or its tab comes to the front.
+      // Fighters live in the Drones window.
+      const msg = addItem({ s, cs, shipFighter, ...extra, onAdded: (dest) => openWindowFor?.(dest === "fighters" ? "drones" : dest),
         fitModule: (rack, mod) => { if (adderRef?.current) adderRef.current(rack, mod); else remoteAdd?.(rack, mod); } }, item, to);
       if (msg) notify?.("none", msg, 2500);
       return msg;
@@ -256,7 +261,10 @@ function DesktopApp() {
 
   const [layoutState, setLayoutState] = useLayoutState();
   const bd = useBackdrop();
-  const isOpen = (id) => layoutState.windows[id]?.open && !layoutState.windows[id]?.detached;
+  // Open, docked, and drawn: a tab that is not its group's shown one counts as closed.
+  const isOpen = (id) => { const w = layoutState.windows[id];
+    const host = w?.in && layoutState.windows[w.in]?.stack?.includes(id) ? layoutState.windows[w.in] : w;
+    return !!(w?.open && !w.detached && (!(host?.stack?.length > 1) || host.active === id)); };
 
   const [sheet, setSheet] = useState(null);   // which header dialog is open
   const [browserMode, setBrowserMode] = useState(null);   // {mode, n}: a request to the Browser ("+" opens it on Ships)
@@ -295,7 +303,7 @@ function DesktopApp() {
   const insp = useInspectorState(s, { setLayoutState, post: sync.post, adderRef, remoteAdd });
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
-    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openProfilePicker: () => setSheet("dmgprofile"),
+    { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openWindowFor: (id) => openWindow(setLayoutState, id), openProfilePicker: () => setSheet("dmgprofile"),
       selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash, browserMode });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
@@ -417,12 +425,12 @@ function DesktopApp() {
             <button type="button" aria-label={t("Open a fit in a new tab")} title={t("Open a fit in a new tab")} onClick={newTab}
               style={{ height: 32, width: 30, flex: "none", border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 16 }}>+</button>
           </div>
-          {/* The two things changed all the time stay on the bar; everything else is in a menu. */}
+          {/* The pilot stays on the bar; everything else is in a menu. The damage profile went: the
+              Defense window's "Incoming" chip sets the same thing where its numbers are (Owen). */}
           {hasFit && <Button onClick={() => setSheet("pilot")}>
             {s.fitSkillLabel ?? t("All Skills V")}
             {!s.skillCheck.ok && <span style={{ color: C.warning, marginLeft: 6 }}>{t({ one: "{n} missing", other: "{n} missing" }, { n: s.skillCheck.missing.length })}</span>}
           </Button>}
-          <Button onClick={() => setSheet("dmgprofile")}>{s.dmgProfile?.name ?? "Uniform"}</Button>
           <Menu label={<>{t("Windows")} <span aria-hidden="true" style={{ fontSize: 9 }}>▼</span></>} items={WINDOWS.map(w => ({
             label: t(w.title), checked: !!(layoutState.windows[w.id]?.open),
             hint: layoutState.windows[w.id]?.detached ? t("popped out") : undefined, onSelect: () => toggleWindow(setLayoutState, w.id),

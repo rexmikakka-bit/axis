@@ -4,7 +4,7 @@ import { t } from "../lib/i18n.js";
 import { tidByName, calcRangeFactor, stackingPenalty, jamChanceFrom, computeCommandBursts } from "../calc.js";
 import { WARFARE_BUFF_UNIT } from "../lib/core.js";
 import { projectedFitEffects } from "../lib/projection.js";
-import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, BoosterSideEffects, BoosterIcon, buildBoosterFromName,
+import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, boosterSideEffectState, BoosterIcon, buildBoosterFromName,
          hasCommandBursts, boosterBonuses, boosterSlotOf } from "../components/effects.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
@@ -51,6 +51,33 @@ const Body = ({ children, list }) => <div {...list} style={{ flex: 1, minHeight:
 const None = ({ children }) => <div style={{ padding: "12px", fontSize: TYPE.label, color: C.textMid }}>{children}</div>;
 
 // ── Boosters ─────────────────────────────────────────────────────────────────────────────────
+// A booster's side effects as a list, the way a link's buffs read in Command links: a checkbox per
+// side effect to simulate it, the stat on the left, the change on the right (red while it applies).
+// The data and the toggle are the phone card's (boosterSideEffectState), so the two cannot disagree.
+function SideEffects({ booster, onUpdate }) {
+  const { effects, chancePct, toggled } = boosterSideEffectState(booster);
+  if (!effects.length) return null;
+  const on = effects.filter(e => e.enabled).length;
+  return (
+    <div style={{ padding: "2px 12px 8px 38px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, minHeight: 22 }}>
+        <span style={{ fontSize: TYPE.small, color: C.warning }}>{t("Side effects")}</span>
+        <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t("{pct}% chance each", { pct: chancePct })}</span>
+        {on > 0 && <span style={{ fontSize: TYPE.small, color: C.danger, marginLeft: "auto" }}>{t("{n} simulated", { n: on })}</span>}
+      </div>
+      {effects.map((e, i) => (
+        <label key={e.key ?? i} title={t("Simulate this side effect")}
+          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!e.enabled} onChange={() => onUpdate(toggled(i))}
+            style={{ width: 14, height: 14, accentColor: C.danger, flex: "none", cursor: "pointer", margin: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: TYPE.small, color: e.enabled ? C.text : C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.label}</span>
+          <span style={{ fontSize: TYPE.label, color: e.enabled ? C.danger : C.textMid, fontVariantNumeric: "tabular-nums" }}>{e.sign}{e.magnitude}%</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 export function BoostersPanel({ s }) {
   const [picker, setPicker] = useState(false);
   const insp = useInspect();
@@ -97,9 +124,7 @@ export function BoostersPanel({ s }) {
                 </div>
                 <Remove onClick={() => set(bs => bs.filter(x => x.id !== b.id))} label={t("Remove")} />
               </div>
-              <div style={{ padding: "0 12px 6px 38px" }}>
-                <BoosterSideEffects booster={b} onUpdate={nb => set(bs => bs.map(x => x.id === b.id ? nb : x))} />
-              </div>
+              <SideEffects booster={b} onUpdate={nb => set(bs => bs.map(x => x.id === b.id ? nb : x))} />
             </div>
           );
         })}

@@ -1423,7 +1423,20 @@ function probeRepresentatives() {
 // Returns Map<classKey, {cpu,pg,cal}> — the multiplier each class's base cost is actually charged at.
 // Deliberately NOT part of calcFitStats: it costs roughly what a full stats pass does, and only the
 // module browser and Variations tab ever need it, so callers should compute it lazily and cache.
+//
+// One answer per fit state, shared: the fitting window, the market browser and the Variations window
+// each ask for it, and each kept its own cache, so one edit ran this whole-fit pass up to three times.
+// Keyed by REFERENCE on the inputs (the session replaces them, never mutates them) plus the hull, so a
+// caller passing a fresh ship object still hits. Callers must treat the returned Map as read-only.
+let _ratioMemo = null;
 export function computeFitCostRatios(ship, slots, skills = SKILL_DEFAULTS, opts = {}) {
+  const key = [ship?.typeID ?? ship?.name, slots, skills, opts.implants, opts.boosters, opts.environment, opts.pilotSec, opts.systemSecurity];
+  if (_ratioMemo && _ratioMemo.key.every((v, i) => v === key[i])) return _ratioMemo.val;
+  const val = _computeFitCostRatios(ship, slots, skills, opts);
+  if (val.size) _ratioMemo = { key, val };
+  return val;
+}
+function _computeFitCostRatios(ship, slots, skills, opts) {
   const out = new Map();
   if (!ship || !slots) return out;
   const shipTypeID = ship.typeID ?? tidByName(ship.name);

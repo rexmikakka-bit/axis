@@ -55,7 +55,10 @@ export function chargeMenuItems(mod, loaded, onLoad) {
   const family = (g) => {
     const grades = [...g.items].sort((a, b) => chargeDamage(a.typeID) - chargeDamage(b.typeID) || a.name.localeCompare(b.name));
     if (grades.length === 1) return item(grades[0]);
-    const face = grades.find(v => metaOf(v.typeID, "T1") === "T1") ?? grades[0];
+    // The family's plain T1 round: the shortest-named T1. "Mjolnir Heavy Missile", not the "Mjolnir
+    // Auto-Targeting Heavy Missile I" that shares its family and its meta and does less damage.
+    const t1 = grades.filter(v => metaOf(v.typeID, "T1") === "T1");
+    const face = (t1.length ? t1.reduce((a, b) => (b.name.length < a.name.length ? b : a)) : null) ?? grades[0];
     return { label: face.name, icon: eveIcon(face.typeID, 32), checked: grades.some(v => v.name === loaded),
              submenu: [{ heading: t("Less damage") }, ...grades.map(item), { heading: t("More damage") }] };
   };
@@ -70,8 +73,17 @@ function rangeOf(e, row) {
   const heated = row.state !== "overheated" && e.heatedOptimal ? e.heatedOptimal : null;
   return { text: `${num(opt)}${fal > 0 ? ` + ${num(fal)}` : ""} km`, heated };
 }
-function infoOf(e) {
+// A neut, nos or remote rep reads per second; a click on it switches every such row to per cycle
+// ("600 GJ/24s") and back. One switch for the table, remembered, like the Resources bars'.
+const PER_CYCLE_KEY = "axis_desk_info_percycle";
+function infoOf(e, perCycle) {
   if (!e) return null;
+  if (e.strengthText && e.strengthCycleS) {
+    const cycle = e.strengthText.replace(/ \([^)]*\/s\)$/, "");
+    const rate = `${e.strengthPerSec} ${e.strengthPerSecUnit}/s`;
+    return { text: perCycle ? cycle : rate, color: C.warning, toggle: true,
+             title: `${perCycle ? rate : cycle} · ${t("click to show {what}", { what: perCycle ? t("per second") : t("per cycle") })}` };
+  }
   if (e.tracking > 0) return { text: `${t("Tr")} ${(+e.tracking).toFixed(2)}`, color: C.warning, title: `${t("Tracking — radians/second")}: ${e.tracking}` };
   if (e.strengthText) return { text: e.strengthText, color: C.warning };
   if (e.isASB) return e.hasCharges ? { text: `${k(e.totalEHP ?? e.totalHP)} / ${e.totalS}s`, color: C.high } : { text: `${k(e.ehpS)} EHP/s`, color: C.textMid };
@@ -139,6 +151,8 @@ export function FitTable({ api }) {
     const [chargeRows, setChargeRows] = useState(() => { try { return localStorage.getItem("axis_desk_charge_rows") === "1"; } catch { return false; } });
     const flipChargeRows = () => setChargeRows(v => { try { localStorage.setItem("axis_desk_charge_rows", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
     const [chargeMenu, setChargeMenu] = useState(null);   // {x, y, secKey, row, unload}
+    const [perCycle, setPerCycleState] = useState(() => { try { return localStorage.getItem(PER_CYCLE_KEY) === "1"; } catch { return false; } });
+    const togglePerCycle = () => setPerCycleState(v => { try { localStorage.setItem(PER_CYCLE_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
     const [blankMenu, setBlankMenu] = useState(null);     // {x, y}: right-click on the table's empty space
     // Browser items dropped here: a module is fitted to its rack, a charge loads into every module
     // that takes it — or, dropped on one row, into that row (all of a grouped row's members).
@@ -347,7 +361,7 @@ export function FitTable({ api }) {
                   const capNeed = it?.get?.("capacitorNeed"), dur = it?.get?.("duration") || it?.get?.("speed");
                   const running = row.state === "active" || row.state === "overheated";
                   const capS = running && capNeed > 0 && dur > 0 ? capNeed / (dur / 1000) : null;
-                  const rng = rangeOf(e, row), info = infoOf(e);
+                  const rng = rangeOf(e, row), info = infoOf(e, perCycle);
                   const price = row.mutaplasmid ? null : priceOf(row.typeID);
                   const isDragSrc = dragUI?.secKey === sec.key && dragUI?.fromIdx === rowIdx;
                   const isDragOver = dragUI?.secKey === sec.key && dragUI?.overIdx === rowIdx && dragUI?.fromIdx !== rowIdx;
@@ -400,7 +414,9 @@ export function FitTable({ api }) {
                       <span style={{ ...cell, color: resourceColor("pg") }}>{pg ? num(pg) : ""}</span>
                       <span style={{ ...cell, color: C.textMid }}>{capS != null ? num(capS, 2) : "—"}</span>
                       <span style={{ ...cell, color: C.rig }} title={rng?.heated ? `${t("OH")}: ${rng.heated} km` : undefined}>{typeof rng === "string" ? rng : rng?.text ?? ""}</span>
-                      <span style={{ ...cell, color: info?.color ?? C.textMid }} title={info?.title ?? info?.text}>{info?.node ?? info?.text ?? ""}</span>
+                      <span style={{ ...cell, color: info?.color ?? C.textMid, cursor: info?.toggle ? "pointer" : undefined }} title={info?.title ?? info?.text}
+                        onClick={info?.toggle ? (ev => { ev.stopPropagation(); togglePerCycle(); }) : undefined}
+                        onDoubleClick={info?.toggle ? (ev => ev.stopPropagation()) : undefined}>{info?.node ?? info?.text ?? ""}</span>
                       <span style={{ ...cell, color: C.textMid }} title={row.mutaplasmid ? t("Abyssal module — value depends on the roll, not the base type") : undefined}>{row.mutaplasmid ? "?" : isk(price)}</span>
                       <span onPointerDown={sec.key === "subsystems" ? undefined : startRowDrag(sec.key, rowIdx)} onPointerMove={moveRowDrag} onPointerUp={endRowDrag} onPointerCancel={endRowDrag}
                         onClick={ev => ev.stopPropagation()} title={t("Drag to reorder")}

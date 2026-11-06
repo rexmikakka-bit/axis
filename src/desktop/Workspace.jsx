@@ -5,7 +5,7 @@ import DeskWindow from "./DeskWindow.jsx";
 import { WINDOWS, PRESETS, GRID, presetLayout, fitPreset, bringToFront, snapMove, snapResize, clampIntoView, canvasSize,
          readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat,
          renameNamed, overwriteNamed, deleteNamed, setPresetHidden, TITLE_H, stackOf, isTabMember,
-         combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed, moveTab } from "./layout.js";
+         combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed, moveTab, hostOf, placeInView } from "./layout.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
@@ -29,11 +29,23 @@ export const detachWindow = (setState, id) => setState(s => {
   return { ...s, windows: { ...w, [id]: { ...w[id], open: true, detached: true } } };
 });
 
+// The visible part of the workspace — its scroll offset and size — for placing a window being opened
+// (layout.js placeInView). Set by the mounted Workspace; null in a popped-out window, which has none.
+let visibleView = () => null;
+/** `id` opened, docked and raised, inside the visible workspace. A tab moves its whole window. */
+function opened(windows, id) {
+  const host = hostOf(windows, id);
+  const next = { ...windows, [id]: { ...windows[id], open: true, detached: false } };
+  if (next[host].stack?.includes(id)) next[host] = { ...next[host], active: id };
+  next[host] = placeInView(next[host], visibleView());
+  return bringToFront(next, host);
+}
+
 /** Open-and-raise a closed window, or close an open one (the header's Windows menu). */
 export const toggleWindow = (setState, id) => setState(s => {
   const w = s.windows[id];
   if (w.open && !w.detached) return { ...s, windows: closeTab(s.windows, id) };
-  return { ...s, windows: bringToFront({ ...s.windows, [id]: { ...w, open: true, detached: false } }, id) };
+  return { ...s, windows: opened(s.windows, id) };
 });
 
 /**
@@ -42,10 +54,12 @@ export const toggleWindow = (setState, id) => setState(s => {
  */
 export const openInspector = (setState, spec, opts) => setState(s => ({ ...s, windows: openFloat(s.windows, spec, opts).layout }));
 
-/** Open (and raise) a window from outside the workspace — e.g. the Browser when "+" starts a new tab. */
-export const openWindow = (setState, id) => setState(s => ({
-  ...s, windows: bringToFront({ ...s.windows, [id]: { ...s.windows[id], open: true, detached: false } }, id),
-}));
+/**
+ * Open (and raise) a window from outside the workspace — e.g. the Browser when "+" starts a new tab,
+ * or the window an item was just added to. A tab is brought to the front of its group. A popped-out
+ * window is left where it is: it already has an OS window of its own.
+ */
+export const openWindow = (setState, id) => setState(s => s.windows[id]?.open && s.windows[id]?.detached ? s : ({ ...s, windows: opened(s.windows, id) }));
 
 // Chip: 22 px, radius 11. On = accent tint; off = transparent with a strong border.
 export function Chip({ on, onClick, children, title, pressed = true, onContextMenu, onDoubleClick }) {
@@ -96,6 +110,10 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   // stays exactly where it was put. Only the inspector layer, which does not scroll, needs keeping in
   // view, and that is done where it is DRAWN (clampIntoView below), never by changing the saved rect.
   const wsRef = useRef(null);
+  useEffect(() => {
+    visibleView = () => { const el = wsRef.current; return el ? { x: el.scrollLeft, y: el.scrollTop, w: el.clientWidth, h: el.clientHeight } : null; };
+    return () => { visibleView = () => null; };
+  }, []);
   const [view, setView] = useState({ w: 0, h: 0 });
   const viewRef = useRef(view); viewRef.current = view;
   useLayoutEffect(() => {

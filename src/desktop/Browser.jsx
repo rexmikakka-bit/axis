@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
@@ -182,9 +182,15 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   // officer, each by meta level. A rack's tree is already built in that order (with its ancillary-first
   // rule); the full market tree is stored A–Z, so its lists are sorted here. A search is the phone's
   // own (jargon.js jargonSearch): blocked by module group, the best match first, meta order inside.
-  const items = q
+  // Memoised on what the list depends on, which is not the fit: re-running the search on every edit
+  // (adding a booster, say) cost ~70 ms a time.
+  const items = useMemo(() => q
     ? (jargonSearch(q, rack ? allMods(tree) : allItems()) ?? []).slice(0, 200)
-    : (selected ? (rack ? find(tree, selected)?.mods ?? [] : [...(find(tree, selected)?.mods ?? [])].sort(compareForBrowser)) : []);
+    : (selected ? (rack ? find(tree, selected)?.mods ?? [] : [...(find(tree, selected)?.mods ?? [])].sort(compareForBrowser)) : []),
+    [q, rack, tree, selected]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // The rows' "won't fit" marks trail the fit by a render: their cost-ratio probe is a whole-fit pass,
+  // and deferring it lets the edit itself paint first.
+  const rowHeadroom = useDeferredValue(headroom);
 
   const listedIds = items.map(m => m.typeID).filter(Boolean);
   const listedKey = listedIds.join(",");
@@ -252,7 +258,7 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
       <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
         {items.length
           ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} actions={actionsFor(m)} onInfo={setInfo} rowProps={rs.rowProps} rack={rack}
-              kind={rack ? "module" : itemKind(m).kind} headroom={headroom} />)
+              kind={rack ? "module" : itemKind(m).kind} headroom={rowHeadroom} />)
           : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? (rack ? t("No modules found") : t("Nothing found")) : t("Pick a category above.")}</div>}
       </div>
       </>}

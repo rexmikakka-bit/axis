@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES } from "../calc.js";
@@ -99,7 +99,14 @@ function useWidth() {
   return [ref, w];
 }
 
-export default function DeskVariations({ typeID, baseline, fitted = true, resourceHeadroom, usedAbyssalIds = new Set(), onSwap, swapLabel, onInspect }) {
+// The table redraws a render behind the fit: a swap repaints the Fitting window and the stats first,
+// then this (every row, every column, and the fit-cost probe for "won't fit") in a background render.
+// The props travel as one deferred object, and the memo lets the urgent render skip the table.
+export default function DeskVariations(props) {
+  return <VariationsTable {...useDeferredValue(props)} />;
+}
+
+const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted = true, resourceHeadroom, usedAbyssalIds = new Set(), onSwap, swapLabel, onInspect }) {
   const online = useOnline();
   const vars = useMemo(() => (typeID ? variantsOf(typeID) : []).map(v => ({ ...v, meta: metaOf(v.typeID, v.meta) })), [typeID]);
   const group = TYPES[typeID]?.gn ?? String(typeID);
@@ -231,7 +238,7 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
     e.preventDefault(); setSel(r.key);
     const url = r.record?.source === MARKET_SOURCE ? mutaMarketUrl(r.record.slug) : null;
     setMenu({ x: e.clientX, y: e.clientY, items: [
-      onSwap && { label: swapLabel ?? t("Swap in"), hint: t("Double-click"), disabled: !canSwap(r), onSelect: () => swap(r) },
+      onSwap && { label: swapLabel ?? t("Swap in"), hint: fitted ? t("Click") : t("Double-click"), disabled: !canSwap(r), onSelect: () => swap(r) },
       { label: t("Compare against this"), disabled: r.key === ref?.key, onSelect: () => setRefKey(r.key) },
       refKey !== "fitted" && { label: fitted ? t("Compare against the fitted one") : t("Compare against the reference"), onSelect: () => setRefKey("fitted") },
       { divider: true },
@@ -337,7 +344,12 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
     meta: metaOf(r.mod.typeID, r.mod.meta), price: rowPrice(r), fits: fitsOf(r), isRef: r.key === ref?.key,
     inUse: !!r.mod.abyssalItemId && usedAbyssalIds.has(r.mod.abyssalItemId) && !r.isBaseline,
   });
-  const rowEvents = (r) => ({ onClick: () => setSel(r.key), onDoubleClick: () => swap(r), onContextMenu: e => rowMenu(e, r) });
+  // A fitted module's variations swap in on one click (Owen: no double-click needed); a row that
+  // cannot be (the fitted one, a roll fitted elsewhere) just selects. Opened from the market, where a
+  // swap FITS a new module, a stray click while browsing would add one, so that keeps the double-click.
+  const rowEvents = (r) => fitted
+    ? { onClick: () => { setSel(r.key); swap(r); }, onContextMenu: e => rowMenu(e, r) }
+    : { onClick: () => setSel(r.key), onDoubleClick: () => swap(r), onContextMenu: e => rowMenu(e, r) };
 
   return (
     <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -465,4 +477,4 @@ export default function DeskVariations({ typeID, baseline, fitted = true, resour
         onChange={next => { setSources(next); if (next.length) setShowAbyssals(true); }} onClose={() => setEditSources(false)} />}
     </div>
   );
-}
+});

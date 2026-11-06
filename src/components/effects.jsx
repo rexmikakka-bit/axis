@@ -23,19 +23,26 @@ const BOOSTER_SIDE_EFFECTS = {
   "Pyrolancea":    [{attr:"Capacitor Capacity",penalty:"-5%"},{attr:"Shield HP",penalty:"-5%"}],
 };
 
-export function BoosterSideEffects({booster, onUpdate}) {
+// A booster's side effects as the screens draw them, shared by the phone card below and the desktop
+// Boosters window: the stored list (or one rebuilt from the type for a record saved before keys),
+// each one's magnitude after Neurotoxin Recovery V, the chance each fires, and the toggle.
+const NEURO = 0.75;
+export function boosterSideEffectState(booster) {
   const stored = booster.sideEffects;
   const se = (stored?.length && stored[0].key) ? stored : boosterSideEffectsFor(booster.name).map(s => {
     const old = stored?.find(o => o.attr === s.label || o.label === s.label);
     return { ...s, enabled: old?.enabled ?? false };
   });
-  if (!se.length) return null;
-  const NEURO = 0.75;
   const chancePct = Math.round((se[0]?.chance ?? 0.3) * NEURO * 1000) / 10;
-  const toggle = (i) => {
-    const next = se.map((s, j) => j === i ? { ...s, enabled: !s.enabled } : s);
-    onUpdate({ ...booster, sideEffects: next });
-  };
+  const effects = se.map(s => ({ ...s, magnitude: Math.round(Math.abs(s.value) * NEURO * 100) / 100, sign: s.value < 0 ? '-' : '+' }));
+  const toggled = (i) => ({ ...booster, sideEffects: se.map((s, j) => j === i ? { ...s, enabled: !s.enabled } : s) });
+  return { effects, chancePct, toggled };
+}
+
+export function BoosterSideEffects({booster, onUpdate}) {
+  const { effects: se, chancePct, toggled } = boosterSideEffectState(booster);
+  if (!se.length) return null;
+  const toggle = (i) => onUpdate(toggled(i));
   return (
     <div style={{padding:'6px 12px 8px',borderTop:`1px solid ${C.border}`,background:'rgba(245,158,11,0.05)'}}>
       <div style={{fontSize:9,fontWeight:700,color:C.warning,textTransform:'uppercase',letterSpacing:.5,marginBottom:5}}>
@@ -43,8 +50,7 @@ export function BoosterSideEffects({booster, onUpdate}) {
       </div>
       <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
         {se.map((s,i)=>{
-          const mag = Math.round(Math.abs(s.value) * NEURO * 100) / 100;
-          const sign = s.value < 0 ? '-' : '+';
+          const mag = s.magnitude, sign = s.sign;
           return (
             <button key={s.key} onClick={()=>toggle(i)}
               style={{fontSize:10,fontWeight:s.enabled?700:500,cursor:'pointer',

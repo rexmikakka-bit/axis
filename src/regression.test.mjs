@@ -8945,6 +8945,30 @@ Nanofiber Internal Structure II
   check('desk', 'Standard on 1440x850: still no overlaps', shown.some(a => shown.filter(b => b > a)
     .some(b => stdSmall[a].x < stdSmall[b].x + stdSmall[b].w && stdSmall[b].x < stdSmall[a].x + stdSmall[a].w && stdSmall[a].y < stdSmall[b].y + stdSmall[b].h && stdSmall[b].y < stdSmall[a].y + stdSmall[a].h)) ? 1 : 0, 0, 0);
   check('desk', 'the other presets are not squeezed sideways', D.fitPreset('default', { w: 1000, h: 1200 }).targeting.x, 984, 0);
+  // A window being opened lands where it can be seen (Owen: "sometimes opening a window opens it
+  // offscreen"). The view is the workspace's scroll offset and size.
+  {
+  const view = { x: 0, y: 0, w: 1440, h: 900 };
+  const inside = { x: 100, y: 100, w: 400, h: 300, open: true };
+  check('desk', 'open in view: already inside is left alone', D.placeInView(inside, view) === inside ? 1 : 0, 1, 0);
+  const far = D.placeInView({ x: 2184, y: 136, w: 760, h: 728, open: true }, view);
+  check('desk', 'open in view: out of sight entirely, centred', `${far.x},${far.y},${far.w},${far.h}`, '344,88,760,728');
+  const edge = D.placeInView({ x: 1200, y: 600, w: 400, h: 400, open: true }, view);
+  check('desk', 'open in view: half past the edge, nudged the least', `${edge.x},${edge.y}`, '1032,496');
+  const scrolled = D.placeInView({ x: 8, y: 8, w: 300, h: 200, open: true }, { x: 600, y: 0, w: 1440, h: 900 });
+  check('desk', 'open in view: follows the scrolled-to part of the workspace', scrolled.x >= 600 && scrolled.x + 300 <= 2040 ? 1 : 0, 1, 0);
+  const big = D.placeInView({ x: 2000, y: 0, w: 2000, h: 1200, open: true }, view);
+  check('desk', 'open in view: larger than the view, shrunk to it', `${big.w},${big.h}`, '1424,884');
+  }
+  // One fit-cost probe per fit state, whoever asks: the Fitting window, the Browser and Variations
+  // each used to keep their own cache, so one edit ran the whole-fit pass up to three times.
+  {
+    const ship = { name: 'Rupture', typeID: typeIDByName('Rupture') };
+    const slots = { high: [], mid: [], low: [], rigs: [] };
+    const r1 = computeFitCostRatios(ship, slots, SKILLS_ALL_V, {});
+    check('desk', 'fit-cost probe: same inputs, same answer, not recomputed', computeFitCostRatios({ ...ship }, slots, SKILLS_ALL_V, {}) === r1 ? 1 : 0, 1, 0);
+    check('desk', 'fit-cost probe: a new slots object is a new fit state', computeFitCostRatios(ship, { ...slots }, SKILLS_ALL_V, {}) !== r1 ? 1 : 0, 1, 0);
+  }
   // Pop-out sync sends only the hulls whose arrays changed. Built from the same reference contract
   // the IndexedDB writer uses: one edit replaces exactly one hull's array.
   const P = await import('./desktop/fits-patch.js');

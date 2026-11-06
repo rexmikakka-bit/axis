@@ -276,7 +276,11 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null,MenuFrame=null}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
-  const _cs=(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{};
+  // Memoised on its inputs: this tab re-renders for menus, gestures and every unrelated session
+  // update, and a full fit calculation on each of those was most of the lag adding a booster
+  // (eight calculations for one change, on the desktop). Every input is replaced, never mutated.
+  const _cs=useMemo(()=>(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{},
+    [ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);
   // Keyed by SLOT id, not typeID: two slots holding the same module can have genuinely different
   // stats. A missile launcher's range comes entirely from its charge (velocity x flight time), so an
   // unloaded launcher has no range at all — keying by typeID let a loaded launcher's range bleed onto

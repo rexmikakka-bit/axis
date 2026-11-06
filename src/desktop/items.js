@@ -179,11 +179,13 @@ export function accepts(to, item, { hasFighters } = {}) {
 
 /**
  * Add `item` to destination `to` (default: its own). `env` = {s, cs, shipFighter, fitModule(rack, mod),
- * only?} — `only` limits a charge to particular module ids (a drop onto one row). Returns a short
- * message for the banner, or null when nothing happened.
+ * only?, onAdded?} — `only` limits a charge to particular module ids (a drop onto one row);
+ * `onAdded(to)` hears where something actually went, so the app can bring that window up. Returns a
+ * short message for the banner, or null when nothing happened.
  */
 export function addItem(env, item, to) {
   const { s, cs, shipFighter, fitModule } = env;
+  const done = (dest, msg = null) => { env.onAdded?.(dest); return msg; };
   const hasFighters = (shipFighter?.tubes ?? 0) > 0;
   const k = itemKind(item);
   to ??= defaultAction(item, { slots: s.slots, hasFighters }).to;
@@ -191,17 +193,17 @@ export function addItem(env, item, to) {
   const tid = item.typeID ?? tidByName(item.name);
   switch (to) {
     case "fitting":
-      if (k.kind === "charge") { const n = loadCharge(s, item, env.only); return n ? t("Loaded {name}", { name: item.name }) : t("Nothing fitted takes {name}", { name: item.name }); }
+      if (k.kind === "charge") { const n = loadCharge(s, item, env.only); return n ? done(to, t("Loaded {name}", { name: item.name })) : t("Nothing fitted takes {name}", { name: item.name }); }
       // A saved abyssal roll fits as itself — the phone library's libraryModule shape — never as the
       // stock module its typeID names.
-      if (item.mutations) { fitModule?.(k.rack, { name: item.name, typeID: tid, mutaplasmid: item.mutaplasmid, mutations: { ...item.mutations }, abyssalItemId: item.abyssalItemId }); return null; }
+      if (item.mutations) { fitModule?.(k.rack, { name: item.name, typeID: tid, mutaplasmid: item.mutaplasmid, mutations: { ...item.mutations }, abyssalItemId: item.abyssalItemId }); return done(to); }
       fitModule?.(k.rack, moduleEntry(tid)?.mod ?? item);
-      return null;
-    case "drones": addDrone(s, { ...(droneEntry(tid) ?? {}), name: item.name, typeID: tid }, { bw: cs?.droneBandwidth ?? 0, max: cs?.maxActiveDrones ?? 5 }); return null;
-    case "fighters": addFighter(s, { ...(fighterEntry(tid) ?? {}), name: item.name, typeID: tid }, shipFighter); return null;
-    case "implants": addImplant(s, item, k.slot); return null;
-    case "boosters": addBooster(s, item.name); return null;
-    case "cargo": addCargo(s, { ...item, typeID: tid }); return t("Added {name} to cargo", { name: item.name });
+      return done(to);
+    case "drones": addDrone(s, { ...(droneEntry(tid) ?? {}), name: item.name, typeID: tid }, { bw: cs?.droneBandwidth ?? 0, max: cs?.maxActiveDrones ?? 5 }); return done(to);
+    case "fighters": addFighter(s, { ...(fighterEntry(tid) ?? {}), name: item.name, typeID: tid }, shipFighter); return done(to);
+    case "implants": addImplant(s, item, k.slot); return done(to);
+    case "boosters": addBooster(s, item.name); return done(to);
+    case "cargo": addCargo(s, { ...item, typeID: tid }); return done(to, t("Added {name} to cargo", { name: item.name }));
     default: return null;
   }
 }

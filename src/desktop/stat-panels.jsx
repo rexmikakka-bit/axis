@@ -62,8 +62,8 @@ export function ResourcesPanel({ s, ship, cs }) {
   const int = (n) => String(Math.round(n));
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: "10px 24px", padding: "10px 12px" }}>
-      <UsageBar {...bar} showPct margin label={t("CPU")} labelColor={resourceColor("cpu")} used={cs.cpuUsed ?? 0} total={cs.cpuTotal ?? 0} unit="tf" />
-      <UsageBar {...bar} showPct margin label={t("PG")} labelColor={resourceColor("pg")} used={cs.pgUsed ?? 0} total={cs.pgTotal ?? 0} unit="MW"
+      <UsageBar {...bar} showPct label={t("CPU")} labelColor={resourceColor("cpu")} used={cs.cpuUsed ?? 0} total={cs.cpuTotal ?? 0} unit="tf" />
+      <UsageBar {...bar} showPct label={t("PG")} labelColor={resourceColor("pg")} used={cs.pgUsed ?? 0} total={cs.pgTotal ?? 0} unit="MW"
         fmt={(n) => n.toLocaleString(undefined, { maximumFractionDigits: n >= 1000 ? 0 : 1 })} />
       <UsageBar {...bar} label={t("Calibration")} used={cs.calUsed ?? 0} total={cs.calTotal ?? 400} color={resourceColor("cal")} fmt={int} />
       <UsageBar {...bar} label={t("Drone bay")} used={d.bay} total={cs.droneBay ?? 0} unit="m³" fmt={int} />
