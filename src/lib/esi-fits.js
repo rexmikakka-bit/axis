@@ -131,7 +131,7 @@ export function slotsToEsiFitting(shipTypeID, fitName, slots, drones, cargoItems
   // A pre-release hull's or rig's typeID is our placeholder, which EVE would reject with a bare 422.
   if (isPrereleaseShip(shipTypeID)) throw new Error(t('This ship is not in EVE yet, so it cannot be saved to your in-game fittings'));
   if (['rigs', 'high', 'mid', 'low'].some(s => (slots?.[s] ?? []).some(x => isPrereleaseRig(x?.typeID))))
-    throw new Error(t('This fit has a pre-release rig that is not in EVE yet, so it cannot be saved to your in-game fittings'));
+    throw new Error(t('This fit has a pre-release rig or module that is not in EVE yet, so it cannot be saved to your in-game fittings'));
   const items = [];
   const flagCursor = { high: 0, mid: 0, low: 0, rigs: 0, services: 0 };
   const chargeTotals = new Map(); // typeID -> total quantity across the whole fit

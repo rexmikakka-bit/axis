@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The main window and every popped-out window (satellite-<id>): create, focus and close windows for pop-out; MutaMarket and ceve-market API requests from Rust (neither sends CORS headers); open web links in the system browser; receive the eveauth-visviva ESI login callback and exchange its code",
+  "windows": [
+    "main",
+    "satellite-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "https://mutamarket.com/api/*" }, { "url": "https://www.ceve-market.org/api/*" }, { "url": "https://login.eveonline.com/v2/oauth/token" }]
+    },
+    "opener:default",
+    "deep-link:default"
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Axis",
+  "version": "0.1.0",
+  "identifier": "com.rexmikakka.axis.desktop",
+  "build": {
+    "frontendDist": "../dist-desktop",
+    "devUrl": "http://localhost:5180",
+    "beforeDevCommand": "npm run dev:desktop",
+    "beforeBuildCommand": "npm run build:desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Axis",
+        "width": 1440,
+        "height": 1000,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "resizable": true,
+        "dragDropEnabled": false,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "eveauth-visviva"
+        ]
+      }
+    }
+  }
+}

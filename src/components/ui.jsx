@@ -1,6 +1,6 @@
 // UI primitives, module/subsystem pickers, resource strip, damage-profile sheet.
 
-import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useRef, useMemo, useDeferredValue, createContext, useContext } from "react";
 import { AbyssalLibrary } from './abyssal-library.jsx';
 import { AttributeSort } from './attribute-sort.jsx';
 import { AbyssalInfo } from './abyssal-info.jsx';
@@ -8,6 +8,8 @@ import { PriceCard } from './price-card.jsx';
 import { AbyssalSources } from './abyssal-sources.jsx';
 import { readAbyssals, readListings, editAbyssal, rememberListings } from '../lib/abyssal-store.js';
 import { variationItems, variationRoll, filterVariationItems, withinPriceCeiling, MARKET_SOURCE } from '../lib/variation-items.js';
+import { variantSwapPatch } from '../lib/fit-ops.js';
+import { SheetFrame } from '../lib/sheet-frame.js';
 import { SourceBadge, BADGE_STYLE } from './source-badge.jsx';
 import { abyssalTypeIds, listingCost, JITA_4_4_STATION_ID, savedMarketListings } from '../lib/mutamarket.js';
 import { useOnline } from '../lib/use-online.js';
@@ -25,7 +27,7 @@ import mutaplasmidData from "../data/mutaplasmids.json";
 import { TYPES, tidByName, calcFitStats, subsystemsForHull , usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { DMG, DMG_COLOR, DOUBLE_TAP_MS, MUTA_BY_NAME, MUTA_BY_TYPE, OFF_MARKET_MODULES, REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, STATE_COLORS, STATE_GLOW, STATE_LABELS, getCompatibleCharges, groupChargesForBrowser, haptic, moduleByName, moduleTakesCharges, moduleVariations, shipTraits, validStatesFor, variantsOf, mutaAttrRanges, snapToBase, parseEFT, readClipboardText, fitCostRatioOf, fitCostFits, variantCostFits, canLoadCharge } from "../lib/core.js";
 import { jargonSearch } from "../lib/jargon.js";
-import { fmtResource, fmtPriceAge } from "../lib/fmt.js";
+import { fmtResource, fmtPriceAge, fmtMarginPct } from "../lib/fmt.js";
 import { fetchPrices, priceAsOf } from "../prices.js";
 import { sortCompareRows, directionOf, filterLockedRows, bestFirstDirection } from "../lib/compare.js";
 import { abyssalGrade } from "../lib/eft-export.js";
@@ -35,6 +37,7 @@ import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
 import { PRERELEASE_RIG_DESCRIPTIONS, isPrereleaseRig, prereleaseSkillApplies } from "../data/prerelease-rigs.js";
+import { PRERELEASE_MODULE_DESCRIPTIONS } from "../data/prerelease-modules.js";
 import { PrereleaseSkillControl } from "./prerelease-skill.jsx";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
@@ -42,7 +45,7 @@ function useTypeDescriptions() {
   useEffect(() => {
     if (_typeDescsCache) { setDescs(_typeDescsCache); return; }
     import("../data/type-descriptions.json").then(m => {
-      _typeDescsCache = { ...m.default, ...PRERELEASE_RIG_DESCRIPTIONS };
+      _typeDescsCache = { ...m.default, ...PRERELEASE_RIG_DESCRIPTIONS, ...PRERELEASE_MODULE_DESCRIPTIONS };
       setDescs(_typeDescsCache);
     });
   }, []);
@@ -180,7 +183,16 @@ export function useVisualViewport(){
   return vv;
 }
 
-function BottomSheet({title,onClose,children,height="70vh",fillHeight=false,headerExtra,footerExtra,dismissRequested=false}){
+// Desktop only: a component to draw sheets with instead (the desktop app provides a dialog). Every
+// sheet in the app goes through BottomSheet, so this one switch moves all of them — pickers, info,
+// variations — into desktop dialogs without touching any of them. The phone provides nothing.
+// (Defined in lib/sheet-frame.js so the bare sheets in other files can read it without importing ui.jsx.)
+export { SheetFrame };
+function BottomSheet(props){
+  const Alt=useContext(SheetFrame);
+  return Alt?<Alt {...props}/>:<PhoneBottomSheet {...props}/>;
+}
+function PhoneBottomSheet({title,onClose,children,height="70vh",fillHeight=false,headerExtra,footerExtra,dismissRequested=false}){
   const vv=useVisualViewport();
   const frame=vv?{top:0,height:vv.height,left:0,right:0}:{inset:0};
   // Derived, not a third prop that could drift out of step with the two it would have to agree with:
@@ -497,11 +509,7 @@ function ResourceStrip({ship,slots,skills,implants,boosters,drones,factorInReloa
   // non-zero must not round down to a flat "-0.00%", which shows a minus sign against a magnitude of
   // nothing and reads as broken. Summing float module costs against an equal total lands a hair
   // either side of zero, so a fit that is exactly full genuinely can register as over by 1e-13.
-  const fmtMarginPct=(rem,total)=>{
-    const p=(rem/total)*100, a=Math.abs(p);
-    const s=a===0?"0":a<1?Math.max(a,0.01).toFixed(2):a<10?a.toFixed(1):Math.round(a);
-    return `${p<0?"-":""}${s}%`;
-  };
+  // (lib/fmt.js fmtMarginPct, shared with the desktop's Resources window.)
 
   return(
     // STICKY, and full-bleed rather than a floating rounded card. The three meters were stacked
@@ -607,6 +615,19 @@ function SubsystemPickerSheet({ship,slotId,current,onSelect,onClose}){
   const options=byGroup[group]??[];
   // The one picker still built as a bare overlay rather than on BottomSheet, so Back is wired here.
   useBackHandler(onClose);
+  // ...and so SheetFrame (desktop) is honoured here too: the same list, in the desktop's frame.
+  const Alt=useContext(SheetFrame);
+  if(Alt)return(<Alt title={t("{group} Subsystem",{group})} onClose={onClose}><div style={{padding:12}}>
+    {options.map(opt=>{
+      const on=current?.typeID===opt.typeID;
+      return(<div key={opt.typeID} onClick={()=>onSelect(opt)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:on?C.accentLight:"transparent",border:`1px solid ${on?C.accent:C.border}`,borderRadius:6,marginBottom:4,cursor:"pointer"}}>
+        <img className="eve-icon" src={eveIcon(opt.typeID,32)} width={24} height={24} alt="" onError={e=>{e.target.style.display="none";}}/>
+        <span style={{flex:1,minWidth:0,fontSize:13,color:on?C.accent:C.text}}>{opt.name.replace(`${ship?.name} ${group} - `,"")}</span>
+        <SkillMark typeID={opt.typeID}/>
+      </div>);
+    })}
+    {options.length===0&&<div style={{textAlign:"center",color:C.textMute,padding:"24px 0",fontSize:13}}>{t("No subsystems found")}</div>}
+  </div></Alt>);
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"flex-end"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxHeight:"70vh",background:C.bg,borderTopLeftRadius:16,borderTopRightRadius:16,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -649,11 +670,17 @@ function AbyssalBadge({grade}){
   return <span style={{...BADGE_STYLE,color:C.danger,background:'rgba(239,68,68,.12)',border:'1px solid rgba(239,68,68,.28)'}}>▲ {grade}</span>;
 }
 
+// Desktop density for the module picker's rows (ModRow, ModuleGroupRow): set by the picker's inline
+// mode, so the phone — which never provides it — keeps its touch-sized rows.
+export const DenseRows=createContext(false);
+
 function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badges,largeInfo=false}){
   const rowMeta=metaOf(mod.typeID,mod.meta);
   const grade=mod.mutations?abyssalGrade(mod.mutaplasmid):null;
+  const dense=useContext(DenseRows);
+  const ic=dense?20:28;
   return(
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",padding:"12px 16px",borderBottom:`1px solid ${C.border}`}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",padding:dense?"5px 10px":"12px 16px",borderBottom:`1px solid ${C.border}`}}>
       {/* preventDefault on mousedown keeps the keyboard up while you fill a rack. Blurring the
           focused input is the DEFAULT ACTION of pressing another element, so cancelling it holds
           focus in the search box and the click still fires normally. Without this, adding a module
@@ -665,12 +692,12 @@ function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badge
       <div role="button" title={disabled?undefined:t("Fit")} tabIndex={disabled?-1:0} aria-disabled={disabled} onKeyDown={e=>{if(!disabled&&(e.key==="Enter"||e.key===" ")){e.preventDefault();onAdd(mod);}}} onClick={()=>{if(!disabled)onAdd(mod);}} onMouseDown={e=>e.preventDefault()} style={{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10,cursor:disabled?"default":"pointer"}}>
         {/* Fixed-size box, not a bare img: with `display:none` on a failed icon the text jumped
             left and rows stopped lining up with each other. */}
-        <div style={{width:28,height:28,flexShrink:0}}>
-          {mod.typeID&&<img className="eve-icon" src={eveIcon(mod.typeID,32)} width={28} height={28} alt="" onError={e=>{e.target.style.visibility="hidden";}}/>}
+        <div style={{width:ic,height:ic,flexShrink:0}}>
+          {mod.typeID&&<img className="eve-icon" src={eveIcon(mod.typeID,32)} width={ic} height={ic} alt="" onError={e=>{e.target.style.visibility="hidden";}}/>}
         </div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-            <div style={{fontSize:14,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{mod.name}</div>
+            <div style={{fontSize:dense?12:14,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{mod.name}</div>
             {/* Beside the NAME, not down in the subtitle: these say why a row will not respond to a
                 tap, and an explanation you have to go looking for arrives after the confusion it
                 exists to prevent. They never shrink the name — it ellipses first. */}
@@ -712,21 +739,42 @@ function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badge
 // Shared category rows keep the owned library's market/container navigation in the
 // same visual and interaction pattern as the standard module browser.
 function ModuleGroupRow({node,count,onOpen,wrapName=false}){
+  const dense=useContext(DenseRows);
+  const ic=dense?18:28;
   return <div role="button" tabIndex={0} onClick={onOpen}
     onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onOpen();}}}
-    style={{display:'flex',alignItems:'center',gap:10,padding:'14px 16px',cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
-    <div style={{width:28,height:28,flexShrink:0}}>
-      {node.iconTid&&<img className="eve-icon" src={eveIcon(node.iconTid,32)} width={28} height={28} alt="" onError={e=>{e.target.style.visibility='hidden';}}/>}
+    style={{display:'flex',alignItems:'center',gap:10,padding:dense?'6px 10px':'14px 16px',cursor:'pointer',borderBottom:`1px solid ${C.border}`}}>
+    <div style={{width:ic,height:ic,flexShrink:0}}>
+      {node.iconTid&&<img className="eve-icon" src={eveIcon(node.iconTid,32)} width={ic} height={ic} alt="" onError={e=>{e.target.style.visibility='hidden';}}/>}
     </div>
     <div style={{flex:1,minWidth:0}}>
-      <div style={{fontSize:14,fontWeight:600,color:C.text,whiteSpace:wrapName?'normal':'nowrap',overflow:'hidden',textOverflow:'ellipsis',overflowWrap:'anywhere'}}>{node.name}</div>
+      <div style={{fontSize:dense?12:14,fontWeight:600,color:C.text,whiteSpace:wrapName?'normal':'nowrap',overflow:'hidden',textOverflow:'ellipsis',overflowWrap:'anywhere'}}>{node.name}</div>
       <div style={{fontSize:11,color:C.textMute,marginTop:2,overflowWrap:'anywhere'}}>{node.subtitle&&`${node.subtitle} · `}{t({one:'{n} module',other:'{n} modules'},{n:count})}</div>
     </div>
-    <span aria-hidden="true" style={{fontSize:20,color:C.textMute,flexShrink:0}}>{'>'}</span>
+    <span aria-hidden="true" style={{fontSize:dense?14:20,color:C.textMute,flexShrink:0}}>{'>'}</span>
   </div>;
 }
 
-function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,resourceHeadroom,ship,slots,skills,implants,boosters,drones,factorInReload,dismissRequested}){
+// The same picker without the sheet around it, for the desktop's Browser window: header strip, then
+// the scrolling list, then the search box, in a plain column that fills its parent. No title (the
+// window has one) and no close.
+function InlineFrame({headerExtra,footerExtra,children}){
+  return(
+    <DenseRows.Provider value={true}>
+      {/* lineHeight: the root's 145% resolves against its 18px font to a FIXED 26px that every line
+          inherits whatever its own size, which alone made a two-line 12px row 54px tall. */}
+      <div style={{height:"100%",display:"flex",flexDirection:"column",minHeight:0,lineHeight:1.3}}>
+        {headerExtra}
+        <div style={{flex:1,minHeight:0,overflowY:"auto"}}>{children}</div>
+        {footerExtra}
+      </div>
+    </DenseRows.Provider>
+  );
+}
+
+// `inline` (desktop only): render as a panel rather than a bottom sheet. See InlineFrame.
+function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,resourceHeadroom,ship,slots,skills,implants,boosters,drones,factorInReload,dismissRequested,inline=false}){
+  const Frame=inline?InlineFrame:BottomSheet;
   const[search,setSearch]=useState("");
   const[library,setLibrary]=useState(false);
   const[libraryNav,setLibraryNav]=useState({slot:slotType,path:[]});
@@ -870,7 +918,9 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
                     rigs:t("Add Module - Rig Slot"),services:t("Add Module - Service Slot")};
   const searchInputRef=useRef(null);
   const[searchFocused,setSearchFocused]=useState(false);
-  useSuppressAccessoryBar({focusRef:searchInputRef});
+  // Inline (desktop) does not grab focus on mount: the panel is always there rather than opened on
+  // purpose, and focusing its search box scrolled the whole workspace to bring the box into view.
+  useSuppressAccessoryBar({focusRef:inline?null:searchInputRef});
   return(
     <>
     {/* height="100vh", not 88vh: with fillHeight the sheet's box is min(height,100%) where 100% is the
@@ -879,7 +929,7 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
         bottom-anchored sheet's top upward. 100vh is how a caller asks for the full-height treatment
         instead; BottomSheet gives that its own constant peek strip, measured off frame so no keyboard
         transition can move it. */}
-    <BottomSheet title={`${SLOT_TITLE[slotType]??t("Add Module")}${slotCount?` ${ordinal}/${slotCount}`:""}`} onClose={onClose} height="100vh" fillHeight dismissRequested={dismissRequested}
+    <Frame title={`${SLOT_TITLE[slotType]??t("Add Module")}${slotCount?` ${ordinal}/${slotCount}`:""}`} onClose={onClose} height="100vh" fillHeight dismissRequested={dismissRequested}
       headerExtra={
         // Header content, not scroller content: position:sticky here used to fight WebKit's handling
         // of sticky across a transformed ancestor (the sheet itself is always under a transform, for
@@ -967,7 +1017,7 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
       )}
       </>}
       </div>
-    </BottomSheet>
+    </Frame>
     {infoItem&&<ItemInfoSheet typeID={infoItem.typeID} onClose={()=>setInfoItem(null)}/>}
     </>
   );
@@ -1432,7 +1482,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
         </div>
       )}
       {/* A pre-release Synchronizer rig shows its bonus text (the in-game Traits tab) and the control
-          for the rumoured skill that cuts its penalty, right where you are reading about it. */}
+          for the skill that cuts its penalty, right where you are reading about it. */}
       {isPrereleaseRig(typeID) && hasTraits(typeID) && <div style={{marginBottom:2}}><TraitsPanel typeID={typeID}/></div>}
       {prereleaseSkillApplies(typeID) && <PrereleaseSkillControl/>}
       {/* Under the description, above the skills — it is a fact about the item, not a stat. */}
@@ -1524,6 +1574,11 @@ function TraitsPanel({typeID, empty=t("No trait data available.")}){
 function ItemInfoSheet({typeID, onClose, item, overrides,baseOverrides,mutaplasmid,children}) {
   const sheet=useSheetDrag(onClose);
   const td=TYPES[String(typeID)]??TYPES[typeID];
+  // Built bare rather than on BottomSheet, so it takes SheetFrame (desktop) itself.
+  const Alt=useContext(SheetFrame);
+  if(Alt)return(<Alt title={td?.n} onClose={onClose}><div style={{padding:'12px 16px 20px'}}>
+    <ItemInfoPanel typeID={typeID} item={item} overrides={overrides} baseOverrides={baseOverrides} mutaplasmid={mutaplasmid} bleed={16} hideName priceContent={children}/>
+  </div></Alt>);
   return (
     <div style={{position:'fixed',inset:0,zIndex:400,display:'flex',flexDirection:'column',justifyContent:'flex-end'}} onClick={sheet.dismiss}>
       <div ref={sheet.sheetRef} style={{background:C.surface,borderRadius:'16px 16px 0 0',maxHeight:'88vh',display:'flex',flexDirection:'column',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',...sheetTransform(sheet)}} onClick={e=>e.stopPropagation()}>
@@ -2099,7 +2154,7 @@ function ModuleVariationsTab({typeID, currentName, onSwap, readOnly, resourceHea
  * set" and "Change implant", so those are reachable from the same sheet that tells you what the
  * implant does, without this component needing to know what an implant is.
  */
-export function ItemDetailSheet({typeID, name, onClose, onSwap, actions, item}) {
+export function ItemDetailSheet({typeID, name, onClose, onSwap, actions, item, initialTab}) {
   // Traits only appears for things CCP actually wrote trait text for — in this sheet that is the T3
   // subsystems. Showing an always-empty third tab on every drone and implant would cost more than it
   // gives, and the tab row is already tight on a phone.
@@ -2108,7 +2163,7 @@ export function ItemDetailSheet({typeID, name, onClose, onSwap, actions, item}) 
   // subsystem over another, whereas Info is the same boilerplate description on all of them. Every
   // other item type is unaffected and still opens on Info.
   const traits = hasTraits(typeID);
-  const [tab, setTab] = useState(traits ? "traits" : "info");
+  const [tab, setTab] = useState(initialTab ?? (traits ? "traits" : "info"));
   const title = name ?? TYPES[typeID]?.n ?? TYPES[String(typeID)]?.n ?? t("Item");
   // Built inside the component, so it is rebuilt on every render and a plain t() is correct — see
   // lib/i18n.js. The first element is the stable tab id; only the second is shown.
@@ -2565,10 +2620,17 @@ function MutaplasmidEditor({mod,onUpdateMod}){
 // `chargeStats` is calc.js' effective-charge map for THIS slot — see `fittedChargeStats` there. Only
 // the loaded charge gets it: the ammo list offers every compatible charge, but the others aren't on
 // the fit, so type data alone is the honest answer for them.
-function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onReplaceMod,onRemove,onDuplicate,onFillHardpoints,fillCount=0,resourceHeadroom,engineItem,chargeStats,usedAbyssalIds}){
+// `Frame` / `initialTab` (desktop only): draw the same tabs inside the desktop's dialog instead of a
+// bottom sheet, opened on the tab a right-click menu asked for. The phone passes neither.
+// Desktop only: `tab` makes the tab CONTROLLED and `bare` drops the tab row and the 60vh scroll cap, so a
+// desktop window can host one tab of this menu under its own tab bar; `onShowInfo(typeID)` sends a
+// charge's info button to the caller instead of a sheet. The phone passes none of the three.
+function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onReplaceMod,onRemove,onDuplicate,onFillHardpoints,fillCount=0,resourceHeadroom,engineItem,chargeStats,usedAbyssalIds,Frame=BottomSheet,initialTab="state",tab:tabProp,bare=false,onShowInfo}){
   const _hasMuta=(MUTA_BY_TYPE[mod.typeID]??MUTA_BY_TYPE[String(mod.typeID)]??[]).length>0||mod.mutaplasmid;
-  const[tab,setTab]=useState("state");
-  const[chargeInfo,setChargeInfo]=useState(null);
+  const[tabState,setTab]=useState(initialTab);
+  const tab=tabProp??tabState;
+  const[chargeInfo,setChargeInfoState]=useState(null);
+  const setChargeInfo=id=>{if(id!=null&&onShowInfo)onShowInfo(id);else setChargeInfoState(id);};
   // Ammo picker is a two-step drill-down (family, e.g. "Multifrequency S" -> variant, e.g. "Imperial
   // Navy Multifrequency S") rather than one long list of every tier/faction line at once — mirrors
   // the module browser's own category drill-down. Opens straight to the loaded ammo's family, so
@@ -2599,12 +2661,15 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
   const metaColor={T1:C.textMid,T2:C.accent,Deadspace:C.rig,Named:C.rig,Storyline:C.warning,Faction:C.danger,Officer:"#f0abfc"};
   const modData=moduleByName(mod.name);
   return(<>
-    <BottomSheet title={mod.name} onClose={onClose} height="78vh">
-      <div style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
+    <Frame title={mod.name} onClose={onClose} height="78vh">
+      {!bare&&<div style={{display:"flex",borderBottom:`1px solid ${C.border}`}}>
         {tabs.map(tb=><button key={tb} onClick={()=>setTab(tb)} style={{flex:1,padding:"8px 0",fontSize:11,fontWeight:700,background:"none",border:"none",cursor:"pointer",color:tab===tb?C.accent:C.textMute,borderBottom:tab===tb?`2px solid ${C.accent}`:"2px solid transparent"}}>{tabLabel[tb]}</button>)}
-      </div>
-      <div onScroll={dismissKeyboardOnScroll} style={{padding:14,overflowY:'auto',maxHeight:'60vh'}}>
-        {tab==="state"&&(<div>
+      </div>}
+      <div onScroll={dismissKeyboardOnScroll} style={{padding:14,overflowY:'auto',maxHeight:bare?undefined:'60vh'}}>
+        {/* "rah" (desktop only): the Reactive Armor Hardener's adaptation picker on its own, without the
+            state row and slot buttons the desktop already has on the row and its menu. */}
+        {(tab==="state"||tab==="rah")&&(<div>
+          {tab==="state"&&<>
           <div style={{fontSize:11,color:C.textMute,marginBottom:10}}>{t("Module State")}</div>
           <div style={{display:"flex",gap:8,marginBottom:20}}>
             {states.map(s=>(<button key={s} className="press" onClick={()=>{if(mod.state!==s)haptic("medium");onUpdateMod({...mod,state:s});}} style={{flex:1,padding:"10px 0",borderRadius:8,border:`1px solid ${mod.state===s?STATE_COLORS[s]:C.border}`,background:mod.state===s?`${STATE_COLORS[s]}22`:"none",cursor:"pointer",transition:"background-color .18s ease, border-color .18s ease"}}>
@@ -2613,6 +2678,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
               <span style={{fontSize:10,fontWeight:700,color:mod.state===s?STATE_COLORS[s]:C.textMute}}>{STATE_LABELS[s]?.()}</span>
             </button>))}
           </div>
+          </>}
         {_isRAH&&(()=>{
           // mod.rahPattern: undefined/'fit' → Fit Pattern (follows Resistances-tab profile);
           // 'disable' → Do Not Adapt; {name,p} → adapt to a specific ammo/NPC damage split.
@@ -2664,6 +2730,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
               second name, and two buttons doing the same thing is worse than one. The count is in
               the label because the two limits it reconciles (free hardpoints, empty high slots)
               aren't both visible from here — an 8-high hull with 7 launchers reads "+6", not "+7". */}
+          {tab==="state"&&<>
           {onFillHardpoints&&fillCount>1&&<button onClick={()=>{haptic("medium");onFillHardpoints();onClose();}} style={{width:"100%",marginBottom:8,padding:"11px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("Fill Hardpoints (+{n})",{n:fillCount})}</button>}
           {/* One button, one slot — picking an exact count belongs to the row's swipe tray now, where
               you tap the copy button until the rack looks right instead of counting empty slots in
@@ -2675,6 +2742,7 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
               already act on the whole group. The label says so, since a "Remove Module" that quietly
               took out the whole rack would read like a bug. */}
           <button onClick={()=>{onRemove();onClose();}} style={{width:"100%",padding:"11px 0",background:"rgba(239,68,68,.1)",border:"1px solid rgba(239,68,68,.3)",borderRadius:8,color:C.danger,fontSize:13,fontWeight:700,cursor:"pointer"}}>{groupCount>1?t("Remove Module Group ({n})",{n:groupCount}):t("Remove Module")}</button>
+          </>}
         </div>)}
         {tab==="charge"&&(mod.type==="weapon"||mod.type==="capbooster"||_modTakesCharges)&&(()=>{
           const groups=groupChargesForBrowser(getCompatibleCharges(mod));
@@ -2765,30 +2833,16 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
         {tab==="info"&&<ModuleInfoTab typeID={mod.typeID} mod={mod} engineItem={engineItem} bleed={14} onSaved={record=>onUpdateModLive({...mod,abyssalItemId:record.itemId})}/>}
         {tab==="variations"&&(<ModuleVariationsTab typeID={mod.typeID} currentName={mod.name} resourceHeadroom={resourceHeadroom}
                                 baseMutations={mod.mutaplasmid?mod.mutations:null} baseMutaplasmid={mod.mutaplasmid} baseItemId={mod.abyssalItemId} usedAbyssalIds={usedAbyssalIds} onSwap={v=>{
-          // A variant that cannot load the current charge unloads it, as pyfa's module replace does
-          // (localReplace.py). T2 ammo is the common case: Hail stays legal in a 425mm AutoCannon II
-          // and is not in a 425mm AutoCannon I, which lists no Advanced Autocannon Ammo group.
-          const ammo=mod.ammo&&v.typeID&&!canLoadCharge(v.typeID,mod.ammo)?undefined:mod.ammo;
-          // Recompute charge count: variants can have different bay capacities (e.g. cap boosters)
-          let nc=ammo?mod.charges:undefined;
-          if(ammo&&v.typeID){
-            const newTd=TYPES[v.typeID]??TYPES[String(v.typeID)];
-            const cap=newTd?.attrs?.capacity??0;
-            const cTid=tidByName((mod.ammo||"").replace(/\s*\(\d+\)$/,""));
-            const vol=cTid?(TYPES[cTid]?.attrs?.volume??1):1;
-            nc=cap>0&&vol>0?Math.floor(cap/vol):undefined;
-          }
-          // updateMod merges fields. Carry the selected physical roll, or explicitly clear
-          // all roll/ownership fields when choosing stock, including the UNMUTATED row.
-          (onReplaceMod||onUpdateMod)({name:v.name,typeID:v.typeID,state:mod.state,ammo,charges:nc,maxCharges:nc,
-                       ...variationRoll(v)});onClose();}} />)}
+          // Charge compatibility, charge count and the roll's fields: lib/fit-ops.js variantSwapPatch,
+          // shared with the desktop's Variations window. updateMod merges the patch.
+          (onReplaceMod||onUpdateMod)(variantSwapPatch(mod,v));onClose();}} />)}
         {/* No wrapper here either, same reasoning as the info tab above: a second overflowY:auto
             nested inside this one already-scrolling tab body is redundant, and on iOS it stopped
             WebKit's native "scroll the focused input above the keyboard" from finding the right
             scroll container — typing into a mutaplasmid's value box left it under the keyboard. */}
         {tab==="mutate"&&<MutaplasmidEditor mod={mod} onUpdateMod={next=>(onUpdateModLive||onUpdateMod)({...next,abyssalItemId:undefined})}/>}
       </div>
-    </BottomSheet>
+    </Frame>
     {/* The ammo list offers every compatible charge, but only the LOADED one exists on the fit — so
         only that one gets the engine item and the current/base columns. Tapping any other shows its
         type data alone, which is the honest answer: it isn't loaded, so it has no current value. */}
@@ -2803,9 +2857,9 @@ function ModuleMenu({mod,groupCount=1,onClose,onUpdateMod,onUpdateModLive,onRepl
 // Drone bottom sheet — mirrors ModuleMenu's Info/Variations/Mutate tabs. No State or Charge tab:
 // a drone's active/qty controls already live inline in the drone row, and drones take no charges.
 // No Remove button either, for the same reason — the row's own "x" already does that.
-function DroneMenu({drone,onClose,onUpdateDrone,onUpdateDroneLive,engineItem}){
+function DroneMenu({drone,onClose,onUpdateDrone,onUpdateDroneLive,engineItem,initialTab="info"}){
   const _hasMuta=(MUTA_BY_TYPE[drone.typeID]??MUTA_BY_TYPE[String(drone.typeID)]??[]).length>0||drone.mutaplasmid;
-  const[tab,setTab]=useState("info");
+  const[tab,setTab]=useState(initialTab);
   const tabs=["info","variations",...(_hasMuta?["mutate"]:[])];
   // Rebuilt every render, so a plain t() is correct. The KEYS are the stable tab ids.
   const tabLabel={info:t("Info"),variations:t("Variations"),mutate:t("Mutate")};
@@ -2958,4 +3012,4 @@ function DamageProfileSheet({current,onSelect,onClose}){
 }
 
 
-export { ATTR_UNIT, AccordionSection, BottomSheet, DamageProfileSheet, TargetProfileSheet, DroneMenu, HIDDEN_ATTRS, ImportFitSheet, InfoButton, ItemInfoSheet, ItemPrice, MUTA_ATTR_LABELS, ModuleBrowserSheet, ModuleInfoTab, ModuleMenu, ModuleVariationsTab, MutaplasmidEditor, NumpadModal, RESIST_ATTRS, ResistBars, ResourceStrip, SubsystemPickerSheet, TraitsPanel, abyssalToText, fmtAttrName, fmtAttrVal, fmtMutaVal, mutaLabel, parseAbyssal };
+export { hasTraits, AbyssalBadge, FitCost, CpuGlyph, PgGlyph, CalGlyph, DeltaMark, ItemInfoPanel, fitCostParts, fmtMutaDisplay, mutaToDisplay, ATTR_UNIT, AccordionSection, BottomSheet, DamageProfileSheet, TargetProfileSheet, DroneMenu, HIDDEN_ATTRS, ImportFitSheet, InfoButton, ItemInfoSheet, ItemPrice, MUTA_ATTR_LABELS, ModuleBrowserSheet, ModuleInfoTab, ModuleMenu, ModuleVariationsTab, MutaplasmidEditor, NumpadModal, RESIST_ATTRS, ResistBars, ResourceStrip, SubsystemPickerSheet, TraitsPanel, abyssalToText, fmtAttrName, fmtAttrVal, fmtMutaVal, mutaLabel, parseAbyssal };

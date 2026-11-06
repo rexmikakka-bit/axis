@@ -9,17 +9,72 @@ import { tidByName, TYPES } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { byNewestFitting } from "../lib/fit-order.js";
 import { useSheetDrag, sheetTransform, SheetGrabber, dismissKeyboardOnScroll } from "../lib/use-sheet-drag.jsx";
+import { useDeskSheet, DESK_OVERLAY, deskPanel } from "../lib/sheet-frame.js";
 import { SheetSearchBar, useVisualViewport } from "./ui.jsx";
 import { t } from "../lib/i18n.js";
 
 // Friendlier text for the handful of failure modes the rest of this file needs to show inline.
 // A function, so its t() calls run at render and not at import — see the module-scope note in
 // lib/i18n.js. The fall-through returns ESI's own message, which arrives in English from CCP.
-function friendlyError(e) {
+export function friendlyError(e) {
   if (!ESI_CLIENT_ID) return t("ESI isn't configured yet — an application needs to be registered at developers.eveonline.com first (see src/esi-config.js).");
   if (e?.code === "ESI_REAUTH_REQUIRED") return t("Your EVE session expired — log in again.");
   if (e?.code === "ESI_NOT_LINKED") return t("That character isn't linked anymore.");
   return e?.message || String(e);
+}
+
+// ─── Every ESI permission the app can use, in one place ──────────────────────────────────────
+// Settings › ESI lists them per character and grants any that are missing, so nothing has to be
+// unlocked from inside the feature that needs it (Owen, 2026-11-05). The first three are what a first
+// login asks for (ESI_SCOPES); the rest were requested on demand. All seven are enabled on the
+// registered application (see OPTIONAL_SCOPES_REGISTERED below), which SSO requires for any scope.
+// A function, so its t() calls run at render (lib/i18n.js).
+export function esiPermissions() {
+  return [
+    { scope: "esi-skills.read_skills.v1", label: t("Skills"), what: t("Sync this character's trained skills") },
+    { scope: "esi-fittings.read_fittings.v1", label: t("Read saved fittings"), what: t("Import fits saved in the game") },
+    { scope: "esi-fittings.write_fittings.v1", label: t("Save fittings"), what: t("Export fits to the game's saved fittings") },
+    { scope: ASSET_SCOPE, label: t("Assets"), what: t("My Abyssals, and importing a hangar ship as it is fitted") },
+    { scope: esi.UI_SCOPE, label: t("Open contracts in EVE"), what: t("Open a contract in your running EVE client") },
+    { scope: esi.SHIP_SCOPE, label: t("Current ship"), what: t("Import the ship you are flying") },
+    { scope: esi.STRUCTURE_SCOPE, label: t("Citadel names"), what: t("Name the citadels your ships are docked in") },
+  ];
+}
+/**
+ * Log in again for this character with what it already has plus `scopes`. ESI scopes are fixed when
+ * a token is granted, so adding one means a fresh login; the old grant is kept by asking for it again.
+ */
+export function grantEsiScopes(character, scopes) {
+  return esi.beginLogin([...new Set([...ESI_SCOPES, ...(character?.scopes ?? []), ...scopes])]);
+}
+
+// The phone's list for one character: each permission granted (✓) or with a Grant button, and one
+// login for every missing one. The desktop draws its own (desktop/Settings.jsx) from the same list.
+function EsiPermissionsPanel({ character, onError }) {
+  const perms = esiPermissions();
+  const has = (scope) => character?.scopes?.includes(scope);
+  const missing = perms.filter(p => !has(p.scope)).map(p => p.scope);
+  const grant = async (scopes) => { try { await grantEsiScopes(character, scopes); } catch (e) { onError?.(friendlyError(e)); } };
+  return (
+    <div style={{ marginBottom: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid, letterSpacing: .6, textTransform: "uppercase" }}>{t("Permissions")}</span>
+        {missing.length > 0 && <button onClick={() => grant(missing)} style={{ background: "none", border: `1px solid ${C.accent}`, color: C.accent, borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+          {t("Grant all")}</button>}
+      </div>
+      {perms.map(p => (
+        <div key={p.scope} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${C.border}55` }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{p.label}</div>
+            <div style={{ fontSize: 10, color: C.textMute, marginTop: 1 }}>{p.what}</div>
+          </div>
+          {has(p.scope)
+            ? <span style={{ fontSize: 11, color: C.success, fontWeight: 700 }}>✓ {t("Granted")}</span>
+            : <button onClick={() => grant([p.scope])} style={{ background: "none", border: `1px solid ${C.border}`, color: C.textMid, borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{t("Grant")}</button>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // Shared row-list character switcher. Renders nothing if zero or one character is linked (nothing
@@ -43,7 +98,7 @@ function CharacterPicker({ characters, activeId, onSwitch }) {
 
 // Reusable hook: tracks linked characters + active character, re-reading from esi.js's storage
 // whenever a login/logout happens in this component tree.
-function useEsiCharacters() {
+export function useEsiCharacters() {
   const [characters, setCharacters] = useState(() => esi.listCharacters());
   const [activeId, setActiveId] = useState(() => esi.getActiveCharacterId());
   const [loginError, setLoginError] = useState(() => esi.getLastLoginError());
@@ -138,6 +193,7 @@ export function EsiSettingsPanel({ setSkills }) {
                 </button>
               </div>
             )}
+            {activeChar && <EsiPermissionsPanel character={activeChar} onError={setError} />}
             <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
               <button onClick={syncSkills} disabled={busy || !activeId} style={{ flex: 1, padding: "10px 0", background: C.accent, border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
                 {busy ? t("Syncing…") : t("Sync Skills from {name}", { name: activeChar?.characterName ?? t("character") })}
@@ -213,6 +269,7 @@ export function EsiSkillAlignPanel({ setSkills }) {
 // ─── Hamburger menu > Import from ESI ──────────────────────────────────────────────────────────
 export function EsiImportModal({ onClose, onImport }) {
   const sheet = useSheetDrag(onClose);
+  const desk = useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   const { characters, activeId, switchActive } = useEsiCharacters();
   const [fittings, setFittings] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -255,11 +312,11 @@ export function EsiImportModal({ onClose, onImport }) {
     // Sized to the strip the keyboard leaves, as the tag sheet is (FittingsScreen). On the layout
     // viewport a search narrowed to a few rows left the whole sheet, search box included, under the
     // keyboard. maxHeight is a percentage of that strip for the same reason: 88vh is taller than it.
-    <div style={{ position: "fixed", ...frame, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
+    <div style={desk ? DESK_OVERLAY : { position: "fixed", ...frame, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
       {/* The grabber sits OUTSIDE the scroller: it is the sheet's own control, and a handle that
           scrolls off with the fit list stops being reachable exactly when the sheet is longest. */}
-      <div ref={sheet.sheetRef} style={{ width: "100%", maxHeight: "88%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet) }} onClick={e => e.stopPropagation()}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers}/>
+      <div ref={sheet.sheetRef} style={{ width: "100%", maxHeight: "88%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet), ...(desk ? { ...deskPanel(560), overflowY: "hidden", paddingTop: 12 } : {}) }} onClick={e => e.stopPropagation()}>
+        {!desk && <SheetGrabber grabHandlers={sheet.grabHandlers}/>}
         <div onScroll={dismissKeyboardOnScroll} style={{ overflowY: "auto", padding: "6px 20px 20px" }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t("Import from EVE")}</div>
         {/* Same underline tabs as the slot sheet's State / Charge / Info row. */}
@@ -445,6 +502,7 @@ function ShipsPane({ character, onImport, onClose }) {
 // ─── Hamburger menu > Export to EVE ────────────────────────────────────────────────────────────
 export function EsiExportModal({ activeFit, slots, drones, cargoItems, fighters, implants, boosters, onClose }) {
   const sheet = useSheetDrag(onClose);
+  const desk = useDeskSheet();
   const { characters, activeId, switchActive } = useEsiCharacters();
   const [incCharges, setIncCharges] = useState(true);
   const [incImplants, setIncImplants] = useState(false);
@@ -478,9 +536,9 @@ export function EsiExportModal({ activeFit, slots, drones, cargoItems, fighters,
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
-      <div ref={sheet.sheetRef} style={{ width: "100%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", padding: "4px 20px 20px", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet) }} onClick={e => e.stopPropagation()}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers} style={{ margin: "0 -20px" }}/>
+    <div style={desk ? DESK_OVERLAY : { position: "fixed", inset: 0, zIndex: 200, display: "flex", alignItems: "flex-end" }} onClick={sheet.dismiss}>
+      <div ref={sheet.sheetRef} style={{ width: "100%", boxSizing: "border-box", background: C.surface, borderRadius: "16px 16px 0 0", padding: "4px 20px 20px", boxShadow: "0 -8px 32px rgba(0,0,0,.5)", ...sheetTransform(sheet), ...(desk ? { ...deskPanel(480), paddingTop: 16 } : {}) }} onClick={e => e.stopPropagation()}>
+        {!desk && <SheetGrabber grabHandlers={sheet.grabHandlers} style={{ margin: "0 -20px" }}/>}
         <div style={{ fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t("Export to EVE")}</div>
         <div style={{ fontSize: 11, color: C.textMute, marginBottom: 12 }}>{t("Saves this fit into the selected character's in-game Fittings.")}</div>
         {!activeFit?.ship ? (

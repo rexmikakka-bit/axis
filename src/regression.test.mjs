@@ -1669,9 +1669,14 @@ function check(group, label, actual, expected, tol = 0.005) {
   };
   const RL = "Zainou 'Deadeye' Rapid Launch RL-1005";
   const cerbDps = (implants) => calcFitStats(cerb, cerbSlots, [], null, { implants }).weaponDps.total;
-  check('inert', 'Cerberus DPS, no implant', cerbDps([]), 558.0114, 0.005);
-  check('inert', 'Rapid Launch implant ACTIVE', cerbDps([{ name: RL }]), 587.3804, 0.005);
-  check('inert', 'Rapid Launch implant DISABLED', cerbDps([{ name: RL, active: false }]), 558.0114, 0.005);
+  // 24.02 (pre-release, data/prerelease-balance.js) takes the Cerberus's kinetic bonus back from 2.5%
+  // to 5% per level, so the eos figures above scale by 1.25/1.125 on this all-kinetic fit — which
+  // lands exactly on the 620.0127 eos gave before 24.01 cut it. Back to 558.0114 / 587.3804 if
+  // the pre-release layer is ever removed without CCP shipping the change.
+  const k2402 = 1.25 / 1.125;
+  check('inert', 'Cerberus DPS, no implant', cerbDps([]), 558.0114 * k2402, 0.005);
+  check('inert', 'Rapid Launch implant ACTIVE', cerbDps([{ name: RL }]), 587.3804 * k2402, 0.005);
+  check('inert', 'Rapid Launch implant DISABLED', cerbDps([{ name: RL, active: false }]), 558.0114 * k2402, 0.005);
 
   // A rig can be offlined here even though the game does not allow it, because pyfa allows it and it
   // is the only way to ask what a rig is worth without pulling it off the fit. Offline has to mean
@@ -8357,9 +8362,28 @@ Nanofiber Internal Structure II
   // Hawk and Vengeance: a kinetic-only (resp. rocket-only) damage bonus became an all-missile one.
   // Four damage types each, or the hull is quietly flying without part of its bonus.
   const dmg=new Set([114,116,117,118]);
-  for(const [hull,attr] of [['Hawk',463],['Vengeance',464],['Cerberus',487]])
+  // 24.02 (pre-release) splits the Hawk's and Cerberus's bonus again — kinetic on its own attribute
+  // (shipBonus3CF / shipBonusCC3), the other three on the old one — so between them the pair must
+  // still cover all four.
+  for(const [hull,attrs] of [['Hawk',[463,1624]],['Vengeance',[464]],['Cerberus',[487,1535]]])
     check('balance',`the ${hull} missile bonus reaches all four damage types`,
-      new Set(modsOf(hull,attr).filter(m=>dmg.has(m.modifiedAttributeID)).map(m=>m.modifiedAttributeID)).size,4,0);
+      new Set(attrs.flatMap(a=>modsOf(hull,a)).filter(m=>dmg.has(m.modifiedAttributeID)).map(m=>m.modifiedAttributeID)).size,4,0);
+  // Every hull effect putting missile damage on a charge must be in calc.js's SHIP_MISSILE_DMG: the
+  // engine never delivers an OwnerRequiredSkillModifier to a loaded charge, so an effect missing
+  // there is a bonus the hull silently flies without. 24.01's Hawk and Vengeance effects were, for
+  // a whole release (87.9 rocket DPS against eos's 120.8). 12165 is the Sidewinder's pilot-security
+  // bonus, applied separately on purpose (see the note above the table).
+  {
+    const { SHIP_MISSILE_DMG_IDS } = await import('./calc.js');
+    const listed=new Set(SHIP_MISSILE_DMG_IDS());
+    const MD_SK=new Set(['Cruise Missiles','Heavy Assault Missiles','Heavy Missiles','Light Missiles','Missile Launcher Operation','Rockets','Torpedoes','XL Cruise Missiles','XL Torpedoes','Auto-Targeting Missiles','Bomb Deployment']);
+    const unlisted=new Set();
+    for(const t of Object.values(TYPES)) if((t.c??t.category)===6) for(const e of t.e??[]){
+      if(listed.has(e)||e===12165) continue;
+      if((EFFECTS[e]?.m??[]).some(m=>m.func==='OwnerRequiredSkillModifier'&&dmg.has(m.modifiedAttributeID)&&MD_SK.has(TYPES[m.skillTypeID]?.n))) unlisted.add(e);
+    }
+    check('balance','every hull missile-damage effect reaches the charge',[...unlisted].join(',')||'none','none');
+  }
   // The Hawk's and Vengeance's replacements are filtered on Missile Launcher Operation, not on the
   // narrower skill they replaced — that widening IS the buff, and it is invisible in a DPS number
   // taken with the old ammo.
@@ -8695,6 +8719,76 @@ Nanofiber Internal Structure II
   check('prerelease', 'export to EVE carries the real hull typeID', exported.ship_type_id, 97793, 0);
 }
 
+// ─── 24.02 FRACTURED SKIES, PRE-RELEASE ───────────────────────────────────────────────────────────
+// data/prerelease-balance.js and data/prerelease-modules.js, from CCP's expansion notes (2026-11-06).
+// NOT pyfa-validated: pyfa has none of it yet. Each expected value is the notes' figure applied to an
+// eos-validated baseline. The first check pins every change as APPLIED; the day CCP's data carries
+// them, it fails and lists the groups to delete from prerelease-balance.js.
+{
+  console.log('\n24.02 FRACTURED SKIES (pre-release)');
+  const { APPLIED_BALANCE, applyPrereleaseTraitEdits } = await import('./data/prerelease-balance.js');
+  const { Fit } = await import('./dogma-engine-init.js');
+  check('2402', 'every 24.02 change applied (37: hulls, subsystems, charges, ISA, fighters)', APPLIED_BALANCE.length, 37, 0);
+  const A = (n, attr) => TYPES[tid(n)]?.attrs?.[attr];
+  check('2402', 'Legion speed / powergrid', `${A('Legion', 'maxVelocity')}/${A('Legion', 'powerOutput')}`, '200/650');
+  check('2402', 'Proteus signature', A('Proteus', 'signatureRadius'), 165, 0);
+  check('2402', 'Void Bomb delay / speed', `${A('Void Bomb', 'explosionDelay')}/${A('Void Bomb', 'maxVelocity')}`, '12000/2500');
+  check('2402', 'Focused Void Bomb untouched', A('Focused Void Bomb', 'explosionDelay'), 15000, 0);
+  check('2402', 'Imperial Navy Templar shield / attack damage', `${A('Imperial Navy Templar', 'shieldCapacity')}/${A('Imperial Navy Templar', 'fighterAbilityAttackMissileDamageEM')}`, '7260/108');
+  check('2402', 'Ametat II now requires Amarr Fighter Specialization', (TYPES[tid('Ametat II')].rs ?? []).includes('Amarr Fighter Specialization') ? 1 : 0, 1, 0);
+  check('2402', 'Oracle Navy Issue locks 7, per the notes', A('Oracle Navy Issue', 'maxLockedTargets'), 7, 0);
+  check('2402', 'Synchronizers: one per ship', A('Medium Dark Blood Synchronizer', 'maxGroupFitted'), 1, 0);
+
+  // Missile hulls, against eos's 24.01 figures for the same four-launcher fits (Rocket Launcher II,
+  // all V): 120.8243 rocket DPS for the Hawk and the Vengeance alike, any damage type. The Vengeance's
+  // damage is untouched by 24.02, so it pins the 24.01 fix that put its bonus (and the Hawk's) on the
+  // charge at all. The Hawk's 37.5% becomes 50% kinetic and 25% the rest.
+  const rockets = (hull, ammo) => calcFitStats({ typeID: tid(hull), name: hull },
+    { high: Array.from({ length: 4 }, () => M('Rocket Launcher II', 'active', ammo)), mid: [], low: [], rigs: [] }, [], null, {}).weaponDps.total;
+  check('2402', 'Vengeance rockets = eos 24.01 (its bonus reaches the charge)', rockets('Vengeance', 'Scourge Rocket'), 120.8243, 0.0005);
+  check('2402', 'Hawk kinetic rockets: 37.5% -> 50%', rockets('Hawk', 'Scourge Rocket'), 120.8243 * 1.5 / 1.375, 0.0005);
+  check('2402', 'Hawk EM rockets: 37.5% -> 25%', rockets('Hawk', 'Mjolnir Rocket'), 120.8243 * 1.25 / 1.375, 0.0005);
+
+  // Vengeance: no capacitor recharge bonus any more (its V value is the base now), 3%/lvl armor.
+  const veng = new Fit(tid('Vengeance'));
+  veng.setSkill('Assault Frigates', 5); veng.calculate();
+  check('2402', 'Vengeance cap recharge is the hull base, no AF bonus', veng.ship.get('rechargeRate'), 140625, 0);
+  check('2402', 'Vengeance armor: 1,016 x 1.15 (AF V)', veng.ship.get('armorHP'), 1016 * 1.15, 1e-9);
+  // Tengu Electronic Efficiency Gate: 15% sensor dampener resistance at Caldari Core Systems V.
+  const tengu = new Fit(tid('Tengu'));
+  tengu.setSkill('Caldari Core Systems', 5);
+  tengu.setSubsystems(['Tengu Core - Electronic Efficiency Gate', 'Tengu Defensive - Covert Reconfiguration', 'Tengu Offensive - Accelerated Ejection Bay', 'Tengu Propulsion - Interdiction Nullifier'].map(tid));
+  tengu.calculate();
+  check('2402', 'Tengu EEG: sensor dampener resistance 0.85 at V', tengu.ship.get('sensorDampenerResistance'), 0.85, 1e-9);
+  check('2402', 'Tengu EEG: weapon disruption resistance 0.85 at V', tengu.ship.get('weaponDisruptionResistance'), 0.85, 1e-9);
+
+  // Integrated Sensor Array, ACTIVE: light fighter attack explosion velocity x1.2, radius x0.9.
+  const thanatos = { typeID: tid('Thanatos'), name: 'Thanatos' };
+  const isaGraph = (state) => calcFitStats(thanatos, { high: [M('Integrated Sensor Array', state)], mid: [], low: [], rigs: [] }, [], null,
+    { fighters: [{ name: 'Firbolg II', qty: 1, active: true }] }).graphWeapons.find(w => w.kind === 'fighter' && w.explosionRadius > 0);
+  const on = isaGraph('active'), off = isaGraph('online');
+  check('2402', 'ISA active: light fighter explosion velocity x1.2', on.explosionVelocity / off.explosionVelocity, 1.2, 1e-9);
+  check('2402', 'ISA active: light fighter explosion radius x0.9', on.explosionRadius / off.explosionRadius, 0.9, 1e-9);
+
+  // Aberrant modules: the passive figure while online, the active one while running.
+  const rifterSpeed = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Overdrive Injector System"), state); f.calculate(); return f.ship.get('maxVelocity'); };
+  const bare = (() => { const f = new Fit(tid('Rifter')); f.calculate(); return f.ship.get('maxVelocity'); })();
+  check('2402', 'Aberrant Overdrive online: +8%', rifterSpeed('online') / bare, 1.08, 1e-9);
+  check('2402', 'Aberrant Overdrive active: +15%', rifterSpeed('active') / bare, 1.15, 1e-9);
+  const capRech = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Cap Recharger"), state); f.calculate(); return f.ship.get('rechargeRate'); };
+  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.75 active', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.7500');
+  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
+  let refused = 0;
+  try { slotsToEsiFitting(tid('Rifter'), 'x', { high: [], mid: [], low: [M("Vigilant 'Vital' Overdrive Injector System", 'active')], rigs: [] }, [], [], []); } catch { refused = 1; }
+  check('2402', 'an Aberrant module is never exported to ESI (placeholder typeID)', refused, 1, 0);
+
+  // Trait text follows the live changes, line by line.
+  const traits = JSON.parse(JSON.stringify((await import('./data/ship-traits.json', { with: { type: 'json' } })).default));
+  const edited = applyPrereleaseTraitEdits(traits, tid);
+  check('2402', 'every trait edit found its line', edited, 14, 0);
+  check('2402', 'Hawk traits name the kinetic split', traits[tid('Hawk')].skills.find(s => s.header.startsWith('Caldari Frigate')).bonuses.map(b => b.number).join(','), '10%,5%,5%');
+}
+
 // ─── PRE-RELEASE SYNCHRONIZER RIGS ────────────────────────────────────────────────────────────────
 // The nine Synchronizer rigs (data/prerelease-rigs.js), built from preview screenshots. NOT
 // pyfa-validated: pyfa has no such rigs. Every expected value is the screenshot's percentage applied
@@ -8716,6 +8810,16 @@ Nanofiber Internal Structure II
   };
   const bonuses = r => ['synchronizerBonus1', 'synchronizerBonus2', 'synchronizerBonus3', 'synchronizerBonus4'].map(n => r.get(n)).join('/');
   const DB = 'Dark Blood Heat Sink', NEUT = 'Heavy Energy Neutralizer II', RIG = 'Medium Dark Blood Synchronizer';
+
+  // The market tree the desktop Browser's everything view and the cargo picker read (market-tree.json,
+  // patched by core.js), not only the per-rack module tree: missing there, the rigs could not be found
+  // with no rack selected.
+  await import('./lib/core.js');
+  const MT = (await import('./data/market-tree.json', { with: { type: 'json' } })).default;
+  const mtRow = MT.t[String(tid(RIG))];
+  check('sync', 'in the market tree: Rigs > Synchronizer Rigs > Medium', mtRow ? `${MT.g[MT.g[MT.g[mtRow[0]].p].p].n} > ${MT.g[MT.g[mtRow[0]].p].n} > ${MT.g[mtRow[0]].n}` : 'missing',
+    'Rigs > Synchronizer Rigs (Pre-release) > Medium Synchronizer Rigs');
+  check('sync', 'all 27 in the market tree', Object.values(MT.t).filter(r => / Synchronizer$/.test(r[1])).length, 27, 0);
 
   const none = raw('Omen', [[NEUT]], RIG);
   check('sync', 'no Dark Blood modules: the screenshot numbers', bonuses(none.rig), '10/10/5/5');
@@ -8779,10 +8883,10 @@ Nanofiber Internal Structure II
 
   // The skill, through calcFitStats the way the app runs it.
   const omen = lv => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: [{ typeID: tid(RIG), state: 'online' }] },
-    [], { ...SKILLS_ALL_V, synchronizerRigging: lv }, {}).capRechargeMs;
+    [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, {}).capRechargeMs;
   check('sync', 'skill at 0: full 200% penalty', omen(0), 1271250);
   check('sync', 'skill at V: penalty halved to 100%', omen(5), 847500);
-  check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizerRigging')?.group ?? '', 'Rigging');
+  check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.group ?? '', 'Rigging');
   const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
   check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '9/9/9');
   check('sync', 'calibration 250 on every size', [...new Set(rigNode.children.flatMap(c => c.mods.map(m => m.calib)))].join(','), '250');
@@ -8842,6 +8946,311 @@ Nanofiber Internal Structure II
   let refused = 0;
   try { slotsToEsiFitting(tid('Naga Navy Issue'), 'T', { ...EMPTY, high: [P('Cruise Missile Launcher II')], services: [] }, [], [], []); } catch { refused = 1; }
   check('navyabc', 'export to EVE refuses a pre-release hull', refused, 1, 0);
+}
+
+// -----------------------------------------------------------------------------
+// DESKTOP WINDOW MANAGER — src/desktop/layout.js. Not pyfa numbers: the geometry rules from
+// docs/desktop-handoff.md section 2, where a wrong rule loses a window off-screen or snaps it to the
+// wrong place. Pinned against the Default preset's own coordinates.
+// -----------------------------------------------------------------------------
+{
+  console.log('\nDESKTOP WINDOW MANAGER');
+  const D = await import('./desktop/layout.js');
+  const def = D.presetLayout('default');
+  check('desk', 'every window has a Default rect', D.WINDOW_IDS.every(id => def[id]) ? 1 : 0, 1, 0);
+  check('desk', 'Default: stat column at x 984', def.defense.x, 984, 0);
+  check('desk', 'Default: drones, implants, notes, graphs closed', [def.drones, def.implants, def.notes, def.graphs].some(w => w.open) ? 1 : 0, 0, 0);
+  check('desk', 'Default: no two open windows overlap', D.WINDOW_IDS.filter(a => def[a].open).some(a => D.WINDOW_IDS.filter(b => b > a && def[b].open)
+    .some(b => def[a].x < def[b].x + def[b].w && def[b].x < def[a].x + def[a].w && def[a].y < def[b].y + def[b].h && def[b].y < def[a].y + def[a].h)) ? 1 : 0, 0, 0);
+  check('desk', 'Default: fits the 1440 reference width', Math.max(...D.WINDOW_IDS.filter(a => def[a].open).map(a => def[a].x + def[a].w)), 1432, 0);
+  check('desk', 'Mirrored: browser on the right', D.presetLayout('mirrored').browser.x, 1192, 0);
+  check('desk', 'Focus: fitting takes the browser\'s room', D.presetLayout('focus').fitting.w, 960, 0);
+  check('desk', 'Focus: browser closed', D.presetLayout('focus').browser.open ? 1 : 0, 0, 0);
+  const gp = D.presetLayout('graphs');
+  check('desk', 'Graphs preset: the graph, the fit and its firepower', D.WINDOW_IDS.filter(a => gp[a].open).sort().join(), 'firepower,fitting,graphs');
+  check('desk', 'Graphs preset: the graph is the widest window', D.WINDOW_IDS.filter(a => gp[a].open).every(a => gp.graphs.w >= gp[a].w) ? 1 : 0, 1, 0);
+  const on = { grid: true, windows: true };
+  // Cargo nudged 5 right / 3 down: grid rounds to 16,576, then its left edge is 8 px from the
+  // Browser's left edge above it (8) and lines back up with it; its top already sits one gutter
+  // under the Browser (568 + 8).
+  const m1 = D.snapMove(def, 'cargo', 13, 579, on);
+  check('desk', 'move: grid then window snap lands flush', `${m1.x},${m1.y}`, '8,576');
+  check('desk', 'move: grid only', `${D.snapMove(def, 'cargo', 13, 579, { grid: true }).x}`, '16');
+  check('desk', 'move: no snapping', `${D.snapMove(def, 'cargo', 13, 579, {}).x}`, '13');
+  check('desk', 'move: no far clamp (drag into new space)', D.snapMove(def, 'notes', 5000, 4000, {}).x, 5000, 0);
+  check('desk', 'move: near clamp at 0', D.snapMove(def, 'notes', -40, -9, {}).y, 0, 0);
+  // Trailing edge: b's right edge at 195 is 3 px short of a.left − gutter (192), and its left edge is
+  // nowhere near anything, so the RIGHT edge decides and b lands at 92.
+  const two = { a: { x: 200, y: 0, w: 100, h: 100, open: true, detached: false, z: 1 }, b: { x: 0, y: 400, w: 100, h: 100, open: true, detached: false, z: 2 } };
+  check('desk', 'move: trailing edge snaps to the gutter', D.snapMove(two, 'b', 95, 400, { windows: true }).x, 92, 0);
+  check('desk', 'move: a detached window is not a target', D.snapMove({ ...two, a: { ...two.a, detached: true } }, 'b', 95, 400, { windows: true }).x, 95, 0);
+  // Resize from the left: the right edge stays fixed and the minimum width holds.
+  const f = def.fitting;
+  const rl = D.snapResize(def, 'fitting', f, 'l', 50, 0, {});
+  check('desk', 'resize left: right edge fixed', rl.x + rl.w, f.x + f.w, 0);
+  const rmin = D.snapResize(def, 'fitting', f, 'l', 5000, 0, {});
+  check('desk', 'resize left: min width', rmin.w, D.MIN_W, 0);
+  check('desk', 'resize bottom: only that edge moves', JSON.stringify(D.snapResize(def, 'fitting', f, 'b', 0, 40, on)), JSON.stringify({ x: 256, y: 8, w: 720, h: 640 }));
+  // Rescue: a window parked at x 4000 comes back far enough to grab; one in view is untouched.
+  const lost = { ...def, notes: { ...def.notes, open: true, x: 4000, y: 3000 } };
+  const r = D.rescue(lost, 1400, 900);
+  check('desk', 'rescue: lost window pulled back into reach', `${r.notes.x},${r.notes.y}`, `${1400 - D.RESCUE_STRIP},${900 - D.TITLE_H}`);
+  check('desk', 'rescue: nothing to do returns the same layout', D.rescue(def, 3000, 3000) === def ? 1 : 0, 1, 0);
+  check('desk', 'rescue: closed windows left alone', D.rescue({ ...def, notes: { ...def.notes, x: 9000 } }, 1400, 900).notes.x, 9000, 0);
+  // Drawing a window clamped into a smaller view never changes the saved rect: grow the view back
+  // and it is where it was (Owen: resizing the program window scrambled the workspace).
+  const far = { ...def.notes, open: true, x: 1300, y: 700 };
+  const drawn = D.clampIntoView(far, 1000, 600);
+  check('desk', 'clamp: drawn inside a smaller view', `${drawn.x},${drawn.y}`, `${1000 - D.RESCUE_STRIP},${600 - D.TITLE_H}`);
+  check('desk', 'clamp: the saved rect is untouched', `${far.x},${far.y}`, '1300,700');
+  check('desk', 'clamp: a window already in view is the same object', D.clampIntoView(far, 3000, 3000) === far ? 1 : 0, 1, 0);
+  // Persistence: a garbage or partial value falls back per field instead of crashing the workspace.
+  const store = (v) => ({ getItem: () => v });
+  check('desk', 'persist: unparseable value -> Default', D.readLayoutState(store('{nope')).windows.fitting.x, 256, 0);
+  check('desk', 'persist: wrong version -> Default', D.readLayoutState(store(JSON.stringify({ v: 99, windows: {} }))).preset, 'default');
+  const partial = D.readLayoutState(store(JSON.stringify({ v: D.LAYOUT_VERSION, windows: { fitting: { x: 40, y: 'x', w: 10 } }, locked: true })));
+  check('desk', 'persist: good fields kept, bad ones defaulted', `${partial.windows.fitting.x},${partial.windows.fitting.y},${partial.windows.fitting.w}`, '40,8,720');
+  // Facing edges snap to the gutter, never flush: b's left edge 3 px right of a's right edge (300)
+  // lands one gutter out at 308, not butted against it.
+  check('desk', 'move: facing edges keep the gutter', D.snapMove(two, 'b', 303, 400, { windows: true }).x, 308, 0);
+  check('desk', 'persist: flags read back', partial.locked && partial.snapGrid ? 1 : 0, 1, 0);
+  let saved = null;
+  D.writeLayoutState({ setItem: (k, v) => { saved = v; } }, D.defaultLayoutState());
+  check('desk', 'persist: round trip', JSON.stringify(D.readLayoutState(store(saved))), JSON.stringify(D.defaultLayoutState()));
+  check('desk', 'bring to front: already on top is a no-op', D.bringToFront(def, D.WINDOW_IDS.at(-1)) === def ? 1 : 0, 1, 0);
+  check('desk', 'bring to front: raises above the rest', D.bringToFront(def, 'browser').browser.z, D.topZ(def) + 1, 0);
+  // A preset on a shorter workspace: squeezed, never stretched, columns still end at the bottom
+  // and keep a gutter between rows.
+  const fit850 = D.fitToHeight(def, 850);
+  check('desk', 'fit to height: tallest column ends inside 850', Math.max(...D.WINDOW_IDS.filter(a => def[a].open).map(a => fit850[a].y + fit850[a].h)) <= 850 ? 1 : 0, 1, 0);
+  check('desk', 'fit to height: still no overlaps', D.WINDOW_IDS.filter(a => def[a].open).some(a => D.WINDOW_IDS.filter(b => b > a && def[b].open)
+    .some(b => fit850[a].x < fit850[b].x + fit850[b].w && fit850[b].x < fit850[a].x + fit850[a].w && fit850[a].y < fit850[b].y + fit850[b].h && fit850[b].y < fit850[a].y + fit850[a].h)) ? 1 : 0, 0, 0);
+  check('desk', 'fit to height: widths untouched', fit850.fitting.w, def.fitting.w, 0);
+  check('desk', 'fit to height: a tall workspace leaves it alone', D.fitToHeight(def, 1400) === def ? 1 : 0, 1, 0);
+  // Standard: Owen's arrangement, with its tab group, squeezed both ways onto a smaller workspace.
+  const std = D.presetLayout('standard');
+  check('desk', 'Standard: the contents window is one tab group, Cargo shown', `${std.drones.stack.join(',')}|${std.drones.active}|${std.implants.in}`,
+    'drones,cargo,implants,boosters,projected,command|cargo|drones');
+  check('desk', 'Standard: the group survives cleanLayout', D.cleanLayout(JSON.parse(JSON.stringify(std))).drones.stack.length, 6, 0);
+  check('desk', 'Standard: on its own 1640x1136 workspace, left exactly as drawn', D.fitPreset('standard', { w: 1700, h: 1150 }).targeting.x, 1192, 0);
+  const stdSmall = D.fitPreset('standard', { w: 1440, h: 850 });
+  const shown = D.WINDOW_IDS.filter(a => stdSmall[a].open && !D.isTabMember(stdSmall, a));
+  check('desk', 'Standard on 1440x850: everything inside it', shown.every(a => stdSmall[a].x + stdSmall[a].w <= 1440 && stdSmall[a].y + stdSmall[a].h <= 850) ? 1 : 0, 1, 0);
+  check('desk', 'Standard on 1440x850: still no overlaps', shown.some(a => shown.filter(b => b > a)
+    .some(b => stdSmall[a].x < stdSmall[b].x + stdSmall[b].w && stdSmall[b].x < stdSmall[a].x + stdSmall[a].w && stdSmall[a].y < stdSmall[b].y + stdSmall[b].h && stdSmall[b].y < stdSmall[a].y + stdSmall[a].h)) ? 1 : 0, 0, 0);
+  check('desk', 'the other presets are not squeezed sideways', D.fitPreset('default', { w: 1000, h: 1200 }).targeting.x, 984, 0);
+  // A window being opened lands where it can be seen (Owen: "sometimes opening a window opens it
+  // offscreen"). The view is the workspace's scroll offset and size.
+  {
+  const view = { x: 0, y: 0, w: 1440, h: 900 };
+  const inside = { x: 100, y: 100, w: 400, h: 300, open: true };
+  check('desk', 'open in view: already inside is left alone', D.placeInView(inside, view) === inside ? 1 : 0, 1, 0);
+  const far = D.placeInView({ x: 2184, y: 136, w: 760, h: 728, open: true }, view);
+  check('desk', 'open in view: out of sight entirely, centred', `${far.x},${far.y},${far.w},${far.h}`, '344,88,760,728');
+  const edge = D.placeInView({ x: 1200, y: 600, w: 400, h: 400, open: true }, view);
+  check('desk', 'open in view: half past the edge, nudged the least', `${edge.x},${edge.y}`, '1032,496');
+  const scrolled = D.placeInView({ x: 8, y: 8, w: 300, h: 200, open: true }, { x: 600, y: 0, w: 1440, h: 900 });
+  check('desk', 'open in view: follows the scrolled-to part of the workspace', scrolled.x >= 600 && scrolled.x + 300 <= 2040 ? 1 : 0, 1, 0);
+  const big = D.placeInView({ x: 2000, y: 0, w: 2000, h: 1200, open: true }, view);
+  check('desk', 'open in view: larger than the view, shrunk to it', `${big.w},${big.h}`, '1424,884');
+  }
+  // One fit-cost probe per fit state, whoever asks: the Fitting window, the Browser and Variations
+  // each used to keep their own cache, so one edit ran the whole-fit pass up to three times.
+  {
+    const ship = { name: 'Rupture', typeID: typeIDByName('Rupture') };
+    const slots = { high: [], mid: [], low: [], rigs: [] };
+    const r1 = computeFitCostRatios(ship, slots, SKILLS_ALL_V, {});
+    check('desk', 'fit-cost probe: same inputs, same answer, not recomputed', computeFitCostRatios({ ...ship }, slots, SKILLS_ALL_V, {}) === r1 ? 1 : 0, 1, 0);
+    check('desk', 'fit-cost probe: a new slots object is a new fit state', computeFitCostRatios(ship, { ...slots }, SKILLS_ALL_V, {}) !== r1 ? 1 : 0, 1, 0);
+  }
+  // Pop-out sync sends only the hulls whose arrays changed. Built from the same reference contract
+  // the IndexedDB writer uses: one edit replaces exactly one hull's array.
+  const P = await import('./desktop/fits-patch.js');
+  const rif = [{ name: 'a' }], tmp = [{ name: 'b' }];
+  const db0 = { Rifter: rif, Tempest: tmp };
+  check('desk', 'sync: nothing changed -> no patch', P.fitsPatch(db0, { ...db0 }) === null ? 1 : 0, 1, 0);
+  const db1 = { ...db0, Rifter: [...rif, { name: 'c' }] };
+  check('desk', 'sync: one edited hull -> one entry', Object.keys(P.fitsPatch(db0, db1)).join(), 'Rifter');
+  const db2 = { Rifter: rif };
+  check('desk', 'sync: deleted hull -> null', JSON.stringify(P.fitsPatch(db0, db2)), '{"Tempest":null}');
+  check('desk', 'sync: patch round-trips', JSON.stringify(P.applyFitsPatch(db0, P.fitsPatch(db0, db1))), JSON.stringify(db1));
+  check('desk', 'sync: applying a delete removes the hull', 'Tempest' in P.applyFitsPatch(db0, { Tempest: null }) ? 1 : 0, 0, 0);
+}
+
+// -----------------------------------------------------------------------------
+// FIT EDITING RULES — src/lib/fit-ops.js, the rules FitTab used to hold privately and the desktop's
+// module windows now share. Not pyfa numbers: each check is a bug that has shipped once (a 5x rack
+// split by a swap, three Javelin loads rewritten at once, a second MWD arriving active).
+// -----------------------------------------------------------------------------
+{
+  console.log('\nFIT EDITING RULES');
+  const F = await import('./lib/fit-ops.js');
+  const ac = typeIDByName('425mm AutoCannon II'), mwd = typeIDByName('50MN Microwarpdrive II');
+  const gun = (id, ammo, state = 'active') => ({ id, name: '425mm AutoCannon II', typeID: ac, ammo, state, type: 'weapon' });
+  const s0 = { high: [gun(1, 'Hail M'), gun(2, 'Hail M'), gun(3, 'Barrage M'), gun(4, 'Hail M', 'overheated')], mid: [], low: [] };
+  const fan = F.applyModUpdate(s0, 'high', 1, { ammo: 'Republic Fleet EMP M' }, { grouped: true });
+  check('fitops', 'charge fans out to its display row only', fan.high.map(m => m.ammo).join(), 'Republic Fleet EMP M,Republic Fleet EMP M,Barrage M,Hail M');
+  check('fitops', 'charge with grouping off touches one module', F.applyModUpdate(s0, 'high', 1, { ammo: 'Republic Fleet EMP M' }, { grouped: false }).high.filter(m => m.ammo === 'Republic Fleet EMP M').length, 1, 0);
+  const swap = F.applyModUpdate(s0, 'high', 1, { name: '425mm AutoCannon I', typeID: typeIDByName('425mm AutoCannon I') }, { replace: true, groupIds: [1, 2] });
+  check('fitops', 'a variant swap takes the whole grouped row', swap.high.map(m => m.name.endsWith(' I') ? 1 : 0).join(), '1,1,0,0');
+  check('fitops', 'a swap keeps every slot id', swap.high.map(m => m.id).join(), '1,2,3,4');
+  const roll = F.applyModUpdate(s0, 'high', 1, { mutaplasmid: 'x', mutations: { damageMultiplier: 3 } }, { replace: true, groupIds: [1, 2] });
+  check('fitops', 'an abyssal roll fills one slot, not the row', roll.high.filter(m => m.mutaplasmid).length, 1, 0);
+  const taken = { ...s0, high: [{ ...gun(1, 'Hail M'), abyssalItemId: 77 }, gun(2, 'Hail M')] };
+  check('fitops', 'a roll fitted elsewhere is refused', F.applyModUpdate(taken, 'high', 2, { abyssalItemId: 77 }) === taken ? 1 : 0, 1, 0);
+  check('fitops', 'an unknown slot id is a no-op', F.applyModUpdate(s0, 'high', 99, { state: 'online' }) === s0 ? 1 : 0, 1, 0);
+  const lim = { [TYPES[mwd].gn]: { active: 1 } };
+  const twoMwd = { high: [], mid: [{ id: 10, typeID: mwd, name: 'MWD', state: 'active' }, { id: 11, typeID: mwd, name: 'MWD', state: 'online' }], low: [] };
+  const act = F.applyModUpdate(twoMwd, 'mid', 11, { state: 'active' }, { limits: lim });
+  check('fitops', 'activating a second MWD shuts the first off', act.mid.map(m => m.state).join(), 'online,active');
+  check('fitops', 'row state through the ceiling too', F.applyRowState(twoMwd, 'mid', [11], 'overheated', lim).mid.map(m => m.state).join(), 'online,overheated');
+  check('fitops', 'row state sets every member', F.applyRowState(s0, 'high', [1, 2], 'offline', {}).high.map(m => m.state).join(), 'offline,offline,active,overheated');
+  const rm = F.applyRemove(s0, 'high', 1, [1, 2]);
+  check('fitops', 'remove empties the whole row', rm.high.slice(0, 2).map(m => m.name).join(), '[Empty High Slot],[Empty High Slot]');
+  const orph = { high: [gun(1, 'Hail M'), gun(2, 'Hail M'), { ...gun(3, 'Barrage M'), orphan: true }] };
+  const rm2 = F.applyRemove(orph, 'high', 1);
+  check('fitops', 'a freed slot takes the orphan back in', `${rm2.high.length}:${rm2.high[0].ammo}:${rm2.high[0].orphan}:${rm2.high[0].id}`, '2:Barrage M:false:1');
+  check('fitops', 'removing an orphan leaves no slot behind', F.applyRemove(orph, 'high', 3).high.length, 2, 0);
+  const dcu = typeIDByName('Damage Control II');
+  const withDcu = { high: [], mid: [], low: [{ id: 20, typeID: dcu }, { id: 21, type: 'empty' }] };
+  check('fitops', 'group fitted room: one DCU per hull', F.groupFittedRoom(withDcu, { [TYPES[dcu].gn]: { fitted: 1 } }, dcu), 0, 0);
+  check('fitops', 'group fitted room: the DCU being swapped does not count', F.groupFittedRoom(withDcu, { [TYPES[dcu].gn]: { fitted: 1 } }, dcu, 20), 1, 0);
+  // Variant swap: T2 ammo cannot go in the T1 gun, so it unloads; a stock variant clears a roll.
+  const t2gun = { ...gun(1, 'Hail M'), mutaplasmid: 'x', mutations: { damageMultiplier: 3 }, abyssalItemId: 5 };
+  const p1 = F.variantSwapPatch(t2gun, { name: '425mm AutoCannon I', typeID: typeIDByName('425mm AutoCannon I') });
+  check('fitops', 'swap: T2 ammo unloads from a T1 variant', p1.ammo === undefined ? 1 : 0, 1, 0);
+  check('fitops', 'swap: a stock variant clears the roll', [p1.mutaplasmid, p1.mutations, p1.abyssalItemId].every(v => v === undefined) ? 1 : 0, 1, 0);
+  const p2 = F.variantSwapPatch(gun(1, 'Republic Fleet EMP M'), { name: '425mm AutoCannon I', typeID: typeIDByName('425mm AutoCannon I') });
+  check('fitops', 'swap: faction ammo stays in the T1 variant', p2.ammo, 'Republic Fleet EMP M');
+  // Subsystem swap re-lays the racks: a slot that goes away keeps its module as an orphan.
+  const legion = { subsystems: [], high: [gun(1, 'Hail M'), gun(2, 'Hail M')], mid: [], low: [], rigs: [] };
+  const sw = F.applySubsystemSwap(legion, 's0', { name: 'x', typeID: 0 });
+  check('fitops', 'subsystem swap with no subsystems: modules kept as orphans', sw.high.filter(m => m.orphan).length, 2, 0);
+}
+
+// -----------------------------------------------------------------------------
+// GENERIC COMMAND LINKS — src/lib/command-links.js, pyfa's "Generic Links". The table and formula are
+// pyfa's (eos/saveddata/commandLink.py); the anchor below ties them to OUR engine too: a generic link
+// at a real command ship's own bonus must equal what computeCommandBursts gets from that ship.
+// -----------------------------------------------------------------------------
+{
+  console.log('\nGENERIC COMMAND LINKS');
+  const CL = await import('./lib/command-links.js');
+  const burst = (n, ammo) => ({ id: 'h0', name: n, typeID: typeIDByName(n), type: 'passive', state: 'active', ammo });
+  const clay = { name: 'Claymore', typeID: typeIDByName('Claymore') };
+  const claySlots = { high: [burst('Skirmish Command Burst II', 'Evasive Maneuvers Charge')], mid: [], low: [], rigs: [] };
+  const real = computeCommandBursts(clay, claySlots, SKILLS_ALL_V, { implants: [{ slot: 10, name: 'Skirmish Command Mindlink' }] });
+  const generic = CL.linkBursts(CL.makeLink('skirmish_evasive', 3, true));
+  // The Claymore's skirmish bonus is 3%/lvl: its real burst and the 3%/lvl generic link are one number.
+  check('links', 'Claymore Evasive Maneuvers + mindlink = generic 3%/lvl + mindlink', generic[0].value, real.find(b => b.buffID === 20).value, 1e-9);
+  check('links', 'without the mindlink, the same', CL.linkBursts(CL.makeLink('skirmish_evasive', 3, false))[0].value,
+    computeCommandBursts(clay, claySlots, SKILLS_ALL_V, {}).find(b => b.buffID === 20).value, 1e-9);
+  check('links', 'pyfa Max Links: Evasive at 5%/lvl + mindlink', CL.linkBursts(CL.makeLink('all', 5, true)).find(b => b.buffID === 20).value, -17.578125, 1e-9);
+  check('links', 'All Links carries every modelled buff', CL.linkBursts(CL.makeLink('all', 5, true)).length, 15, 0);
+  check('links', '0%/lvl is skills and a T2 burst alone', CL.linkMultiplier(0, false), 1.875, 1e-9);
+  const ext = buildExternalBursts([CL.makeLink('shield_harmonizing', 4, true), { ...CL.makeLink('armor_reinforcement', 5, true), active: false }], {}, () => null);
+  check('links', 'a link joins the command bursts; a switched-off one does not', ext.map(b => b.buffID).join(','), '10');
+  check('links', 'a stored link reads back', JSON.stringify(CL.cleanLink(JSON.parse(JSON.stringify(CL.makeLink('info_sensor', 2, false))))), JSON.stringify(CL.makeLink('info_sensor', 2, false)));
+  check('links', 'an unknown link type is dropped', CL.cleanLink({ kind: 'link', linkType: 'mining_all', strength: 5 }) === null ? 1 : 0, 1, 0);
+  check('links', 'an off-menu strength is dropped', CL.cleanLink({ kind: 'link', linkType: 'shield_all', strength: 7 }) === null ? 1 : 0, 1, 0);
+}
+
+// -----------------------------------------------------------------------------
+// DESKTOP INSPECTORS — src/desktop/inspect.js (what a window is looking at) and the floating-window
+// half of layout.js. A wrong rule here shows the wrong item, or loses a pinned window on restart.
+// -----------------------------------------------------------------------------
+{
+  console.log('\nDESKTOP INSPECTORS');
+  const I = await import('./desktop/inspect.js');
+  const L = await import('./desktop/layout.js');
+  const fitRef = { ship: 'Rifter', fitId: 7, fitName: 'a' };
+  const slots = { high: [{ id: 'h0', name: '200mm AutoCannon II', typeID: 2873 }, { id: 'h1', name: '[Empty High Slot]', type: 'empty' }], mid: [], low: [] };
+  const s = { fitsDB: { Rifter: [{ id: 7, name: 'a', slots }, { id: 8, name: 'b', slots: { high: [{ id: 'h0', name: 'Other', typeID: 1 }] } }] }, activeFit: { ship: 'Rifter', fitName: 'a' }, slots };
+  const tm = I.moduleTarget(fitRef, 'high', 'h0', 2873);
+  check('insp', 'a fitted module in the open fit is live', `${I.resolveTarget(tm, s).status}:${I.resolveTarget(tm, s).live}`, 'ok:true');
+  check('insp', 'an emptied slot falls back to the pinned type', `${I.resolveTarget(I.moduleTarget(fitRef, 'high', 'h1', 2873), s).status}:${I.resolveTarget(I.moduleTarget(fitRef, 'high', 'h1', 2873), s).typeID}`, 'empty:2873');
+  const other = I.moduleTarget({ ship: 'Rifter', fitId: 8, fitName: 'b' }, 'high', 'h0', 1);
+  check('insp', 'another fit resolves read-only from its saved copy', `${I.resolveTarget(other, s).name}:${I.resolveTarget(other, s).live}`, 'Other:false');
+  const renamed = { ...s, fitsDB: { Rifter: [{ id: 7, name: 'renamed', slots }] }, activeFit: { ship: 'Rifter', fitName: 'renamed' } };
+  check('insp', 'a renamed fit is still found by id', I.resolveTarget(tm, renamed).live ? 1 : 0, 1, 0);
+  check('insp', 'a deleted fit says so', I.resolveTarget(tm, { ...s, fitsDB: {}, activeFit: { ship: 'Rifter', fitName: 'zzz' } }).status, 'nofit');
+  check('insp', 'tabs: a live module gets Charge and Mutaplasmid, no State', I.inspectorTabs(tm, I.resolveTarget(tm, s), { mutable: true, takesCharges: true }).join(), 'charge,info,variations,mutate');
+  check('insp', 'tabs: an RAH keeps its Adaptation tab', I.inspectorTabs(tm, I.resolveTarget(tm, s), { rah: true }).join(), 'rah,info,variations');
+  check('insp', 'tabs: a read-only module edits nothing', I.inspectorTabs(other, I.resolveTarget(other, s), { mutable: true, takesCharges: true }).join(), 'info,variations');
+  check('insp', 'clean: a garbled target is dropped', I.cleanTarget({ kind: 'module', ship: 'Rifter', sec: 'nope', slot: 1 }) === null ? 1 : 0, 1, 0);
+  check('insp', 'clean: a type target round-trips', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(I.typeTarget(2873, 'high'))))), JSON.stringify(I.typeTarget(2873, 'high')));
+  const rolled = I.typeTarget(527, undefined, { name: 'Stasis Webifier II', mutaplasmid: 'Decayed Stasis Webifier Mutaplasmid', mutations: { speedFactor: -61.2 }, abyssalItemId: 1056358224174 });
+  check('insp', 'roll: an abyssal roll survives a restart', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(rolled)))), JSON.stringify(rolled));
+  check('insp', 'roll: it gets a window apart from the base type', I.targetKey(rolled) !== I.targetKey(I.typeTarget(527)) ? 1 : 0, 1, 0);
+  check('insp', 'roll: it resolves to the rolled item', I.resolveTarget(rolled, {}).item?.mutations?.speedFactor, -61.2);
+  const base = L.presetLayout('default');
+  const a = L.openFloat(base, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 1 });
+  check('insp', 'float: opens raised above every window', a.layout[a.id].z, L.topZ(base) + 1, 0);
+  const mid = L.openFloat(base, { target: tm, tab: 'info', key: 'mid' }, { seq: 9, view: { w: 1600, h: 1000 } }).layout;
+  const mw = Object.values(L.floatsOf(mid))[0];
+  check('insp', 'float: opens near the middle of the view, not at an edge', Math.abs(mw.x + mw.w / 2 - 800) <= 100 && Math.abs(mw.y + mw.h / 2 - 500) <= 100 ? 1 : 0, 1, 0);
+  const b = L.openFloat(a.layout, { target: tm, tab: 'variations', key: I.targetKey(tm) }, { seq: 2 });
+  check('insp', 'float: the same item reuses its window and switches tab', `${b.id === a.id}:${b.layout[a.id].tab}`, 'true:variations');
+  const c = L.openFloat(a.layout, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 3, fresh: true });
+  check('insp', 'float: "fresh" always adds one', Object.keys(L.floatsOf(c.layout)).length, 2, 0);
+  const back = L.cleanLayout(JSON.parse(JSON.stringify(c.layout)));
+  check('insp', 'float: survives the saved layout', Object.keys(L.floatsOf(back)).length, 2, 0);
+  check('insp', 'float: a float with a broken target is dropped', Object.keys(L.floatsOf(L.cleanLayout({ ...c.layout, 'insp:x': { x: 0, y: 0, w: 300, h: 300, float: true, target: { kind: 'zzz' } } }))).length, 2, 0);
+  check('insp', 'float: never enlarges the workspace canvas', L.canvasSize(c.layout).w, L.canvasSize(base).w, 0);
+  check('insp', 'float: not squeezed by fit-to-height', L.fitToHeight(c.layout, 600)[a.id].h, c.layout[a.id].h, 0);
+  check('insp', 'float: snaps only to its own layer', L.snapMove(c.layout, a.id, base.fitting.x + 3, 300, { windows: true }).x, base.fitting.x + 3, 0);
+  let many = base; for (let i = 0; i < L.MAX_FLOATS + 3; i++) many = L.openFloat(many, { target: I.typeTarget(i + 1), tab: 'info', key: `t:${i}` }, { seq: 100 + i }).layout;
+  check('insp', 'float: capped, oldest goes first', Object.keys(L.floatsOf(many)).length, L.MAX_FLOATS, 0);
+  // Saved layouts: rename keeps the order and the active chip; a taken or blank name is refused.
+  const st0 = { ...L.defaultLayoutState(), windows: c.layout, named: { A: base, B: base, C: base }, preset: 'named:B' };
+  const rn = L.renameNamed(st0, 'B', '  Mining  ');
+  check('insp', 'layouts: rename keeps its place in the bar', Object.keys(rn.named).join(), 'A,Mining,C');
+  check('insp', 'layouts: rename carries the active layout', rn.preset, 'named:Mining');
+  check('insp', 'layouts: a taken name is refused', L.renameNamed(st0, 'B', 'A') === st0 ? 1 : 0, 1, 0);
+  check('insp', 'layouts: a blank name is refused', L.renameNamed(st0, 'B', '   ') === st0 ? 1 : 0, 1, 0);
+  check('insp', 'layouts: update leaves the inspectors out', Object.keys(L.floatsOf(L.overwriteNamed(st0, 'A').named.A)).length, 0, 0);
+  // Tab groups: a title bar dropped on another makes one window; tabs come back out where they were.
+  const g0 = L.presetLayout('default');
+  const g1 = L.combineWindows(g0, 'targeting', 'capacitor');
+  check('insp', 'tabs: combining keeps the target\'s place and lists both', `${g1.capacitor.x},${g1.capacitor.y}|${g1.capacitor.stack.join(',')}`, `${g0.capacitor.x},${g0.capacitor.y}|capacitor,targeting`);
+  check('insp', 'tabs: the dropped window is the one shown', g1.capacitor.active, 'targeting');
+  check('insp', 'tabs: a tab draws nothing of its own', L.isTabMember(g1, 'targeting') ? 1 : 0, 1, 0);
+  check('insp', 'tabs: a tab keeps its own rect for later', `${g1.targeting.x},${g1.targeting.y},${g1.targeting.w},${g1.targeting.h}`, `${g0.targeting.x},${g0.targeting.y},${g0.targeting.w},${g0.targeting.h}`);
+  const g2 = L.combineWindows(L.combineWindows(g0, 'targeting', 'capacitor'), 'defense', 'targeting');
+  check('insp', 'tabs: dropping on a tab joins its window', g2.capacitor.stack.join(','), 'capacitor,targeting,defense');
+  const gBack = L.cleanLayout(JSON.parse(JSON.stringify(g2)));
+  check('insp', 'tabs: a group survives the saved layout', `${gBack.capacitor.stack.join(',')}|${gBack.defense.in}`, 'capacitor,targeting,defense|capacitor');
+  const gBad = L.cleanLayout({ ...g2, capacitor: { ...g2.capacitor, stack: ['capacitor', 'nope'] } });
+  check('insp', 'tabs: a broken group reads back as plain windows', `${gBad.capacitor.stack ?? 'none'}|${gBad.targeting.in ?? 'none'}`, 'none|none');
+  const gMv = L.moveTab(g2, 'defense', 0);
+  check('insp', 'tabs: a tab moved to the front takes the window over in place', `${gMv.defense.stack.join(',')}|${gMv.defense.x},${gMv.defense.y}|${gMv.capacitor.in}`, `defense,capacitor,targeting|${g0.capacitor.x},${g0.capacitor.y}|defense`);
+  check('insp', 'tabs: a reorder survives the saved layout', L.cleanLayout(JSON.parse(JSON.stringify(gMv))).defense.stack.join(','), 'defense,capacitor,targeting');
+  const gOut = L.ungroup(g2, 'capacitor');
+  check('insp', 'tabs: the host leaving hands its place to the next tab', `${gOut.targeting.x},${gOut.targeting.y}|${gOut.targeting.stack.join(',')}|${gOut.defense.in}`, `${g0.capacitor.x},${g0.capacitor.y}|targeting,defense|targeting`);
+  check('insp', 'tabs: the last two apart are plain windows', L.ungroup(g1, 'targeting').capacitor.stack ?? 'none', 'none');
+  const gClosed = L.closeGroup(g2, 'targeting');
+  check('insp', 'tabs: closing the window closes every tab and dissolves it', `${['capacitor', 'targeting', 'defense'].map(k => gClosed[k].open).join(',')}|${gClosed.capacitor.stack ?? 'none'}`, 'false,false,false|none');
+  check('insp', 'tabs: an inspector never groups', L.combineWindows(c.layout, a.id, 'fitting') === c.layout ? 1 : 0, 1, 0);
+  // Only the hidden tab's edges are near: a tab is not on screen, so nothing may snap to where it was.
+  const gS = { a: { x: 0, y: 0, w: 200, h: 200, open: true, z: 1 }, b: { x: 1000, y: 0, w: 200, h: 200, open: true, z: 2, stack: ['b', 'c'], active: 'b' }, c: { x: 500, y: 500, w: 200, h: 200, open: true, z: 3, in: 'b' } };
+  check('insp', 'tabs: a tab is not a snap target', L.snapMove(gS, 'a', 503, 503, { windows: true }).x, 503, 0);
+  // Collapse: the title bar alone, the saved height kept, the canvas measured by what is drawn.
+  const gC = L.toggleCollapsed(g0, 'cargo');
+  check('insp', 'collapse: the saved height is kept', `${gC.cargo.collapsed}|${gC.cargo.h}`, `true|${g0.cargo.h}`);
+  check('insp', 'collapse: survives the saved layout', L.cleanLayout(JSON.parse(JSON.stringify(gC))).cargo.collapsed ? 1 : 0, 1, 0);
+  check('insp', 'collapse: drawn as its title bar', L.drawnHeight(gC.cargo), L.TITLE_H, 0);
+  const del = L.deleteNamed(st0, 'B');
+  check('insp', 'layouts: delete drops it and the active mark', `${Object.keys(del.named).join()}:${del.preset}`, 'A,C:null');
+  const hid = L.setPresetHidden(st0, 'focus', true);
+  check('insp', 'layouts: a hidden built-in survives a reload', L.readLayoutState({ getItem: () => JSON.stringify(hid) }).hidden.join(), 'focus');
+  // The fit pickers' "Open fits" list is {ship, fit} records, never the tabs themselves: passing
+  // {ship, name, id} straight through crashed Add fit in Graphs whenever a second tab was open.
+  const TF = await import('./desktop/tab-fits.js');
+  const tdb = { Rifter: [{ id: 1, name: 'a', slots: {} }], Tempest: [{ id: 2, name: 'b', slots: {} }] };
+  const tf = TF.tabFits([{ ship: 'Rifter', name: 'a', id: 1 }, { ship: 'Tempest', name: 'gone', id: 9 }, { ship: 'Tempest', name: 'b', id: 2 }], tdb);
+  check('insp', 'open-fit shortcuts carry the fit record, missing ones dropped', tf.map(x => `${x.ship}:${x.fit.name}`).join(), 'Rifter:a,Tempest:b');
+  check('insp', 'open-fit shortcuts honour the picker filter', TF.tabFits([{ ship: 'Rifter', name: 'a' }, { ship: 'Tempest', name: 'b' }], tdb, (sh) => sh === 'Tempest').length, 1, 0);
+  check('insp', 'layouts: an unknown hidden id is dropped', L.readLayoutState({ getItem: () => JSON.stringify({ ...hid, hidden: ['focus', 'zzz'] }) }).hidden.join(), 'focus');
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

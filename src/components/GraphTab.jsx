@@ -656,7 +656,9 @@ function LineChart({pts,xMax,yMax,xLabel,yLabel,color,cursorX,onCursorXChange,ma
 // map does. A localised set (German O for east) would also have to fit the same box.
 const COMPASS_DIRS=["N","NE","E","SE","S","SW","W","NW"];
 
-function VectorCompass({label,value,velocity,maxVelocity,onChange,onVelocityChange,enemyPos}){
+// `size` and `bare` are the desktop's (desktop/Graphs.jsx): a larger wheel, with the label and the
+// readout drawn by the caller in its own type. The phone passes neither.
+function VectorCompass({label,value,velocity,maxVelocity,onChange,onVelocityChange,enemyPos,size=90,bare=false}){
   const cx=45,cy=45,rMax=34;
   // A maxVelocity of 0 means IMMOBILISED — a sieged dread, a bastioned marauder — not "unknown".
   // This used to fall back to 500 the same way the caller did, so the Your Ship wheel happily
@@ -726,8 +728,8 @@ function VectorCompass({label,value,velocity,maxVelocity,onChange,onVelocityChan
   const swallowTouch=e=>e.stopPropagation();
 
   return(<div className="no-select" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-    <span style={{fontSize:10,fontWeight:600,color:C.textMid}}>{label}</span>
-    <svg className="no-select" width={90} height={90} style={{cursor:immobile?"not-allowed":"crosshair",touchAction:"none",opacity:immobile?0.4:1}}
+    {!bare&&<span style={{fontSize:10,fontWeight:600,color:C.textMid}}>{label}</span>}
+    <svg className="no-select" width={size} height={size} viewBox="0 0 90 90" style={{cursor:immobile?"not-allowed":"crosshair",touchAction:"none",opacity:immobile?0.4:1}}
          onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
          onTouchStart={swallowTouch} onTouchMove={swallowTouch}>
       <circle cx={cx} cy={cy} r={rMax+6} fill={C.surfaceAlt} stroke={C.border} strokeWidth="1"/>
@@ -751,10 +753,10 @@ function VectorCompass({label,value,velocity,maxVelocity,onChange,onVelocityChan
         <text key={l} x={x} y={y} textAnchor="middle" fill={C.textMute} fontSize="7">{l}</text>
       ))}
     </svg>
-    <div style={{textAlign:"center"}}>
+    {!bare&&<div style={{textAlign:"center"}}>
       <div style={{fontSize:11,fontWeight:700,color:immobile?C.textMute:C.text}}>{immobile?"—":`${value}deg ${cardinal}`}</div>
       <div style={{fontSize:10,color:C.textMute}}>{immobile?t("immobilised"):`${velocity??0} m/s (${Math.round(velFrac*100)}%)`}</div>
-    </div>
+    </div>}
   </div>);
 }
 
@@ -1518,4 +1520,4 @@ function GraphTab({ship,slots,skills,implants,boosters,drones,fighters,factorInR
 }
 
 // ═══ ACTIVE FIT BAR ════════════════════════════════════════════
-export { GraphTab, GRAPH_CONFIG, generateCurve };
+export { GraphTab, GRAPH_CONFIG, generateCurve, TARGET_PROFILES, TARGET_FIT, profileTarget, interpCurveAt, defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S, VectorCompass, ScrubField, IDEAL_SIG, COMPASS_DIRS };

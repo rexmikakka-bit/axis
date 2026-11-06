@@ -112,7 +112,7 @@ function ImplantRow({item,fitted,badge,onPick,onPickSet,onInfo}){
   </div>);
 }
 
-function ImplantPicker({slot,current,onSelect,onSelectSet,onClear,onClose}){
+export function ImplantPicker({slot,current,onSelect,onSelectSet,onClear,onClose}){
   const[search,setSearch]=useState("");
   const[drill,setDrill]=useState(null);
   const[infoItem,setInfoItem]=useState(null);   // {typeID,name} for the shared Info/Variations sheet
@@ -207,7 +207,7 @@ function ImplantPicker({slot,current,onSelect,onSelectSet,onClear,onClose}){
 
 // Searchable loadout list. Replaces a horizontal chip strip that grew a scroll bar the moment you
 // had more than a few — and put rename and (mislabelled) delete buttons beside every single one.
-function ImplantLoadoutSheet({loadouts,onLoad,onRename,onDelete,onClose}){
+export function ImplantLoadoutSheet({loadouts,onLoad,onRename,onDelete,onClose}){
   const[q,setQ]=useState("");
   const[editing,setEditing]=useState(null);
   const[draft,setDraft]=useState("");

@@ -6,10 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "dev:desktop": "vite --config vite.desktop.config.js",
+    "build:desktop": "vite build --config vite.desktop.config.js",
+    "tauri": "tauri",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node src/regression.test.mjs",
-    "verify": "node scripts/check-code.mjs && node scripts/check-imports.mjs && node scripts/check-i18n.mjs && node scripts/check-suite-deps.mjs && vite build && node scripts/check-offline.mjs && node scripts/check-effect-coverage.mjs && node src/regression.test.mjs",
+    "verify": "node scripts/check-code.mjs && node scripts/check-imports.mjs && node scripts/check-i18n.mjs && node scripts/check-suite-deps.mjs && vite build && vite build --config vite.desktop.config.js && node scripts/check-offline.mjs && node scripts/check-effect-coverage.mjs && node src/regression.test.mjs",
     "check": "node scripts/check-code.mjs && node scripts/check-imports.mjs && node scripts/check-i18n.mjs",
     "check-offline": "node scripts/check-offline.mjs",
     "pyfa-effect": "node scripts/pyfa-effect.mjs",
@@ -30,6 +33,10 @@
     "@capacitor/keyboard": "^8.0.5",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-deep-link": "^2.6.3",
+    "@tauri-apps/plugin-http": "^2.8.3",
+    "@tauri-apps/plugin-opener": "^2.7.2",
     "html2canvas": "^1.4.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
@@ -37,6 +44,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
     "@eslint/js": "^10.0.1",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

@@ -55,6 +55,15 @@ DATA = os.path.join(ROOT, 'src', 'data')
 MARKET_CATS = {6, 7, 8, 18, 20, 22, 32, 65, 66, 87}
 MODULE_CAT = 7
 
+# Cargo-only GROUPS from outside those categories, admitted because fits legitimately carry them:
+# fuel. Liquid Ozone and Heavy Water feed jump drives and cyno/jump bridge modules, Strontium a
+# siege/triage cycle, fuel blocks a structure. They are materials (category 4), so the fitting
+# engine has no record of them and none is required: they only ever go in the hold, and the hold
+# needs a name and a volume, both read from eve.db here. Add a group only for the same reason.
+#  423 Ice Product   1136 Fuel Block
+CARGO_GROUPS = {423, 1136}
+VOLUME_ATTR = 161
+
 # EVE encodes a module's slot as an effect, not an attribute.
 SLOT_BY_EFFECT = [(12, 'high'), (13, 'mid'), (11, 'low'), (2663, 'rigs')]
 
@@ -148,21 +157,33 @@ def build(db_path):
     cur = db.cursor()
     groups = {r[0]: {'n': r[1], 'p': r[2] or None} for r in
               cur.execute('SELECT marketGroupID, marketGroupName, parentGroupID FROM invmarketgroups')}
-    market_of = {}
-    for tid, mgid, cat in cur.execute(
-            'SELECT t.typeID, t.marketGroupID, g.categoryID FROM invtypes t '
+    market_of, cargo_only = {}, {}
+    for tid, mgid, cat, gid, name in cur.execute(
+            'SELECT t.typeID, t.marketGroupID, g.categoryID, t.groupID, t.typeName FROM invtypes t '
             'JOIN invgroups g ON g.groupID = t.groupID WHERE t.published = 1'):
         if mgid and cat in MARKET_CATS:
             market_of[tid] = (mgid, cat)
+        elif mgid and gid in CARGO_GROUPS:
+            cargo_only[tid] = (mgid, cat, name)
+    cargo_vol = {}
+    if cargo_only:
+        ids = ','.join(str(t) for t in cargo_only)
+        cargo_vol = {r[0]: r[1] for r in cur.execute(
+            f'SELECT typeID, value FROM dgmtypeattribs WHERE attributeID = {VOLUME_ATTR} AND typeID IN ({ids})')}
     db.close()
 
     # A type must also be in dogma-types.json: the browser has to be able to hand whatever the
     # user taps to the fitting engine, and the engine only knows types that live in that file.
+    # The cargo-only groups above are the one exception, and never reach the engine.
     members = {t: v for t, v in market_of.items() if str(t) in types and v[0] in groups}
+    members.update({t: (v[0], v[1]) for t, v in cargo_only.items() if v[0] in groups})
     dropped_unknown = sorted(t for t in market_of if str(t) not in types)
 
     tree_t = {}
     for tid in sorted(members):
+        if tid in cargo_only:
+            tree_t[str(tid)] = [members[tid][0], cargo_only[tid][2], num(cargo_vol.get(tid)) or 0.0]
+            continue
         rec = types[str(tid)]
         tree_t[str(tid)] = [members[tid][0], rec['n'], num(rec['a'].get('161')) or 0.0]
 

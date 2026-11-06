@@ -3,9 +3,10 @@ import { C, DISPLAY } from "../theme.js";
 import { eveIcon, eveRender } from "../lib/icons.js";
 import { haptic, lookupShip, navIcons } from "../lib/core.js";
 import { fitToEFT } from "../lib/eft-export.js";
-import { PILOT_ALL_V, PILOT_ALPHA, esiPilot, profilePilot, describeSkillSheet } from "../lib/pilot.js";
+import { PILOT_ALL_V, PILOT_ALPHA, PILOT_ME, esiPilot, profilePilot, describeSkillSheet } from "../lib/pilot.js";
 import { SKILL_CATALOG } from "../calc.js";
 import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS } from "../lib/use-sheet-drag.jsx";
+import { useDeskSheet, DESK_OVERLAY, deskPanel } from "../lib/sheet-frame.js";
 import { useBackHandler } from "../lib/use-back-handler.js";
 import { t } from "../lib/i18n.js";
 import { MenuGlyph, IconPlus, IconImport, IconExport, IconSnapshot, IconPrice, IconBasket, IconFeedback, IconSettings } from "./glyphs.jsx";
@@ -26,10 +27,11 @@ const MENU_LABEL={...DISPLAY,fontSize:12,letterSpacing:"1px",textTransform:"uppe
 // combined Import/Export entries so the menu itself doesn't need one row per method (EFT vs ESI).
 export function ChooserSheet({title, options, onClose}) {
   const sheet=useSheetDrag(onClose);
+  const desk=useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   return (
-    <div style={{position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end'}} onClick={sheet.dismiss}>
-      <div ref={sheet.sheetRef} style={{width:'100%',boxSizing:'border-box',background:C.surface,borderRadius:'16px 16px 0 0',padding:'4px 20px 20px',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',...sheetTransform(sheet)}} onClick={e=>e.stopPropagation()}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers} style={{margin:'0 -20px'}}/>
+    <div style={desk?DESK_OVERLAY:{position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'flex-end'}} onClick={sheet.dismiss}>
+      <div ref={sheet.sheetRef} style={{width:'100%',boxSizing:'border-box',background:C.surface,borderRadius:'16px 16px 0 0',padding:'4px 20px 20px',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',...sheetTransform(sheet),...(desk?{...deskPanel(440),paddingTop:18}:{})}} onClick={e=>e.stopPropagation()}>
+        {!desk&&<SheetGrabber grabHandlers={sheet.grabHandlers} style={{margin:'0 -20px'}}/>}
         <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:14}}>{title}</div>
         {options.map(opt=>(
           <button key={opt.label} onClick={opt.onSelect} style={{display:'flex',alignItems:'center',gap:12,width:'100%',textAlign:'left',padding:'14px 12px',background:C.surfaceAlt,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,cursor:'pointer'}}>
@@ -195,6 +197,8 @@ function SkillBook({ok,count,onClick,custom}){
 // One control, two questions: WHO flies this fit, and what can't they use. They belong together —
 // the gap list is only meaningful relative to a pilot, and picking a different one rewrites it.
 // `pilot` is a string on the fit (lib/pilot.js): absent means "your skills", the app-wide sheet.
+// A fit with no pilot is flown at All V (use-fit-session.js), so "Your Skills" is stored as an explicit
+// PILOT_ME and an unset pilot reads as All V.
 export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],onClose}){
   const sheet=useSheetDrag(onClose);
   const chars=(()=>{ try{ return esi.listCharacters(); }catch{ return []; } })();
@@ -203,7 +207,7 @@ export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],on
     // "Your Skills" is the only option that doesn't say what you'd be flying with — the other rows
     // name a character or a ceiling. Naming the sheet here saves a trip to Settings to find out
     // whether it is still all V, still aligned to a pilot, or something you edited by hand.
-    {id:null,label:t("Your Skills ({sheet})",{sheet:describeSkillSheet(appSkills,{esiSkills:cached,characters:chars,profiles:skillProfiles})}),
+    {id:PILOT_ME,label:t("Your Skills ({sheet})",{sheet:describeSkillSheet(appSkills,{esiSkills:cached,characters:chars,profiles:skillProfiles})}),
      sub:t("The sheet in Settings → Skills")},
     {id:PILOT_ALL_V,label:t("All V"),sub:t("Every skill trained to V")},
     {id:PILOT_ALPHA,label:t("Alpha"),sub:t("CCP's alpha clone ceiling")},
@@ -225,16 +229,17 @@ export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],on
       sub:t({one:"Saved profile — {n} trained skill",other:"Saved profile — {n} trained skills"},{n:SKILL_CATALOG.filter(e=>(p.skills?.[e.key]??5)>0).length}),
     })),
   ];
-  const cur=pilot??null;
+  const cur=pilot??PILOT_ALL_V;
+  const desk=useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   return(
-    <div onClick={sheet.dismiss} style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.6)",opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}/>
+    <div onClick={sheet.dismiss} style={desk?DESK_OVERLAY:{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+      {!desk&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.6)",opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}/>}
       {/* The safe-area inset is what every other sheet in the app pays (see ui.jsx's BottomSheet):
           without it the footer line sits under the home indicator on a modern iPhone. */}
       <div ref={sheet.sheetRef} onClick={e=>e.stopPropagation()} style={{position:"relative",width:"100%",maxWidth:430,margin:"0 auto",
            background:C.surface,borderRadius:"16px 16px 0 0",maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden",
-           paddingBottom:"env(safe-area-inset-bottom, 0px)",...sheetTransform(sheet)}}>
-        <SheetGrabber grabHandlers={sheet.grabHandlers} style={{padding:"10px 0 0"}}/>
+           paddingBottom:"env(safe-area-inset-bottom, 0px)",...sheetTransform(sheet),...(desk?{...deskPanel(480),overflowY:"hidden",paddingTop:12}:{})}}>
+        {!desk&&<SheetGrabber grabHandlers={sheet.grabHandlers} style={{padding:"10px 0 0"}}/>}
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 16px 12px",borderBottom:`1px solid ${C.border}`}}>
           <span style={{fontSize:15,fontWeight:700,color:C.text}}>{t("Pilot")}</span>
           {/* Letter x, not ×: the multiplication sign sits on the math axis and draws visibly smaller

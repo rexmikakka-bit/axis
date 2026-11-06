@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open Workspace</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@300..800&amp;display=swap">
+<style>
+html,body{margin:0}
+x-dc{display:block}
+button,input,textarea{font-family:inherit}
+</style>
+</helmet>
+<div onMouseMove="{{onMove}}" onMouseUp="{{onUp}}" style="width:100%;height:{{rootH}}px;display:flex;flex-direction:column;background:#0f0f10;color:#f2f2f3;font-family:'Saira',system-ui,sans-serif;font-size:13px;box-sizing:border-box;overflow:hidden">
+
+<header style="height:48px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#1a1a1d;border-bottom:1px solid #2e2e33">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-weight:700;letter-spacing:.18em;font-size:14px">AXIS</span><span style="width:6px;height:6px;border-radius:50%;background:#22d3ee"></span><span style="width:6px;height:6px;border-radius:50%;background:#ef4444"></span></div>
+<div style="flex:1"></div>
+<span style="color:#78788a;font-size:11px">Sample data, numbers and prices illustrative</span>
+<button style="height:30px;padding:0 12px;border-radius:6px;border:1px solid #3a3a40;background:#222226;color:#f2f2f3;font-size:12px">Skills: All V</button>
+<button style="height:30px;padding:0 12px;border-radius:6px;border:1px solid #3a3a40;background:#222226;color:#f2f2f3;font-size:12px">Damage profile: Uniform</button>
+<button style="height:30px;padding:0 12px;border-radius:6px;border:1px solid #3a3a40;background:#222226;color:#f2f2f3;font-size:12px">Import pyfa</button>
+<button style="height:30px;padding:0 12px;border-radius:6px;border:0;background:#4f8ef7;color:#0f0f10;font-size:12px;font-weight:600">Export Snapshot</button>
+</header>
+
+<div style="height:36px;flex:none;display:flex;align-items:flex-end;gap:2px;padding:0 12px;background:#0f0f10;border-bottom:1px solid #2e2e33">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:6px;height:32px;padding:0 4px 0 12px;border:1px solid {{t.bd}};border-bottom:0;border-radius:6px 6px 0 0;background:{{t.bg}};margin-bottom:-1px">
+<button aria-current="{{t.cur}}" style="background:transparent;border:0;padding:0;color:{{t.fg}};font-size:12px;display:flex;gap:6px;align-items:baseline"><span style="font-weight:600">{{t.ship}}</span><span style="color:#9898a6">{{t.fit}}</span><span style="color:#f97316">{{t.dirty}}</span></button>
+<button aria-label="Close tab" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+</sc-for>
+<button aria-label="New fit" style="width:28px;height:28px;margin-bottom:2px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:16px">+</button>
+</div>
+
+<div style="height:36px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;background:#1a1a1d;border-bottom:1px solid #2e2e33">
+<span style="color:#9898a6;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-right:4px">Windows</span>
+<sc-for list="{{winChips}}" as="c" hint-placeholder-count="13">
+<button onClick="{{c.toggle}}" aria-pressed="{{c.on}}" style="height:22px;padding:0 9px;border-radius:11px;border:1px solid {{c.bd}};background:{{c.bg}};color:{{c.fg}};font-size:11px">{{c.label}}</button>
+</sc-for>
+<div style="flex:1"></div>
+<button style="height:24px;padding:0 10px;border-radius:6px;border:1px solid #3a3a40;background:#222226;color:#f2f2f3;font-size:11px">Save layout as…</button>
+</div>
+
+<div style="position:relative;flex:1;min-height:0;overflow:auto;background-color:#0f0f10;background-image:{{gridImg}};background-size:16px 16px;user-select:none">
+
+<sc-if value="{{w_br.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_br.focus}}" style="position:absolute;left:{{w_br.x}}px;top:{{w_br.y}}px;width:{{w_br.w}}px;height:{{w_br.h}}px;z-index:{{w_br.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_br.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_br.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_br.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Browser</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_br.stop}}" onClick="{{w_br.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_br.stop}}" onClick="{{w_br.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div style="display:flex;flex-direction:column;height:100%">
+<div style="padding:8px 10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid #2e2e33;flex:none">
+<div style="display:flex;border:1px solid #3a3a40;border-radius:6px;overflow:hidden">
+<button onClick="{{setMarket}}" aria-pressed="{{isMarket}}" style="flex:1;height:28px;border:0;background:{{marketBg}};color:{{marketFg}};font-size:12px;font-weight:600">Market</button>
+<button onClick="{{setShips}}" aria-pressed="{{isShips}}" style="flex:1;height:28px;border:0;border-left:1px solid #3a3a40;background:{{shipsBg}};color:{{shipsFg}};font-size:12px;font-weight:600">Ships</button>
+</div>
+<input aria-label="Search" placeholder="{{searchHint}}" style="height:28px;border-radius:6px;border:1px solid #3a3a40;background:#0f0f10;color:#f2f2f3;padding:0 10px;font-size:12px;box-sizing:border-box;width:100%">
+</div>
+<sc-if value="{{isMarket}}" hint-placeholder-val="{{false}}">
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto">
+<div style="padding:6px 10px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #2e2e33">
+<sc-for list="{{slotChips}}" as="c" hint-placeholder-count="5">
+<button style="height:22px;padding:0 9px;border-radius:11px;border:1px solid #3a3a40;background:{{c.bg}};color:{{c.fg}};font-size:11px;white-space:nowrap">{{c.label}}</button>
+</sc-for>
+</div>
+<div style="border-bottom:1px solid #2e2e33;padding:4px 0">
+<sc-for list="{{marketTree}}" as="n" hint-placeholder-count="8">
+<div style="display:flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 {{n.pad}}px;background:{{n.bg}};border-left:2px solid {{n.bar}};color:{{n.fg}};white-space:nowrap"><span style="color:#78788a;width:10px;flex:none;font-size:10px">{{n.caret}}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9898a6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none" aria-hidden="true"><path d="{{n.icon}}"></path></svg><span style="overflow:hidden;text-overflow:ellipsis">{{n.name}}</span></div>
+</sc-for>
+</div>
+<div style="padding:6px 10px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid rgba(46,46,51,.6)">Module · meta · <span style="color:#22d3ee">CPU</span> · <span style="color:#ef4444">PG</span> · ISK</div>
+<sc-for list="{{items}}" as="m" hint-placeholder-count="5">
+<div style="display:grid;grid-template-columns:16px minmax(0, 1fr);gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(46,46,51,.6)">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#9898a6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{m.icon}}"></path></svg>
+<div style="min-width:0"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{m.name}}</div>
+<div style="display:flex;gap:10px;margin-top:2px;font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;color:#78788a;white-space:nowrap"><span>Meta {{m.meta}}</span><span style="color:#22d3ee">{{m.cpu}}</span><span style="color:#ef4444">{{m.pg}}</span><span style="margin-left:auto">{{m.price}}</span></div></div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{isShips}}" hint-placeholder-val="{{true}}">
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:auto">
+<div style="display:flex;justify-content:space-between;padding:6px 10px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid rgba(46,46,51,.6)"><span>Ship or saved fit</span><span>DPS · EHP</span></div>
+<div style="padding:4px 0">
+<sc-for list="{{shipTree}}" as="n" hint-placeholder-count="12">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:28px;padding:0 10px 0 {{n.pad}}px;background:{{n.bg}};border-left:2px solid {{n.bar}};color:{{n.fg}};font-weight:{{n.weight}}"><span style="display:flex;gap:6px;align-items:center;min-width:0"><span style="color:#78788a;width:10px;flex:none;font-size:10px">{{n.caret}}</span><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9898a6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none" aria-hidden="true"><path d="{{n.icon}}"></path></svg><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{n.name}}</span></span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;color:#9898a6;flex:none">{{n.meta}}</span></div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+<div onMouseDown="{{w_br.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_br.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_br.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_br.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_br.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_fit.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_fit.focus}}" style="position:absolute;left:{{w_fit.x}}px;top:{{w_fit.y}}px;width:{{w_fit.w}}px;height:{{w_fit.h}}px;z-index:{{w_fit.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_fit.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_fit.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_fit.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Fitting · Sleipnir</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_fit.stop}}" onClick="{{w_fit.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_fit.stop}}" onClick="{{w_fit.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div>
+<div style="display:grid;grid-template-columns:{{gridFit}};gap:8px;align-items:center;height:24px;padding:0 12px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid #2e2e33">
+<span></span><span></span><span>Module · charge</span><span style="position:relative"><i onMouseDown="{{colF0}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i><span style="color:#22d3ee">CPU</span> · <span style="color:#ef4444">PG</span></span><span style="text-align:right;position:relative"><i onMouseDown="{{colF1}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Cap/s</span><span style="position:relative"><i onMouseDown="{{colF2}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Range</span><span style="position:relative"><i onMouseDown="{{colF3}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Effect</span><span style="text-align:right;position:relative"><i onMouseDown="{{colF4}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>ISK</span>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="22">
+<div>
+<sc-if value="{{r.isHeader}}" hint-placeholder-val="{{false}}">
+<div style="display:grid;grid-template-columns:{{r.grid}};gap:8px;align-items:center;height:22px;padding:0 12px;background:#222226;border-bottom:1px solid #2e2e33">
+<span style="grid-column:span 3;font-weight:600;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:{{r.color}}">{{r.name}} <span style="color:#78788a;font-weight:400;letter-spacing:0;text-transform:none">{{r.used}}</span></span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;color:#9898a6">{{r.fit}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;text-align:right;color:#9898a6">{{r.cap}}</span>
+<span></span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;color:#9898a6">{{r.eff}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;text-align:right;color:#9898a6">{{r.price}}</span>
+</div>
+</sc-if>
+<sc-if value="{{r.isMod}}" hint-placeholder-val="{{true}}">
+<div style="display:grid;grid-template-columns:{{r.grid}};gap:8px;align-items:center;height:24px;padding:0 12px;background:{{r.bg}};box-sizing:border-box;border-bottom:1px solid rgba(46,46,51,.6)">
+<span style="width:8px;height:8px;border-radius:50%;background:{{r.dot}}"></span>
+<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9898a6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.icon}}"></path></svg>
+<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{r.name}}<span style="color:#9898a6">{{r.charge}}</span><span style="color:#f97316;font-size:10px;font-weight:600"> {{r.heat}}</span></span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap"><span style="color:#22d3ee">{{r.cpu}}</span> · <span style="color:#ef4444">{{r.pg}}</span><span style="color:#9898a6">{{r.cal}}</span></span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right">{{r.cap}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;color:#9898a6;white-space:nowrap">{{r.range}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;white-space:nowrap">{{r.eff}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right;color:#9898a6">{{r.price}}</span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_fit.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_fit.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_fit.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_fit.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_fit.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_proj.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_proj.focus}}" style="position:absolute;left:{{w_proj.x}}px;top:{{w_proj.y}}px;width:{{w_proj.w}}px;height:{{w_proj.h}}px;z-index:{{w_proj.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_proj.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_proj.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_proj.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Projected</span>
+<span style="flex:1"></span>
+<button onMouseDown="{{w_proj.stop}}" style="height:20px;padding:0 8px;border:1px solid #3a3a40;background:#222226;color:#f2f2f3;font-size:11px;border-radius:4px">+ Add</button>
+<button onMouseDown="{{w_proj.stop}}" onClick="{{w_proj.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_proj.stop}}" onClick="{{w_proj.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div>
+<div style="display:grid;grid-template-columns:{{gridProj}};gap:8px;height:22px;align-items:center;padding:0 12px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid rgba(46,46,51,.6)"><span></span><span>Source</span><span style="position:relative"><i onMouseDown="{{colP0}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Effect</span><span style="text-align:right;position:relative"><i onMouseDown="{{colP1}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Value</span><span style="text-align:right;position:relative"><i onMouseDown="{{colP2}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Range</span></div>
+<sc-for list="{{projected}}" as="p" hint-placeholder-count="4">
+<div style="display:grid;grid-template-columns:{{p.grid}};gap:8px;height:25px;align-items:center;padding:0 12px;border-bottom:1px solid rgba(46,46,51,.6);opacity:{{p.op}}">
+<input type="checkbox" checked="{{p.on}}" aria-label="Apply this projected effect" style="margin:0;accent-color:#22d3ee">
+<span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.source}}</span>
+<span style="color:#9898a6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{p.effect}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right">{{p.value}}</span>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right;color:#9898a6">{{p.range}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_proj.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_proj.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_proj.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_proj.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_proj.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_cargo.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_cargo.focus}}" style="position:absolute;left:{{w_cargo.x}}px;top:{{w_cargo.y}}px;width:{{w_cargo.w}}px;height:{{w_cargo.h}}px;z-index:{{w_cargo.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_cargo.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_cargo.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_cargo.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Cargo</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_cargo.stop}}" onClick="{{w_cargo.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_cargo.stop}}" onClick="{{w_cargo.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div>
+<div style="display:grid;grid-template-columns:{{gridCargo}};gap:8px;height:22px;align-items:center;padding:0 12px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid rgba(46,46,51,.6)"><span>Item</span><span style="text-align:right;position:relative"><i onMouseDown="{{colC0}}" title="Drag to resize column" style="position:absolute;left:-6px;top:-6px;bottom:-6px;width:8px;cursor:col-resize"></i>Qty</span></div>
+<sc-for list="{{cargo}}" as="c" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:{{c.grid}};gap:8px;align-items:center;height:25px;padding:0 12px;border-bottom:1px solid rgba(46,46,51,.6)"><span>{{c.name}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right">{{c.qty}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_cargo.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_cargo.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_cargo.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_cargo.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_cargo.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_res.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_res.focus}}" style="position:absolute;left:{{w_res.x}}px;top:{{w_res.y}}px;width:{{w_res.w}}px;height:{{w_res.h}}px;z-index:{{w_res.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_res.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_res.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_res.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Resources</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_res.stop}}" onClick="{{w_res.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_res.stop}}" onClick="{{w_res.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div style="padding:10px 12px 8px">
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px 24px">
+<sc-for list="{{res}}" as="r" hint-placeholder-count="6">
+<div style="min-width:0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px"><span style="color:{{r.color}};font-weight:600;white-space:nowrap">{{r.label}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap">{{r.text}}</span></div>
+<div style="height:4px;background:#2e2e33;margin-top:5px"><div style="height:4px;width:{{r.w}}%;background:{{r.color}}"></div></div>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:20px;margin-top:10px;font-size:11px;color:#9898a6"><span>Launchers 0 / 2</span><span>Drones 0 / 5</span></div>
+</div>
+</div>
+<div onMouseDown="{{w_res.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_res.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_res.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_res.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_res.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_def.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_def.focus}}" style="position:absolute;left:{{w_def.x}}px;top:{{w_def.y}}px;width:{{w_def.w}}px;height:{{w_def.h}}px;z-index:{{w_def.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_def.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_def.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_def.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Defense</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_def.stop}}" onClick="{{w_def.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_def.stop}}" onClick="{{w_def.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div><div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:16px;padding:6px 12px 2px">
+<sc-for list="{{defTop}}" as="k" hint-placeholder-count="4">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{k.v}}</span></div>
+</sc-for>
+</div>
+<div style="padding:2px 12px 2px">
+<div style="display:grid;grid-template-columns:48px repeat(4, minmax(0, 1fr)) 52px 46px;gap:6px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding-bottom:5px;border-bottom:1px solid #2e2e33">
+<span>Layer</span><span style="color:#60a5fa">EM</span><span style="color:#ef4444">Th</span><span style="color:#cbd5e1">Kin</span><span style="color:#f97316">Exp</span><span style="text-align:right">Avg</span><span style="text-align:right">EHP</span>
+</div>
+<sc-for list="{{resists}}" as="r" hint-placeholder-count="3">
+<div style="display:grid;grid-template-columns:48px repeat(4, minmax(0, 1fr)) 52px 46px;gap:6px;align-items:center;height:36px;border-bottom:1px solid rgba(46,46,51,.6)">
+<span style="font-weight:600">{{r.layer}}</span>
+<div><div style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{r.em}}</div><div style="height:3px;background:#2e2e33;margin-top:3px"><div style="height:3px;width:{{r.emW}}%;background:#60a5fa"></div></div></div>
+<div><div style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{r.th}}</div><div style="height:3px;background:#2e2e33;margin-top:3px"><div style="height:3px;width:{{r.thW}}%;background:#ef4444"></div></div></div>
+<div><div style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{r.ki}}</div><div style="height:3px;background:#2e2e33;margin-top:3px"><div style="height:3px;width:{{r.kiW}}%;background:#cbd5e1"></div></div></div>
+<div><div style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{r.ex}}</div><div style="height:3px;background:#2e2e33;margin-top:3px"><div style="height:3px;width:{{r.exW}}%;background:#f97316"></div></div></div>
+<div style="text-align:right"><div style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{r.avg}}</div><div style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:10px;color:#78788a">{{r.mult}}</div></div>
+<span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right">{{r.ehp}}</span>
+</div>
+</sc-for>
+</div>
+<div style="padding:8px 12px 0;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase">Recharge rates</div>
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:16px;padding:2px 12px 6px">
+<sc-for list="{{recharge}}" as="k" hint-placeholder-count="4">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{k.v}}</span></div>
+</sc-for>
+</div>
+</div>
+</div>
+<div onMouseDown="{{w_def.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_def.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_def.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_def.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_def.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_fire.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_fire.focus}}" style="position:absolute;left:{{w_fire.x}}px;top:{{w_fire.y}}px;width:{{w_fire.w}}px;height:{{w_fire.h}}px;z-index:{{w_fire.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_fire.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_fire.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_fire.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Firepower</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_fire.stop}}" onClick="{{w_fire.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_fire.stop}}" onClick="{{w_fire.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:16px;padding:6px 12px 4px">
+<sc-for list="{{fire}}" as="k" hint-placeholder-count="4">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{k.v}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_fire.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_fire.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_fire.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_fire.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_fire.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_cap.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_cap.focus}}" style="position:absolute;left:{{w_cap.x}}px;top:{{w_cap.y}}px;width:{{w_cap.w}}px;height:{{w_cap.h}}px;z-index:{{w_cap.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_cap.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_cap.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_cap.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Capacitor</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_cap.stop}}" onClick="{{w_cap.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_cap.stop}}" onClick="{{w_cap.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:16px;padding:6px 12px">
+<sc-for list="{{cap}}" as="k" hint-placeholder-count="4">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;font-weight:600;color:{{k.c}}">{{k.v}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_cap.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_cap.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_cap.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_cap.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_cap.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_tgt.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_tgt.focus}}" style="position:absolute;left:{{w_tgt.x}}px;top:{{w_tgt.y}}px;width:{{w_tgt.w}}px;height:{{w_tgt.h}}px;z-index:{{w_tgt.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_tgt.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_tgt.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_tgt.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Targeting</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_tgt.stop}}" onClick="{{w_tgt.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_tgt.stop}}" onClick="{{w_tgt.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:16px;padding:6px 12px">
+<sc-for list="{{tgt}}" as="k" hint-placeholder-count="4">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{k.v}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_tgt.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_tgt.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_tgt.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_tgt.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_tgt.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_mob.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_mob.focus}}" style="position:absolute;left:{{w_mob.x}}px;top:{{w_mob.y}}px;width:{{w_mob.w}}px;height:{{w_mob.h}}px;z-index:{{w_mob.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_mob.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_mob.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_mob.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Mobility</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_mob.stop}}" onClick="{{w_mob.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_mob.stop}}" onClick="{{w_mob.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:16px;padding:6px 12px">
+<sc-for list="{{mob}}" as="k" hint-placeholder-count="4">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{k.v}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_mob.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_mob.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_mob.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_mob.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_mob.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_price.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_price.focus}}" style="position:absolute;left:{{w_price.x}}px;top:{{w_price.y}}px;width:{{w_price.w}}px;height:{{w_price.h}}px;z-index:{{w_price.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_price.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_price.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_price.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Fit price</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_price.stop}}" onClick="{{w_price.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_price.stop}}" onClick="{{w_price.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div>
+<div style="padding:8px 12px 2px;display:flex;justify-content:space-between;align-items:baseline"><span style="color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase">Total, excl. character</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:16px;font-weight:600">{{priceTotal}} ISK</span></div>
+<div style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));column-gap:24px;padding:4px 12px">
+<sc-for list="{{priceRows}}" as="k" hint-placeholder-count="5">
+<div style="display:flex;justify-content:space-between;height:24px;align-items:center"><span style="color:#9898a6">{{k.k}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{k.v}}</span></div>
+</sc-for>
+</div>
+<div style="margin:4px 12px 0;padding-top:8px;border-top:1px solid #2e2e33;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px">
+<span style="color:#9898a6">Source</span>
+<span style="height:22px;display:inline-flex;align-items:center;padding:0 9px;border-radius:11px;border:1px solid #4f8ef7;background:rgba(79,142,247,.1);color:#4f8ef7">Fuzzwork</span>
+<span style="height:22px;display:inline-flex;align-items:center;padding:0 9px;border-radius:11px;border:1px solid #3a3a40;color:#9898a6">ceve-market</span>
+<span style="height:22px;display:inline-flex;align-items:center;padding:0 9px;border-radius:11px;border:1px solid #3a3a40;color:#f2f2f3">Jita ▾</span>
+<span style="color:#78788a">sell price, refreshed hourly</span>
+</div>
+</div>
+</div>
+<div onMouseDown="{{w_price.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_price.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_price.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_price.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_price.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_drn.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_drn.focus}}" style="position:absolute;left:{{w_drn.x}}px;top:{{w_drn.y}}px;width:{{w_drn.w}}px;height:{{w_drn.h}}px;z-index:{{w_drn.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_drn.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_drn.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_drn.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Drones</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_drn.stop}}" onClick="{{w_drn.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_drn.stop}}" onClick="{{w_drn.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div>
+<div style="display:grid;grid-template-columns:minmax(0, 1fr) 64px 56px;gap:8px;height:22px;align-items:center;padding:0 12px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-bottom:1px solid rgba(46,46,51,.6)"><span>Drone</span><span>Range</span><span style="text-align:right">ISK</span></div>
+<sc-for list="{{drones}}" as="d" hint-placeholder-count="1">
+<div style="display:grid;grid-template-columns:minmax(0, 1fr) 64px 56px;gap:8px;align-items:center;height:25px;padding:0 12px;border-bottom:1px solid rgba(46,46,51,.6)"><span>{{d.name}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px">{{d.range}}</span><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:12px;text-align:right">{{d.price}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_drn.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_drn.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_drn.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_drn.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_drn.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_imp.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_imp.focus}}" style="position:absolute;left:{{w_imp.x}}px;top:{{w_imp.y}}px;width:{{w_imp.w}}px;height:{{w_imp.h}}px;z-index:{{w_imp.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_imp.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_imp.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_imp.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Implants and boosters</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_imp.stop}}" onClick="{{w_imp.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_imp.stop}}" onClick="{{w_imp.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<div>
+<div style="padding:8px 12px 4px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase">Implants</div>
+<sc-for list="{{implants}}" as="i" hint-placeholder-count="10">
+<div style="display:grid;grid-template-columns:20px minmax(0, 1fr);gap:8px;align-items:center;height:22px;padding:0 12px"><span style="font-family:'Saira',sans-serif;font-variant-numeric:tabular-nums;font-size:11px;color:#78788a">{{i.slot}}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{i.name}}</span></div>
+</sc-for>
+<div style="padding:8px 12px 4px;color:#9898a6;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-top:1px solid #2e2e33;margin-top:6px">Boosters</div>
+<sc-for list="{{boosters}}" as="b" hint-placeholder-count="2">
+<div style="display:flex;align-items:center;height:22px;padding:0 12px"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{b.name}}</span></div>
+</sc-for>
+</div>
+</div>
+<div onMouseDown="{{w_imp.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_imp.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_imp.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_imp.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_imp.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+<sc-if value="{{w_notes.open}}" hint-placeholder-val="{{true}}">
+<section onMouseDown="{{w_notes.focus}}" style="position:absolute;left:{{w_notes.x}}px;top:{{w_notes.y}}px;width:{{w_notes.w}}px;height:{{w_notes.h}}px;z-index:{{w_notes.z}};display:flex;flex-direction:column;box-sizing:border-box;background:#1a1a1d;border:1px solid {{w_notes.bd}};border-radius:6px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.45)">
+<div onMouseDown="{{w_notes.startDrag}}" style="height:28px;flex:none;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;background:#222226;border-bottom:1px solid #2e2e33;cursor:{{w_notes.cursor}};user-select:none">
+<svg width="8" height="12" viewBox="0 0 8 12" fill="#78788a" aria-hidden="true"><circle cx="2" cy="2" r="1"></circle><circle cx="6" cy="2" r="1"></circle><circle cx="2" cy="6" r="1"></circle><circle cx="6" cy="6" r="1"></circle><circle cx="2" cy="10" r="1"></circle><circle cx="6" cy="10" r="1"></circle></svg>
+<span style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9898a6;white-space:nowrap">Notes</span>
+<span style="flex:1"></span>
+
+<button onMouseDown="{{w_notes.stop}}" onClick="{{w_notes.popOut}}" aria-label="Pop out to a separate window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;display:flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#9898a6" stroke-width="1.4" aria-hidden="true"><path d="M5 2H2v8h8V7M7 2h3v3M10 2L5.5 6.5"></path></svg></button>
+<button onMouseDown="{{w_notes.stop}}" onClick="{{w_notes.close}}" aria-label="Close window" style="width:22px;height:22px;border:0;border-radius:4px;background:transparent;color:#9898a6;font-size:14px">×</button>
+</div>
+<div style="flex:1;min-height:0;overflow:auto;position:relative">
+<textarea aria-label="Fit notes" placeholder="Notes for this fit" style="width:100%;height:100%;box-sizing:border-box;border:0;background:#0f0f10;color:#f2f2f3;padding:10px 12px;font-size:12px;resize:none"></textarea>
+</div>
+<div onMouseDown="{{w_notes.startS}}" style="position:absolute;left:0;right:14px;bottom:0;height:6px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_notes.startE}}" style="position:absolute;top:28px;bottom:14px;right:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_notes.startW}}" style="position:absolute;top:28px;bottom:0;left:0;width:6px;cursor:ew-resize"></div>
+<div onMouseDown="{{w_notes.startN}}" style="position:absolute;top:0;left:0;right:0;height:4px;cursor:ns-resize"></div>
+<div onMouseDown="{{w_notes.startResize}}" style="position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#78788a" stroke-width="1.2" aria-hidden="true"><path d="M12 5L5 12M12 9L9 12"></path></svg></div>
+</section>
+</sc-if>
+
+</div>
+
+<div onMouseDown="{{startWs}}" title="Drag to make the workspace taller or shorter" style="height:10px;flex:none;cursor:ns-resize;background:#1a1a1d;border-top:1px solid #2e2e33;display:flex;align-items:center;justify-content:center"><span style="width:48px;height:3px;border-radius:2px;background:#3a3a40"></span></div>
+<div style="height:30px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;background:#1a1a1d;border-top:1px solid #2e2e33;font-size:11px;color:#9898a6">
+<span style="font-weight:600;letter-spacing:.06em;text-transform:uppercase">Detached</span>
+<sc-if value="{{noDet}}" hint-placeholder-val="{{true}}">
+<span style="color:#78788a">None. Pop a window out to send it to another monitor.</span>
+</sc-if>
+<sc-for list="{{detached}}" as="d" hint-placeholder-count="1">
+<button onClick="{{d.dock}}" style="height:22px;padding:0 9px;border-radius:11px;border:1px solid #4f8ef7;background:rgba(79,142,247,.1);color:#4f8ef7;font-size:11px">{{d.label}} · click to dock</button>
+</sc-for>
+<div style="flex:1"></div>
+<span style="font-weight:600;letter-spacing:.06em;text-transform:uppercase">Layout</span>
+<sc-for list="{{presets}}" as="c" hint-placeholder-count="3">
+<button onClick="{{c.pick}}" aria-pressed="{{c.on}}" style="height:22px;padding:0 9px;border-radius:11px;border:1px solid {{c.bd}};background:{{c.bg}};color:{{c.fg}};font-size:11px">{{c.label}}</button>
+</sc-for>
+<button onClick="{{toggleLock}}" aria-pressed="{{locked}}" style="height:22px;padding:0 9px;border-radius:11px;border:1px solid {{lockBd}};background:{{lockBg}};color:{{lockFg}};font-size:11px">Lock layout</button>
+<button onClick="{{toggleSnapWin}}" aria-pressed="{{snapWin}}" style="height:22px;padding:0 9px;border-radius:11px;border:1px solid {{swBd}};background:{{swBg}};color:{{swFg}};font-size:11px">Snap to windows</button>
+<button onClick="{{toggleSnap}}" aria-pressed="{{snap}}" style="height:22px;padding:0 9px;border-radius:11px;border:1px solid {{snapBd}};background:{{snapBg}};color:{{snapFg}};font-size:11px">Snap to grid</button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1140}}'>
+class Component extends DCLogic {
+  layout(name) {
+    const g = (id, x, y, w, h, open) => ({ id: id, x: x, y: y, w: w, h: h, open: open !== false, det: false, z: 1 });
+    const col = (x, w) => [
+      g('res', x, 8, w, 164), g('def', x, 180, w, 270), g('fire', x, 458, w, 104), g('cap', x, 570, w, 80),
+      g('tgt', x, 658, w, 88), g('mob', x, 754, w, 88), g('price', x, 850, w, 128)
+    ];
+    const extra = [g('drn', 300, 120, 300, 160, false), g('imp', 340, 160, 360, 340, false), g('notes', 380, 200, 320, 200, false)];
+    let list;
+    if (name === 'Mirrored') {
+      list = [g('br', 1152, 8, 280, 970), g('fit', 420, 8, 724, 648), g('proj', 420, 664, 444, 314), g('cargo', 872, 664, 272, 314)].concat(col(8, 404), extra);
+    } else if (name === 'Focus') {
+      list = [g('br', 8, 8, 280, 970, false), g('fit', 8, 8, 780, 648), g('proj', 8, 664, 780, 314), g('cargo', 796, 8, 100, 100, false)].concat(col(796, 636), extra);
+    } else {
+      list = [g('br', 8, 8, 280, 970), g('fit', 296, 8, 724, 648), g('proj', 296, 664, 444, 314), g('cargo', 748, 664, 272, 314)].concat(col(1028, 404), extra);
+    }
+    return list.map((w, i) => Object.assign({}, w, { z: i + 1 }));
+  }
+
+  getWins() { return (this.state && this.state.wins) || this.layout('Default'); }
+
+  topZ(wins) { return Math.max.apply(null, wins.map(w => w.z)); }
+
+  setWin(id, patch) {
+    const wins = this.getWins();
+    const p = Object.assign({}, patch);
+    if (p.open) p.z = this.topZ(wins) + 1;
+    this.setState({ wins: wins.map(w => w.id === id ? Object.assign({}, w, p) : w) });
+  }
+
+  bring(id) {
+    const wins = this.getWins();
+    const top = this.topZ(wins);
+    const w = wins.find(x => x.id === id);
+    if (!w || w.z === top) return;
+    this.setState({ wins: wins.map(x => x.id === id ? Object.assign({}, x, { z: top + 1 }) : x) });
+  }
+
+  beginWs(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    this._drag = { id: null, mode: 'ws', sx: e.clientX, sy: e.clientY, oh: this.getWsH() };
+  }
+
+  getWsH() { return (this.state && this.state.wsH) || 1000; }
+
+  beginDrag(e, id, mode) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    this.bring(id);
+    if (this.state && this.state.locked) return;
+    const w = this.getWins().find(x => x.id === id);
+    if (!w) return;
+    this._drag = { id: id, mode: mode, sx: e.clientX, sy: e.clientY, ox: w.x, oy: w.y, ow: w.w, oh: w.h };
+  }
+
+  getCols(key) {
+    const D = { fit: [88, 46, 92, 108, 46], proj: [108, 74, 48], cargo: [70] };
+    const c = this.state && this.state.cols && this.state.cols[key];
+    return c || D[key];
+  }
+
+  beginCol(e, key, i) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    this._drag = { id: null, mode: 'col', key: key, i: i, sx: e.clientX, sy: e.clientY, o: this.getCols(key)[i] };
+  }
+
+  dragMove(e) {
+    const d = this._drag;
+    if (!d) return;
+    if (e.buttons === 0) { this._drag = null; return; }
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (d.mode === 'ws') { this.setState({ wsH: Math.max(400, Math.round(d.oh + dy)) }); return; }
+    if (d.mode === 'col') {
+      const all = Object.assign({}, (this.state && this.state.cols) || {});
+      const cur = this.getCols(d.key).slice();
+      cur[d.i] = Math.max(32, Math.round(d.o - dx));
+      all[d.key] = cur;
+      this.setState({ cols: all });
+      return;
+    }
+    const st = this.state || {};
+    const snapOn = st.snap !== false;
+    const winSnap = st.snapWin !== false;
+    const sn = (v) => snapOn ? Math.round(v / 8) * 8 : v;
+    const all = this.getWins();
+    const others = all.filter(o => o.id !== d.id && o.open && !o.det);
+    const xl = [], xr = [], yt = [], yb = [];
+    others.forEach(o => {
+      xl.push(o.x, o.x + o.w + 8); xr.push(o.x + o.w, o.x - 8);
+      yt.push(o.y, o.y + o.h + 8); yb.push(o.y + o.h, o.y - 8);
+    });
+    const near = (val, cands) => {
+      let best = null;
+      cands.forEach(c => { if (Math.abs(val - c) <= 12 && (best === null || Math.abs(val - c) < Math.abs(val - best))) best = c; });
+      return best;
+    };
+    const wins = all.map(w => {
+      if (w.id !== d.id) return w;
+      if (d.mode === 'move') {
+        let x = Math.max(0, sn(d.ox + dx)), y = Math.max(0, sn(d.oy + dy));
+        if (winSnap) {
+          const a1 = near(x, xl), b1 = near(x + w.w, xr);
+          if (a1 !== null && (b1 === null || Math.abs(x - a1) <= Math.abs(x + w.w - b1))) x = a1; else if (b1 !== null) x = b1 - w.w;
+          const a2 = near(y, yt), b2 = near(y + w.h, yb);
+          if (a2 !== null && (b2 === null || Math.abs(y - a2) <= Math.abs(y + w.h - b2))) y = a2; else if (b2 !== null) y = b2 - w.h;
+          x = Math.max(0, x); y = Math.max(0, y);
+        }
+        return Object.assign({}, w, { x: x, y: y });
+      }
+      const mo = d.mode === 'size' ? 'se' : d.mode;
+      let x = d.ox, y = d.oy, ww = d.ow, hh = d.oh;
+      if (mo.indexOf('e') >= 0) { ww = Math.max(160, sn(d.ow + dx)); if (winSnap) { const c = near(x + ww, xr); if (c !== null) ww = Math.max(160, c - x); } }
+      if (mo.indexOf('s') >= 0) { hh = Math.max(80, sn(d.oh + dy)); if (winSnap) { const c = near(y + hh, yb); if (c !== null) hh = Math.max(80, c - y); } }
+      if (mo.indexOf('w') >= 0) {
+        x = Math.min(d.ox + d.ow - 160, Math.max(0, sn(d.ox + dx)));
+        if (winSnap) { const c = near(x, xl); if (c !== null) x = Math.min(d.ox + d.ow - 160, Math.max(0, c)); }
+        ww = d.ox + d.ow - x;
+      }
+      if (mo.indexOf('n') >= 0) {
+        y = Math.min(d.oy + d.oh - 80, Math.max(0, sn(d.oy + dy)));
+        if (winSnap) { const c = near(y, yt); if (c !== null) y = Math.min(d.oy + d.oh - 80, Math.max(0, c)); }
+        hh = d.oy + d.oh - y;
+      }
+      return Object.assign({}, w, { x: x, y: y, w: ww, h: hh });
+    });
+    this.setState({ wins: wins });
+  }
+
+  renderVals() {
+    const st = this.state || {};
+    const wins = this.getWins();
+    const locked = !!st.locked;
+    const snapOn = st.snap !== false;
+    const preset = st.preset || 'Default';
+    const mode = st.mode || 'market';
+    const isMarket = mode === 'market';
+    const top = this.topZ(wins);
+
+    const META = [
+      ['br', 'Browser'], ['fit', 'Fitting'], ['proj', 'Projected'], ['cargo', 'Cargo'], ['res', 'Resources'], ['def', 'Defense'],
+      ['fire', 'Firepower'], ['cap', 'Capacitor'], ['tgt', 'Targeting'], ['mob', 'Mobility'], ['price', 'Fit price'], ['drn', 'Drones'], ['imp', 'Implants'], ['notes', 'Notes']
+    ];
+    const out = {};
+    META.forEach(m => {
+      const id = m[0];
+      const w = wins.find(x => x.id === id);
+      out['w_' + id] = {
+        x: w.x, y: w.y, w: w.w, h: w.h, z: w.z, open: w.open && !w.det,
+        bd: w.z === top ? '#4f8ef7' : '#3a3a40',
+        cursor: locked ? 'default' : 'grab',
+        focus: () => this.bring(id),
+        startDrag: (e) => this.beginDrag(e, id, 'move'),
+        startResize: (e) => this.beginDrag(e, id, 'se'),
+        startS: (e) => this.beginDrag(e, id, 's'),
+        startE: (e) => this.beginDrag(e, id, 'e'),
+        startW: (e) => this.beginDrag(e, id, 'w'),
+        startN: (e) => this.beginDrag(e, id, 'n'),
+        stop: (e) => { if (e && e.stopPropagation) e.stopPropagation(); },
+        close: () => this.setWin(id, { open: false }),
+        popOut: () => this.setWin(id, { det: true, open: false })
+      };
+    });
+    const chipStyle = (on) => ({ bg: on ? 'rgba(79,142,247,.1)' : 'transparent', fg: on ? '#4f8ef7' : '#9898a6', bd: on ? '#4f8ef7' : '#3a3a40' });
+    const winChips = META.map(m => {
+      const w = wins.find(x => x.id === m[0]);
+      const on = w.open && !w.det;
+      return Object.assign({ label: m[1], on: on, toggle: () => this.setWin(m[0], w.det ? { det: false, open: true } : { open: !w.open }) }, chipStyle(on));
+    });
+    const detached = wins.filter(w => w.det).map(w => ({ label: META.find(m => m[0] === w.id)[1] + ' · Monitor 2', dock: () => this.setWin(w.id, { det: false, open: true }) }));
+    const presets = ['Default', 'Mirrored', 'Focus'].map(n => Object.assign({ label: n, on: preset === n, pick: () => this.setState({ wins: this.layout(n), preset: n }) }, chipStyle(preset === n)));
+    const lk = chipStyle(locked), sp = chipStyle(snapOn);
+
+    const capStable = false;
+    const capCol = capStable ? '#22c55e' : '#ef4444';
+    const f1 = (n) => n.toFixed(1);
+    const isk = (n) => n.toFixed(1) + 'M';
+    const chip = (label, on) => ({ label: label, bg: on ? 'rgba(79,142,247,.1)' : 'transparent', fg: on ? '#4f8ef7' : '#9898a6' });
+
+    const tabs = [
+      { ship: 'Sleipnir', fit: 'arty standard v2', on: true, dirty: '' }
+    ].map(t => ({ ship: t.ship, fit: t.fit, dirty: t.dirty, cur: t.on, bg: t.on ? '#1a1a1d' : 'transparent', bd: t.on ? '#2e2e33' : 'transparent', fg: t.on ? '#f2f2f3' : '#9898a6' }));
+
+    const marketTreeSrc = [
+      ['Ship Equipment', 0, '▾', false], ['Turrets and Launchers', 1, '▾', false], ['Projectile Weapons', 2, '▾', false],
+      ['Artillery', 3, '▾', false], ['Medium', 4, '', true], ['Autocannons', 3, '▸', false], ['Hybrid Weapons', 2, '▸', false], ['Missile Launchers', 2, '▸', false]
+    ];
+    const marketTree = marketTreeSrc.map(n => ({ name: n[0], pad: 10 + n[1] * 14, caret: n[2], bg: n[3] ? '#222226' : 'transparent', bar: n[3] ? '#4f8ef7' : 'transparent', fg: n[3] ? '#f2f2f3' : '#9898a6' }));
+    const items = [
+      { name: '720mm Howitzer Artillery II', meta: 'T2', cpu: '33.0', pg: '222.0', price: '1.6M' },
+      { name: 'Limited 720mm Howitzer Artillery I', meta: '3', cpu: '31.0', pg: '218.0', price: '0.9M' },
+      { name: 'Upgraded 720mm Howitzer Artillery I', meta: '2', cpu: '30.0', pg: '224.0', price: '0.4M' },
+      { name: 'Experimental 720mm Howitzer Artillery I', meta: '1', cpu: '29.0', pg: '230.0', price: '0.2M' },
+      { name: '720mm Howitzer Artillery I', meta: '0', cpu: '28.0', pg: '236.0', price: '0.1M' }
+    ];
+    const S = [
+      ['g', 'Frigates', 0, '▸'], ['g', 'Destroyers', 0, '▸'], ['g', 'Cruisers', 0, '▸'], ['g', 'Battlecruisers', 0, '▾'],
+      ['s', 'Hurricane', 1, '▸'], ['s', 'Sleipnir', 1, '▾'],
+      ['f', 'arty standard v2', 2, '584 · 37.3k', true],
+      ['s', 'Drake', 1, '▸'], ['s', 'Ferox', 1, '▸'], ['g', 'Battleships', 0, '▸'], ['g', 'Industrials', 0, '▸'], ['g', 'Abyssal', 0, '▸']
+    ];
+    const shipTree = S.map(n => {
+      const isFit = n[0] === 'f';
+      const sel = !!n[4];
+      return { kind: n[0], name: n[1], pad: 10 + n[2] * 14, caret: isFit ? '' : n[3], meta: isFit ? n[3] : '',
+        weight: n[0] === 'g' ? '600' : '400', bg: sel ? '#222226' : 'transparent', bar: sel ? '#4f8ef7' : 'transparent',
+        fg: sel ? '#f2f2f3' : (n[0] === 'g' ? '#9898a6' : '#f2f2f3') };
+    });
+
+    const m = (name, charge, cpu, pg, cap, range, eff, st2, heat) => ({ name: name, charge: charge, cpu: cpu, pg: pg, cap: cap, range: range, eff: eff, st: st2, heat: heat || '' });
+    const T = () => m('720mm Howitzer Artillery II', 'Domination EMP M', 24, 223, 0, '16.5 + 39.4 km', '9.15 s', 'a');
+    const B = (ch) => m('Skirmish Command Burst II', ch, 55, 110, 0.417, '49.4 km', '+33.8%', 'a');
+    const racks = [
+      { name: 'High', color: '#9898a6', total: 7, dps: '584 DPS', mods: [T(), T(), B('Rapid Deployment Charge'), T(), B('Interdiction Maneuvers Charge'), T(), T()] },
+      { name: 'Mid', color: '#9898a6', total: 5, mods: [
+        m('50MN Cold-Gas Enduring Microwarpdrive', '', 50, 150, 9.75, '—', '—', 'a'),
+        m('Multispectrum Shield Hardener II', '', 44, 1, 3.2, '—', '—', 'a', 'OH'),
+        m('Federation Navy Stasis Webifier', '', 25, 1, 0.75, '18.7 km', '−60% speed', 'a'),
+        m('Dread Guristas Warp Disruptor', '', 23, 1, 3.0, '34.8 km', '−1 warp str', 'a'),
+        m('X-Large Ancillary Shield Booster', 'Navy Cap Booster 400', 200, 500, 0, '—', '60k / 38.2 s', 'a', 'OH')
+      ] },
+      { name: 'Low', color: '#9898a6', total: 5, mods: [
+        m('Gyrostabilizer II', '', 30, 1, 0, '—', '+22.9% dmg', 'n'),
+        m('Gyrostabilizer II', '', 30, 1, 0, '—', '+22.9% dmg', 'n'),
+        m('Tracking Enhancer II', '', 15, 1, 0, '—', '—', 'n'),
+        m("'Dyad' Co-Processor I", '', 0, 1, 0, '—', '—', 'n'),
+        m('Dark Blood Power Diagnostic System', '', 12, 0, -2.28, '—', '—', 'n')
+      ] },
+      { name: 'Rig', color: '#9898a6', total: 2, mods: [
+        m('Medium Ancillary Current Router II', '', 0, 0, 0, '—', '—', 'n'),
+        m('Medium Polycarbon Engine Housing II', '', 0, 0, 0, '—', '—', 'n')
+      ] }
+    ];
+    const DOT = { a: '#1ded96', o: '#f97316', n: '#9898a6' };
+    const P = {
+      turret: 'M2 13h12M5 13V10h6v3M8 10V2.5M6.5 2.5h3',
+      thruster: 'M4 4h4l4 4-4 4H4zM1 8h3',
+      scram: 'M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM8 5v6M5 8h6',
+      web: 'M8 2v12M2 8h12M3.5 3.5l9 9M12.5 3.5l-9 9',
+      sensor: 'M3 13a10 10 0 0 1 10-10M3 9a6 6 0 0 1 6-6M3 13h.01',
+      gyro: 'M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4M2 8h2M12 8h2',
+      dcu: 'M8 2l5 2v4c0 3-2 5-5 6-3-1-5-3-5-6V4zM8 6v4M6 8h4',
+      rcu: 'M9 2L4 9h4l-1 5 5-7H8z',
+      burst: 'M2 8h3M11 8h3M8 2v3M8 11v3M8 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4',
+      rig: 'M8 2l5 3v6l-5 3-5-3V5zM8 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3',
+      hull: 'M8 1.5l3.5 4v6L10 14H6l-1.5-2.5v-6zM8 5v6',
+      fit: 'M3 4h10M3 8h10M3 12h6',
+      folder: 'M2 4h4l1.5 1.5H14v7H2z'
+    };
+    const ICON = {
+      '720mm Howitzer Artillery II': P.turret, 'Skirmish Command Burst II': P.burst,
+      '50MN Cold-Gas Enduring Microwarpdrive': P.thruster, 'Multispectrum Shield Hardener II': P.dcu,
+      'Federation Navy Stasis Webifier': P.web, 'Dread Guristas Warp Disruptor': P.scram,
+      'X-Large Ancillary Shield Booster': P.dcu, 'Gyrostabilizer II': P.gyro, 'Tracking Enhancer II': P.sensor,
+      "'Dyad' Co-Processor I": P.rcu, 'Dark Blood Power Diagnostic System': P.rcu,
+      'Medium Ancillary Current Router II': P.rig, 'Medium Polycarbon Engine Housing II': P.rig
+    };
+    const capFmt = (c) => c ? (c < 0 ? '+' + (-c).toFixed(2) : c.toFixed(2)) : '—';
+    const rows = [];
+    const gridProjRow = '18px minmax(0, 1fr) ' + this.getCols('proj').map(w => w + 'px').join(' ');
+    const gridCargoRow = 'minmax(0, 1fr) ' + this.getCols('cargo')[0] + 'px';
+    const gridFitRow = '12px 16px minmax(0, 1fr) ' + this.getCols('fit').map(w => w + 'px').join(' ');
+    racks.forEach((rk, ri) => {
+      const sum = (k) => rk.mods.reduce((a, x) => a + x[k], 0);
+      const isRig = rk.name === 'Rig';
+      const capSum = sum('cap');
+      rows.push({ grid: gridFitRow, isHeader: true, isMod: false, name: rk.name, color: rk.color, used: rk.mods.length + ' / ' + rk.total,
+        fit: isRig ? 'Cal 300 / 400' : f1(sum('cpu')) + ' · ' + sum('pg').toFixed(0),
+        cap: capSum ? (capSum < 0 ? '+' : '') + Math.abs(capSum).toFixed(1) : '', eff: rk.dps || '', price: '' });
+      rk.mods.forEach((x, i) => {
+        const sel = ri === 0 && i === 0;
+        rows.push({ grid: gridFitRow, isHeader: false, isMod: true, name: x.name, charge: x.charge ? ' · ' + x.charge : '', heat: x.heat, icon: ICON[x.name],
+          cpu: isRig ? '' : (x.cpu ? f1(x.cpu) : '—'), pg: isRig ? '' : (x.pg ? x.pg.toFixed(0) : '—'), cal: '',
+          cap: capFmt(x.cap), range: x.range, eff: x.eff, price: '—',
+          dot: DOT[x.st], bg: sel ? '#222226' : 'transparent' });
+      });
+    });
+
+    const resists = [
+      { layer: 'Shield', em: '84.8', th: '75.6', ki: '63.4', ex: '69.5', ehp: '22.1k' },
+      { layer: 'Armor', em: '90.0', th: '67.5', ki: '25.0', ex: '10.0', ehp: '8.24k' },
+      { layer: 'Hull', em: '33.0', th: '33.0', ki: '33.0', ex: '33.0', ehp: '6.9k' }
+    ].map(r => {
+      const v = [r.em, r.th, r.ki, r.ex].map(parseFloat);
+      const avg = v.reduce((a, x) => a + x, 0) / 4;
+      return Object.assign({}, r, { emW: v[0], thW: v[1], kiW: v[2], exW: v[3], avg: avg.toFixed(1), mult: '×' + (1 - avg / 100).toFixed(3) });
+    });
+
+    return Object.assign(out, {
+      winChips: winChips,
+      detached: detached,
+      noDet: detached.length === 0,
+      presets: presets,
+      locked: locked, lockBg: lk.bg, lockFg: lk.fg, lockBd: lk.bd,
+      snap: snapOn, snapBg: sp.bg, snapFg: sp.fg, snapBd: sp.bd,
+      snapWin: st.snapWin !== false, swBg: chipStyle(st.snapWin !== false).bg, swFg: chipStyle(st.snapWin !== false).fg, swBd: chipStyle(st.snapWin !== false).bd,
+      toggleSnapWin: () => this.setState({ snapWin: st.snapWin === false }),
+      toggleLock: () => this.setState({ locked: !locked }),
+      toggleSnap: () => this.setState({ snap: !snapOn }),
+      gridImg: snapOn ? 'radial-gradient(#222226 1px, transparent 1px)' : 'none',
+      rootH: this.getWsH() + 160,
+      startWs: (e) => this.beginWs(e),
+      onMove: (e) => this.dragMove(e),
+      onUp: () => { this._drag = null; },
+      tabs: tabs,
+      isMarket: isMarket,
+      isShips: !isMarket,
+      setMarket: () => this.setState({ mode: 'market' }),
+      setShips: () => this.setState({ mode: 'ships' }),
+      marketBg: isMarket ? 'rgba(79,142,247,.1)' : 'transparent', marketFg: isMarket ? '#4f8ef7' : '#9898a6',
+      shipsBg: isMarket ? 'transparent' : 'rgba(79,142,247,.1)', shipsFg: isMarket ? '#9898a6' : '#4f8ef7',
+      searchHint: isMarket ? 'Search modules' : 'Search ships and fits',
+      slotChips: [chip('High', true), chip('Mid', false), chip('Low', false), chip('Rig', false), chip('Hide unfittable', false)],
+      marketTree: marketTree.map(n => Object.assign({}, n, { icon: n.caret ? P.folder : P.turret })),
+      items: items.map(i => Object.assign({ icon: P.turret }, i)),
+      shipTree: shipTree.map(n => Object.assign({}, n, { icon: n.kind === 's' ? P.hull : (n.kind === 'f' ? P.fit : P.folder) })),
+      gridFit: '12px 16px minmax(0, 1fr) ' + this.getCols('fit').map(w => w + 'px').join(' '),
+      gridProj: '18px minmax(0, 1fr) ' + this.getCols('proj').map(w => w + 'px').join(' '),
+      gridCargo: 'minmax(0, 1fr) ' + this.getCols('cargo')[0] + 'px',
+      colF0: (e) => this.beginCol(e, 'fit', 0), colF1: (e) => this.beginCol(e, 'fit', 1), colF2: (e) => this.beginCol(e, 'fit', 2), colF3: (e) => this.beginCol(e, 'fit', 3), colF4: (e) => this.beginCol(e, 'fit', 4),
+      colP0: (e) => this.beginCol(e, 'proj', 0), colP1: (e) => this.beginCol(e, 'proj', 1), colP2: (e) => this.beginCol(e, 'proj', 2),
+      colC0: (e) => this.beginCol(e, 'cargo', 0),
+      rows: rows,
+      res: [
+        { label: 'CPU', color: '#22d3ee', text: '659.0 / 659.1 tf', w: 99.99 },
+        { label: 'PG', color: '#ef4444', text: '1,993 / 2,009 MW', w: 99.21 },
+        { label: 'Calibration', color: '#9898a6', text: '300 / 400', w: 75 },
+        { label: 'Drone bay', color: '#9898a6', text: '25 / 25 m³', w: 100 },
+        { label: 'Bandwidth', color: '#9898a6', text: '0 / 25 Mbit/s', w: 0 },
+        { label: 'Turrets', color: '#9898a6', text: '5 / 5', w: 100 }
+      ],
+      priceRows: [
+        { k: 'Ship', v: '279M' }, { k: 'Fittings', v: '208M' }, { k: 'Drones', v: '29k' },
+        { k: 'Cargo bay', v: '141M' }, { k: 'Character', v: '2.13B' }
+      ],
+      fitPrice: '628M',
+      priceTotal: '628M',
+      cargo: [
+        { name: 'Quake M', qty: '300' }, { name: 'Tremor M', qty: '300' }, { name: 'Navy Cap Booster 400', qty: '56' },
+        { name: 'Nanite Repair Paste', qty: '400' }, { name: 'Domination Depleted Uranium M', qty: '300' },
+        { name: 'Domination EMP M', qty: '500' }, { name: 'Domination Fusion M', qty: '300' },
+        { name: 'Domination Phased Plasma M', qty: '300' }, { name: 'Optimal Range Script', qty: '1' },
+        { name: 'Tracking Speed Script', qty: '1' }, { name: "Agency 'Overclocker' SB5 Dose II", qty: '2' },
+        { name: "Agency 'Pyrolancea' DB5 Dose II", qty: '2' }, { name: 'Standard Blue Pill Booster', qty: '2' },
+        { name: 'Standard Drop Booster', qty: '2' }
+      ].map(c => Object.assign({ grid: gridCargoRow }, c)),
+      drones: [{ name: '5x Hornet EC-300', range: '7.5 km', price: '29k' }],
+      implants: [
+        'High-grade Snake Alpha', 'High-grade Snake Beta', 'High-grade Snake Gamma', 'High-grade Snake Delta', 'High-grade Snake Epsilon',
+        'Mid-grade Snake Omega', "Eifyr and Co. 'Rogue' Evasive Maneuvering EM-705", "Zor's Custom Navigation Hyper-Link",
+        "Eifyr and Co. 'Gunslinger' Surgical Strike SS-905", 'Skirmish Command Mindlink'
+      ].map((n, i) => ({ slot: i + 1, name: n })),
+      boosters: ['Standard Blue Pill Booster', "Agency 'Overclocker' SB7 Dose III"].map(n => ({ name: n })),
+      projected: [
+        { grid: gridProjRow, on: true, op: 1, source: 'Basilisk · Large Remote Shield Booster II ×2', effect: 'Incoming shield rep', value: '+186 HP/s', range: '11 km' },
+        { grid: gridProjRow, on: true, op: 1, source: 'Hostile Vigil · Stasis Webifier II', effect: '−60% speed', value: '−770 m/s', range: '8 km' },
+        { grid: gridProjRow, on: true, op: 1, source: 'Hostile Omen · Energy Neutralizer II', effect: 'Capacitor drain', value: '−7.9 GJ/s', range: '14 km' },
+        { grid: gridProjRow, on: false, op: 0.55, source: 'Hostile Crucifier · Target Painter II', effect: 'Signature radius', value: '+30%', range: '40 km' }
+      ],
+      resists: resists,
+      defTop: [{ k: 'Total EHP', v: '37.3k' }, { k: 'Damage profile', v: 'Uniform' }],
+      recharge: [{ k: 'Shield, active', v: '1,568.2 EHP/s' }, { k: 'Shield, passive', v: '57.6 EHP/s' }, { k: 'Armor', v: '0.0 EHP/s' }, { k: 'Hull', v: '0.0 EHP/s' }],
+      fire: [
+        { k: 'DPS', v: '584' }, { k: 'Volley', v: '6,155' },
+        { k: 'Optimal', v: '16.5 km' }, { k: 'Falloff', v: '39.4 km' },
+        { k: 'Drone DPS', v: '0' }, { k: 'Drone range', v: '60 km' }
+      ],
+      cap: [
+        { k: 'State', v: capStable ? 'Stable' : 'Unstable', c: capCol },
+        { k: 'Lifetime', v: capStable ? 'Stable 74.1%' : '12m 40s', c: capCol },
+        { k: 'Delta', v: '−1.19 GJ/s', c: capCol },
+        { k: 'Capacity', v: '2.61k GJ', c: '#f2f2f3' }
+      ],
+      mob: [
+        { k: 'Max velocity', v: '2,397 m/s' }, { k: 'Align time', v: '9.91 s' },
+        { k: 'Warp speed', v: '3.5 AU/s' }, { k: 'Signature radius', v: '1.44k' },
+        { k: 'Cargo', v: '715 m³' }
+      ],
+      tgt: [
+        { k: 'Lock range', v: '87.5 km' }, { k: 'Scan resolution', v: '330 mm' },
+        { k: 'Max locked targets', v: '7' }, { k: 'Sensor strength', v: '24' }
+      ]
+    });
+  }
+}
+</script>
+</body>
+</html>

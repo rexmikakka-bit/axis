@@ -4,11 +4,12 @@ import { useState, useEffect, useRef, useMemo, useDeferredValue } from "react";
 import { C } from "../theme.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES, tidByName, calcFitStats, computeFitCostRatios, peakRegen, PEAK_REGEN_AT_PCT, isT3Cruiser, t3cSlotLayout, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
-import { DMG, DOUBLE_TAP_MS, STATE_COLORS, STATE_GLOW, STATE_LABELS, cargoVolume, computeDisplayRows, defaultChargeFor, isAssaultDamageControl, isGroupableModule, isMicroJumpDrive, fmtN, gestureTarget, haptic, moduleByName, moduleTakesCharges, shipTraits, slotIcons, validStatesFor, canLoadCharge, loadedChargeCount } from "../lib/core.js";
+import { DMG, DOUBLE_TAP_MS, STATE_COLORS, STATE_GLOW, STATE_LABELS, cargoVolume, computeDisplayRows, defaultChargeFor, isAssaultDamageControl, isMicroJumpDrive, fmtN, gestureTarget, haptic, moduleByName, moduleTakesCharges, shipTraits, slotIcons, validStatesFor, canLoadCharge, loadedChargeCount } from "../lib/core.js";
 import { metaOf, META_COLORS } from "../lib/meta.js";
 import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { moduleGestureHistory } from '../lib/module-gesture.js';
 import { fittedAbyssalIds } from '../lib/variation-items.js';
+import { enforceGroupLimit, groupFittedRoom, applyModUpdate, applyRemove, applyRowState, applySubsystemSwap } from '../lib/fit-ops.js';
 import { abyssalValue } from '../lib/abyssal-value.js';
 import { useAbyssalData } from '../lib/use-abyssal-data.js';
 import { missileRangeTip, fmtPriceAge } from "../lib/fmt.js";
@@ -150,52 +151,8 @@ function checkFitRestriction(modTypeID, ship, subsystems) {
 import { ModuleBrowserSheet, ModuleMenu, ResourceStrip, SubsystemPickerSheet, DamageProfileSheet, TargetProfileSheet, ItemDetailSheet, InfoButton, resourceColor } from "./ui.jsx";
 import { fetchPrices, priceAsOf, MARKET_HUBS } from "../prices.js";
 
-// A module stranded by a subsystem swap sits past the end of its rack flagged `orphan`. Freeing a real
-// slot in that rack pulls the first one back in, so making room by deleting something else is enough
-// to recover it — previously the only way was to delete the stranded module and re-add it by hand.
-const reabsorbOrphans=arr=>{
-  if(!arr.some(m=>m.orphan))return arr;
-  const out=[...arr];
-  for(;;){
-    const free=out.findIndex(m=>!m.orphan&&m.type==="empty");
-    const orph=out.findIndex(m=>m.orphan);
-    if(free<0||orph<0)return out;
-    out[free]={...out[orph],id:out[free].id,orphan:false};
-    out.splice(orph,1);
-  }
-};
-
-// "How many of this group may run at once" — activating a second MWD shuts the first one off, and a
-// Bifrost may only online ONE Skirmish Command Burst until Command Processor rigs raise the ceiling.
-// Both are the SAME CCP mechanic (maxGroupActive / maxGroupOnline), so neither is special-cased here:
-// `limits` comes straight from the engine via calcFitStats, which is what folds in the Command Ship
-// role bonus (2), the command-carrier one (3) and +1 per Command Processor. Enforced in the UI rather
-// than the engine so the fit the user sees is the fit that gets calculated.
-//
-// Every path that can put a module into a constrained state has to come through here: changing a
-// module's state and fitting one into an empty slot are separate code paths, and only the first one
-// used to check — which is how a second MWD could arrive already active.
-const ACTIVE_STATES=new Set(["active","overheated"]);
-const ONLINE_STATES=new Set(["online","active","overheated"]);
-// "How many of this group may be FITTED" (maxGroupFitted) is the third sibling of the two above, and
-// the one that isn't a state ceiling: a hull takes one Damage Control however you set it, so there is
-// nothing to demote and the add has to be refused outright. Rigs and service slots count too — Higgs
-// Anchors and ~90 structure rig groups are capped this way.
-//
-// The cap comes from `limits`, which only knows a group once one of its modules is fitted — and that
-// is sufficient, because with none fitted the count is zero and nothing can be over the cap. Same
-// reasoning as enforceGroupLimit's.
-const FITTED_RACKS=["high","mid","low","rigs","services"];
-const groupFittedRoom=(slots,limits,typeID,exceptId)=>{
-  const gn=TYPES[typeID]?.gn;
-  const cap=gn?limits?.[gn]?.fitted:0;
-  if(!cap)return Infinity;
-  let n=0;
-  for(const k of FITTED_RACKS)for(const m of slots[k]??[]){
-    if(m.id!==exceptId&&m.typeID&&TYPES[m.typeID]?.gn===gn)n++;
-  }
-  return Math.max(0,cap-n);
-};
+// The editing rules (group ceilings, orphan reabsorption, grouped-rack updates and removals) live in
+// lib/fit-ops.js, shared with the desktop's module windows — see the note at the top of that file.
 // `gn` is a CCP market group name and stays English. Its absence gets its own key pair rather than
 // substituting the word "module" into the group slot, which read as "one module module".
 const groupFittedError=typeID=>{
@@ -270,34 +227,6 @@ function StateDot({row,states,onSet,rack,gestureMemory}){
     </div>);
 }
 
-const enforceGroupLimit=(slots,limits,changedId)=>{
-  const gnOf=m=>TYPES[m?.typeID]?.gn;
-  const racks=["high","mid","low"];
-  const changed=racks.flatMap(k=>slots[k]??[]).find(m=>m.id===changedId);
-  const gn=gnOf(changed);
-  const lim=gn?limits?.[gn]:null;
-  if(!lim)return slots;
-  const out={...slots};
-  // Two independent ceilings, applied strongest-first: anything over the ONLINE cap goes offline, and
-  // anything still over the ACTIVE cap drops back to online. The module the user just touched always
-  // survives — it is the one they expressed intent about — so the demotions come out of the others,
-  // oldest slot first.
-  for(const[cap,states,demoteTo]of[[lim.online,ONLINE_STATES,"offline"],[lim.active,ACTIVE_STATES,"online"]]){
-    if(!cap)continue;
-    // The changed module only occupies a place if it is actually in the constrained state — setting
-    // one burst OFFLINE must free its place rather than reserve it.
-    let room=cap-(states.has(changed?.state)?1:0);
-    for(const k of racks){
-      out[k]=(out[k]??[]).map(m=>{
-        if(m.id===changedId||gnOf(m)!==gn||!states.has(m.state))return m;
-        if(room>0){room--;return m;}
-        return{...m,state:demoteTo};
-      });
-    }
-  }
-  return out;
-};
-
 // The mark on the swipe-to-delete button behind a fitted row. It used to read "Remove", which at the
 // 11px the 72px button allowed was a cramped word doing an icon's job — and the row sliding aside is
 // already the sentence, so the button only has to name the verb.
@@ -336,10 +265,22 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
   background:"none",border:`1px solid ${depth?C.border:"transparent"}`,
   color:depth?C.textMid:C.textMute,opacity:depth?1:0.4,cursor:depth?"pointer":"default"});
 
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd}){
+// `adderRef` (desktop only): set to add(secKey, mod) -> count, which fits `mod` into the first empty
+// slot of that rack through the same addMod the module picker uses, so the desktop's Market browser
+// obeys every fitting rule the phone does (hardpoints, group limits, auto-fill, default charges).
+// `dense` (desktop only): the same rows as a ruled table — one line per module, small icons, rack
+// header bands — for a mouse and a big screen. Every gesture and control is the phone's.
+// `TableView` (desktop only): a component that draws the racks in place of this tab's own rows and
+// resource strip. It gets `api` — the rows and every handler they need — while this tab keeps ALL
+// the logic, menus and sheets, so the desktop table edits a fit exactly as the phone does.
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null,MenuFrame=null}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
-  const _cs=(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{};
+  // Memoised on its inputs: this tab re-renders for menus, gestures and every unrelated session
+  // update, and a full fit calculation on each of those was most of the lag adding a booster
+  // (eight calculations for one change, on the desktop). Every input is replaced, never mutated.
+  const _cs=useMemo(()=>(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{},
+    [ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);
   // Keyed by SLOT id, not typeID: two slots holding the same module can have genuinely different
   // stats. A missile launcher's range comes entirely from its charge (velocity x flight time), so an
   // unloaded launcher has no range at all — keying by typeID let a loaded launcher's range bleed onto
@@ -363,24 +304,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
   // Re-absorption is automatic and needs no extra bookkeeping: an orphan lives at its original
   // index, so if a later swap restores the slot count, the loop below picks it back up as a normal
   // module and clears the flag.
-  const swapSubsystem=(slotId,sub)=>setSlots(prev=>{
-    const subs=[...(prev.subsystems??[])];
-    const idx=subs.findIndex(s=>s.id===slotId);
-    if(idx>=0)subs[idx]={...subs[idx],name:sub.name,typeID:sub.typeID,type:"subsystem"};
-    const layout=t3cSlotLayout(subs.filter(s=>s.typeID));
-    const isReal=m=>m&&m.typeID&&m.type!=="empty";
-    const label=key=>key==='mid'?'Mid':key==='rigs'?'Rig':key.charAt(0).toUpperCase()+key.slice(1);
-    const fit=(key,count)=>{
-      const cur=prev[key]??[];
-      const out=[];
-      for(let i=0;i<count;i++)
-        out.push(cur[i]?{...cur[i],orphan:false}
-                       :{id:`${key[0]}${i}`,name:`[Empty ${label(key)} Slot]`,icon:null,type:"empty"});
-      for(let i=count;i<cur.length;i++) if(isReal(cur[i])) out.push({...cur[i],orphan:true});
-      return out;
-    };
-    return{...prev,subsystems:subs,high:fit("high",layout.hiSlots),mid:fit("mid",layout.medSlots),low:fit("low",layout.lowSlots),rigs:fit("rigs",layout.rigSlots)};
-  });
+  const swapSubsystem=(slotId,sub)=>setSlots(prev=>applySubsystemSwap(prev,slotId,sub));
   const[moduleMenu,setModuleMenu]=useState(null);
   const[emptySlot,setEmptySlot]=useState(null);
   // Two buttons behind every fitted row: copy-to-next-empty-slot, then Remove.
@@ -503,75 +427,27 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
   const _rigsAffected = (slots.rigs ?? []).some(r =>
     r?.typeID && TYPES[r.typeID]?.a?.nullSecModifier != null);
 
+  // The rules (grouped-rack swaps, charge fan-out by display row, group ceilings, a roll already
+  // fitted elsewhere) are lib/fit-ops.js' applyModUpdate, shared with the desktop's module windows.
   const updateMod=(secKey,modId,updated,keepOpen=false,replace=false,groupIds=null)=>{
-    setSlots(prev=>{
-      const sec=[...prev[secKey]],idx=sec.findIndex(m=>m.id===modId);
-      if(idx<0)return prev;
-      if(updated.abyssalItemId&&fittedAbyssalIds(prev,modId).has(updated.abyssalItemId))return prev;
-      // Swapping to another variant from a grouped row swaps the whole rack, like its Remove button
-      // and state toggle — replacing one member of a 5x row would silently split it into 4x + 1x.
-      // A specific abyssal roll is the exception: it is one physical item, so it can only ever fill
-      // one slot, and computeDisplayRows gives every mutated module a row of its own anyway.
-      if(replace&&!updated.abyssalItemId&&!updated.mutaplasmid&&groupIds&&groupIds.length>1){
-        const ids=new Set(groupIds);
-        return{...prev,[secKey]:sec.map(m=>ids.has(m.id)?{...m,...updated,id:m.id}:m)};
-      }
-      // Loading a charge fans out to every identical module in the rack — but only for things
-      // that are actually GROUPED. It used to match on name alone, so two Skirmish Command
-      // Bursts always ended up with the same charge and running two different scripts was
-      // impossible. Bursts (and anything else non-groupable) are one row each already.
-      // ...and it must fan out to exactly the modules SHARING THAT DISPLAY ROW, which means
-      // matching on the same key computeDisplayRows groups by: name, current ammo AND state.
-      // Matching on name alone made the mutation disagree with the display — a Phoenix carrying
-      // three Rapid Torpedo Launchers deliberately loaded with three different Javelin types shows
-      // three separate rows, but changing the charge on any one of them silently rewrote all three,
-      // destroying the split. State matters for the same reason: 3 active + 2 overheated launchers
-      // of the same ammo now show as two rows (see computeDisplayRows), and a charge change made
-      // from one of them must not silently reach into the other. `origAmmo`/`origState` are the OLD
-      // values, which is what the row's members still carry at this point.
-      if(grouped&&secKey==="high"&&updated.ammo!==undefined&&!replace&&isGroupableModule(sec[idx])){
-        const origName=sec[idx].name, origAmmo=sec[idx].ammo, origState=sec[idx].state;
-        return{...prev,[secKey]:sec.map(m=>m.name===origName&&m.ammo===origAmmo&&m.state===origState&&isGroupableModule(m)?{...m,...updated,id:m.id}:m)};
-      }
-      sec[idx]={...sec[idx],...updated};
-
-      if(updated.state!==undefined)return enforceGroupLimit({...prev,[secKey]:sec},_cs.groupLimits,modId);
-      return{...prev,[secKey]:sec};
-    });if(!keepOpen)setModuleMenu(null);
+    setSlots(prev=>applyModUpdate(prev,secKey,modId,updated,{replace,groupIds,grouped,limits:_cs.groupLimits}));
+    if(!keepOpen)setModuleMenu(null);
   };
   // A grouped row stands for every slot in row.groupIds. state IS part of the grouping key now
   // (mixed-overheat racks must not merge into one misleading row), so every member already shares
   // the row's state — the gesture still has to set all of them together, or the tap would split
   // the row into two states instead of moving the whole rack. Same reasoning (and same groupIds)
-  // as the unload-charge button.
+  // as the unload-charge button. Group ceilings are enforced on the way in, as the menu's picker
+  // does — the dot must not be a way around a limit the picker respects.
   const setRowState=(secKey,row,state)=>{
-    const ids=new Set(row.groupIds??[row.id]);
-    setSlots(prev=>{
-      const next={...prev,[secKey]:(prev[secKey]??[]).map(m=>ids.has(m.id)?{...m,state}:m)};
-      // Group ceilings (one MWD active, N command bursts online) are enforced on the way in, exactly
-      // as the menu's picker does — the dot must not be a way around a limit the picker respects.
-      return enforceGroupLimit(next,_cs.groupLimits,row.id);
-    });
+    setSlots(prev=>applyRowState(prev,secKey,row.groupIds??[row.id],state,_cs.groupLimits,row.id));
   };
   // groupIds, when passed, removes every slot in a grouped rack at once — the row's state toggle
   // and unload-charge button already act on the whole group (see their comments above), so a lone
   // per-member Remove was the odd one out: it silently split a "3x" row into 2x + empty with no
   // indication only one of three had gone. Falls back to just modId for an ungrouped row.
   const removeMod=(secKey,modId,groupIds)=>{
-    // "[Empty <rack> Slot]" is a STORED sentinel, not display text: lib/core.js builds the same
-    // string and calc.js, esi-fits.js and the regression suite compare against it. It stays English.
-    const labels={high:"High",mid:"Mid",low:"Low",rigs:"Rig",services:"Service"};
-    const ids=new Set(groupIds&&groupIds.length>1?groupIds:[modId]);
-    setSlots(prev=>{
-      const arr=[];
-      for(const m of prev[secKey]??[]){
-        // Deleting an ORPHAN leaves nothing behind — the ship has no such slot, so an empty
-        // placeholder in its place would offer a slot the fit does not actually have.
-        if(ids.has(m.id)&&m.orphan)continue;
-        arr.push(ids.has(m.id)?{id:m.id,name:`[Empty ${labels[secKey]} Slot]`,icon:null,type:"empty"}:m);
-      }
-      return{...prev,[secKey]:reabsorbOrphans(arr)};
-    });
+    setSlots(prev=>applyRemove(prev,secKey,modId,groupIds));
   };
   // How many more of THIS module the hull can actually take: the smallest of its empty slots in that
   // section, its free hardpoints of the matching kind, and whatever its group still has room for. All
@@ -731,7 +607,15 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
     });
     return {count:1+fillIds.length,filledIds:[id,...fillIds]};
   };
-
+  useEffect(()=>{
+    if(!adderRef)return;
+    adderRef.current=(secKey,mod)=>{
+      const empty=(slots[secKey]??[]).find(s=>s.type==="empty");
+      if(!empty){showFitError(t("No empty slot for that module"));return 0;}
+      return addMod(secKey,empty.id,mod)?.count??0;
+    };
+    return()=>{if(adderRef)adderRef.current=null;};
+  });
   const getDisplayRows=(secKey)=>computeDisplayRows(slots[secKey]??[],secKey,grouped);
   const menuMod=moduleMenu?slots[moduleMenu.secKey].find(m=>m.id===moduleMenu.modId):null;
   // The row backing the open menu, purely to learn its groupIds/count — the menu opens on a single
@@ -784,7 +668,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           was off-screen exactly when you wanted it. Passing them as children pins them without a
           second sticky box competing for top:0, and without measuring the strip's height (which
           varies: hardpoint dots only render on hulls that have them). */}
-      <ResourceStrip ship={ship} slots={slots} skills={skills} implants={implants} boosters={boosters} drones={drones} factorInReload={factorInReload}>
+      {!TableView&&<ResourceStrip ship={ship} slots={slots} skills={skills} implants={implants} boosters={boosters} drones={drones} factorInReload={factorInReload}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
           {/* Undo/Redo cover every edit to the fit (modules, charges, drones, cargo, implants,
               boosters, projected/command fits) because the history snapshots the same state App.jsx
@@ -805,7 +689,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           </div>
           <button onClick={()=>setGrouped(g=>!g)} style={{padding:"3px 10px",borderRadius:6,fontSize:10,fontWeight:700,background:grouped?C.accentLight:"none",border:`1px solid ${grouped?C.accentBorder:C.border}`,color:grouped?C.accent:C.textMute,cursor:"pointer"}}>{grouped?t("Grouped"):t("Ungrouped")}</button>
         </div>
-      </ResourceStrip>
+      </ResourceStrip>}
       {shipModes&&(
         <div style={{display:"flex",gap:6,padding:"8px 10px 4px"}}>
           {shipModes.map((mode)=>{
@@ -853,16 +737,25 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           </div>
         </div>
       )}
-      <div style={{flex:1,padding:"0 10px 12px"}}>
+      {TableView?<TableView api={{SECS,getDisplayRows,slots,setSlots,ship,cs:_cs,engineStatsBySlotID,StateDot,gestureMemory,validStatesFor,
+          openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
+          openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
+          setRowState,removeMod,duplicateMod,duplicateRoom,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
+          undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
+      /* Dense sets a relative line height: the root's 145% is a fixed 26px by the time it gets here
+          (see InlineFrame in ui.jsx), taller than a whole dense row. */
+      <div style={{flex:1,padding:dense?"0 0 8px":"0 10px 12px",lineHeight:dense?1.3:undefined}}>
         {SECS.map(sec=>{
           const rows=getDisplayRows(sec.key);
-          return(<div key={sec.key} style={{marginBottom:6}}>
+          return(<div key={sec.key} style={{marginBottom:dense?0:6}}>
             {/* A LABEL, not a control. Collapsing was removed: a slot section is three to eight
                 rows, so folding one buys almost no screen back, while a section left shut is
                 invisible — and not seeing a fitted module is the whole failure mode. Every row is
                 always rendered now, which also means drag-to-reorder and the scroll-into-view on
                 drop no longer have to care whether a section happens to be open. */}
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 4px"}}>
+            <div style={dense
+              ?{display:"flex",alignItems:"center",gap:8,padding:"3px 12px",background:C.surfaceAlt,borderBottom:`1px solid ${C.border}`,borderTop:`1px solid ${C.border}`}
+              :{display:"flex",alignItems:"center",gap:8,padding:"7px 4px"}}>
               <img src={(slotIcons??{})[sec.key==="rigs"?"rig":sec.key==="subsystems"?"subsystem":sec.key]} style={{width:12,height:12,objectFit:"contain",filter:"brightness(10)",marginRight:2}} alt=""/>
               <span style={{fontSize:12,fontWeight:700,color:C.text}}>{sec.label}</span>
               {/* Orphans excluded: the badge is how many slots the SHIP has, and a module stranded
@@ -873,9 +766,11 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
             </div>
             {rows.map((row,rowIdx)=>{
               if(row.type==="empty")return(
-                <div key={row.id} ref={el=>{rowRefs.current[sec.key+":"+rowIdx]=el;}} onClick={()=>setEmptySlot({secKey:sec.key,id:row.id})} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,background:C.surface,border:`1px dashed ${C.borderStrong}`,cursor:"pointer"}}>
-                  <div style={{width:30,height:30,borderRadius:7,background:C.surfaceAlt,border:`1px dashed ${C.borderStrong}`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:C.borderStrong,fontSize:20}}>+</span></div>
-                  <span style={{fontSize:13,color:C.textMute}}>{row.name}</span>
+                <div key={row.id} ref={el=>{rowRefs.current[sec.key+":"+rowIdx]=el;}} onClick={()=>setEmptySlot({secKey:sec.key,id:row.id})} style={dense
+                  ?{display:"flex",alignItems:"center",gap:8,padding:"2px 12px",background:C.surface,borderBottom:`1px solid ${C.border}99`,cursor:"pointer",minHeight:24}
+                  :{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,background:C.surface,border:`1px dashed ${C.borderStrong}`,cursor:"pointer"}}>
+                  <div style={{width:dense?18:30,height:dense?18:30,borderRadius:dense?4:7,background:C.surfaceAlt,border:`1px dashed ${C.borderStrong}`,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:C.borderStrong,fontSize:dense?13:20}}>+</span></div>
+                  <span style={{fontSize:dense?12:13,color:C.textMute}}>{row.name}</span>
                   <span style={{marginLeft:"auto",fontSize:11,color:C.accent,fontWeight:600}}>{t("Add module")}</span>
                 </div>
               );
@@ -941,7 +836,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
                 ref={el=>{rowRefs.current[sec.key+":"+rowIdx]=el;}}
                 {...(swipeable?rowSwipe.swipeHandlers(rowKey):{})}
                 onClick={sec.key==="subsystems"?()=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}):rowSwipe.guardClick(rowKey,()=>setModuleMenu({secKey:sec.key,modId:row.id}))}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:8,marginBottom:4,cursor:"pointer",opacity:isDragSrc?0.45:1,position:"relative",zIndex:1,
+                style={{display:"flex",alignItems:"center",gap:dense?8:10,padding:dense?"2px 12px":"9px 12px",borderRadius:dense?0:8,marginBottom:dense?0:4,minHeight:dense?24:undefined,cursor:"pointer",opacity:isDragSrc?0.45:1,position:"relative",zIndex:1,
                         // pan-y, not "none": vertical scrolling still has to start from a row, since
                         // rows are most of the list. It claims the horizontal axis for the reveal
                         // gesture, so the browser stops treating a sideways drag as a pan of its own.
@@ -950,18 +845,22 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
                         // rather than deleted, and marked hard enough that it cannot be mistaken for
                         // a fitted module — it contributes nothing to any stat.
                         background:isDragOver?C.accentLight:row.orphan?`${C.danger}14`:C.surface,
-                        border:`1px solid ${isDragSrc?C.accent:isDragOver?C.accentBorder:row.orphan?C.danger:C.border}`,
+                        ...(dense
+                          ?{border:"none",borderBottom:`1px solid ${isDragSrc?C.accent:row.orphan?C.danger:`${C.border}99`}`}
+                          :{border:`1px solid ${isDragSrc?C.accent:isDragOver?C.accentBorder:row.orphan?C.danger:C.border}`}),
                         borderTop:isDragOver?`2px solid ${C.accent}`:undefined,transition:"opacity .15s ease, background-color .15s ease, border-color .15s ease"}}>
                   {/* Subsystems have no state to set — their row opens the subsystem sheet, not the
                       module menu — so they keep a plain dot. */}
                   {sec.key==="subsystems"
                     ?<div style={{width:6,height:6,borderRadius:99,flexShrink:0,background:STATE_COLORS[row.state]||C.textMid,boxShadow:(STATE_GLOW[row.state]??0)?`0 0 ${STATE_GLOW[row.state]}px ${STATE_COLORS[row.state]||C.textMid}`:"none"}}/>
                     :<StateDot row={row} rack={sec.key} gestureMemory={gestureMemory} states={validStatesFor(row)} onSet={s=>setRowState(sec.key,row,s)}/>}
-                  <div style={{width:30,height:30,borderRadius:7,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",background:`${sec.color}18`,border:`1px solid ${sec.color}35`,opacity:row.state==="offline"?0.4:1}}>
-                    {row.typeID?<img className="eve-icon" src={eveIcon(row.typeID,32)} width={28} height={28} alt="" onError={e=>{e.target.style.display="none";}}/>:<span style={{fontSize:14}}>{row.icon||"?"}</span>}
+                  <div style={{width:dense?18:30,height:dense?18:30,borderRadius:dense?3:7,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",background:dense?"transparent":`${sec.color}18`,border:dense?"none":`1px solid ${sec.color}35`,opacity:row.state==="offline"?0.4:1}}>
+                    {row.typeID?<img className="eve-icon" src={eveIcon(row.typeID,32)} width={dense?18:28} height={dense?18:28} alt="" onError={e=>{e.target.style.display="none";}}/>:<span style={{fontSize:14}}>{row.icon||"?"}</span>}
                   </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  {/* Dense: name, charge and figures share ONE line (the figures right-aligned in a
+                      fixed group), which is what makes it a table rather than a list of cards. */}
+                  <div style={dense?{flex:1,minWidth:0,display:"flex",alignItems:"center",gap:10}:{flex:1,minWidth:0}}>
+                    <div style={dense?{display:"flex",alignItems:"center",gap:5,minWidth:0,flex:"0 1 auto",maxWidth:"55%"}:{display:"flex",alignItems:"center",gap:5}}>
                       {row.count>1&&<span style={{fontSize:9,fontWeight:800,color:sec.color,background:`${sec.color}20`,borderRadius:4,padding:"1px 5px"}}>{row.count}x</span>}
                       {row.mutaplasmid&&<span title={t("Abyssal (mutated) module")} style={{fontSize:9,lineHeight:1,fontWeight:800,color:C.danger,background:`${C.danger}22`,border:`1px solid ${C.danger}`,borderRadius:4,padding:"2px 4px",flexShrink:0,display:"inline-flex",alignItems:"center"}}>▲</span>}
                       <span style={{fontSize:12,fontWeight:600,color:row.orphan?C.danger:row.state==="offline"?C.textMute:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sec.key==="subsystems"?(row.name||"").replace(/^.+?\s-\s/,""):row.name}</span>
@@ -983,7 +882,9 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
                         amber is a weapon-or-EWAR figure, purple is a repair total. A turret's
                         tracking and an EWAR module's strength share the amber because no row ever
                         carries both — the same slot is either shooting or projecting an effect. */}
-                    <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",columnGap:8,rowGap:1,marginTop:2}}>
+                    <div style={dense
+                      ?{display:"flex",flexWrap:"nowrap",alignItems:"center",columnGap:10,flex:1,minWidth:0,justifyContent:"space-between",overflow:"hidden"}
+                      :{display:"flex",flexWrap:"wrap",alignItems:"center",columnGap:8,rowGap:1,marginTop:2}}>
                       {row.ammo&&<span style={{display:"inline-flex",alignItems:"center",maxWidth:"100%",minWidth:0}}>
                         <span style={{fontSize:11,color:C.textMute,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(row.ammo||"").replace(/\s*\(\d+\)$/,"")} / {row.charges}/{row.maxCharges}</span>
                         <button title={row.count>1?t("Unload charge from all {n}",{n:row.count}):t("Unload charge")} onClick={e=>{e.stopPropagation();setSlots(prev=>{
@@ -1106,8 +1007,8 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
             })}
           </div>);
         })}
-      </div>
-      {menuMod&&<ModuleMenu mod={menuMod} groupCount={menuRow?.count??1} onClose={()=>setModuleMenu(null)} onUpdateMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u)} onUpdateModLive={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,true)} onReplaceMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,false,true,menuRow?.groupIds)} onRemove={()=>removeMod(moduleMenu.secKey,moduleMenu.modId,menuRow?.groupIds)} onDuplicate={duplicateRoom(moduleMenu.secKey,menuMod)>0?n=>duplicateMod(moduleMenu.secKey,menuMod,n):null} fillCount={hardpointRoom(moduleMenu.secKey,menuMod)} onFillHardpoints={()=>fillHardpoints(moduleMenu.secKey,menuMod)} resourceHeadroom={resourceHeadroom} engineItem={_cs.fittedItems?.get(moduleMenu.modId)} chargeStats={_cs.fittedChargeStats?.get(moduleMenu.modId)} usedAbyssalIds={fittedAbyssalIds(slots,menuMod.id)}/>}
+      </div>}
+      {menuMod&&<ModuleMenu key={`${moduleMenu.modId}:${moduleMenu.tab??""}`} {...(MenuFrame?{Frame:MenuFrame,initialTab:moduleMenu.tab??"state"}:{})} mod={menuMod} groupCount={menuRow?.count??1} onClose={()=>setModuleMenu(null)} onUpdateMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u)} onUpdateModLive={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,true)} onReplaceMod={u=>updateMod(moduleMenu.secKey,moduleMenu.modId,u,false,true,menuRow?.groupIds)} onRemove={()=>removeMod(moduleMenu.secKey,moduleMenu.modId,menuRow?.groupIds)} onDuplicate={duplicateRoom(moduleMenu.secKey,menuMod)>0?n=>duplicateMod(moduleMenu.secKey,menuMod,n):null} fillCount={hardpointRoom(moduleMenu.secKey,menuMod)} onFillHardpoints={()=>fillHardpoints(moduleMenu.secKey,menuMod)} resourceHeadroom={resourceHeadroom} engineItem={_cs.fittedItems?.get(moduleMenu.modId)} chargeStats={_cs.fittedChargeStats?.get(moduleMenu.modId)} usedAbyssalIds={fittedAbyssalIds(slots,menuMod.id)}/>}
       {/* The single subsystem menu: description AND the rest of the family, with the Variations tab
           doing the swapping that used to need a separate picker. */}
       {subInfo&&<ItemDetailSheet typeID={subInfo.typeID} name={subInfo.name}
@@ -1422,8 +1323,16 @@ function AmmoAdvisor({ship,slots,setSlots,drones,skills,opts,onPickTarget}){
 }
 
 // ═══ STATS TAB ══════════════════════════════════════════════════
-function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,cargoItems,factorInReload,setFactorInReload,externalBursts,projectedReps,projectedEffects,dmgProfile,setDmgProfile,tgtProfile,setTgtProfile,priceHub,setPriceHub,priceSource}){
-  const _scroll=useScrollMemory("Stats");
+// The Targeting and Misc rows that are about locking, as opposed to moving and carrying.
+const SENSOR_ROWS=new Set(["targets","lockrange","scanres","sensor","dronerange"]);
+// `sections` (desktop only) renders just the named cards, so each desktop window can hold one part of
+// this panel: validation, resists, recharge, firepower, remotereps, mining, cap, targeting, fitvalue.
+// `targeting:sensors` / `targeting:mobility` split the Targeting and Misc grid into its two halves.
+// Absent, everything renders, which is the phone. `scrollKey` keeps several instances from sharing
+// one remembered scroll position.
+function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,cargoItems,factorInReload,setFactorInReload,externalBursts,projectedReps,projectedEffects,dmgProfile,setDmgProfile,tgtProfile,setTgtProfile,priceHub,setPriceHub,priceSource,sections,scrollKey="Stats"}){
+  const _scroll=useScrollMemory(scrollKey);
+  const show=(k)=>!sections||sections.includes(k)||(k==="targeting"&&sections.some(s=>s.startsWith("targeting:")));
   // Per-section collapse state — all open by default.
   // Everything on this page that you SET rather than read goes through useViewMemory, because this
   // panel unmounts on every tab swipe and plain state would come back at its default. The two
@@ -1614,7 +1523,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
   const fmtF=n=>n==null?"0.0":n>=100?n.toFixed(0):n.toFixed(2);
   const fmtDps=n=>n==null||n<0.05?"0":n>=100?n.toFixed(0):n.toFixed(1);
 
-  const card={background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:"hidden"};
+  // Inside a desktop window the window IS the card, so the sections sit flush, divided by a rule.
+  const card=sections
+    ?{background:C.surface,borderBottom:`1px solid ${C.border}`,overflow:"hidden"}
+    :{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:8,overflow:"hidden"};
   const hd={display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt};
   const Row=({label,value,color,last})=>(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 12px",borderBottom:last?"none":`1px solid ${C.border}`}}><span style={{fontSize:11,color:C.textMid}}>{label}</span><span style={{fontSize:11,fontWeight:600,color:color||C.text}}>{value}</span></div>);
   // Collapsible section header — click toggles open/closed; `right` is optional header-right content.
@@ -1711,12 +1623,12 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
     .filter(e=>(e.byType?.[cs.sensorType]??0)>0).map(e=>e.ship).filter(Boolean))].join(", ");
 
   return(
-    <div ref={_scroll} style={{flex:1,overflowY:"auto",padding:"10px 10px 20px"}}>
+    <div ref={_scroll} style={{flex:1,overflowY:"auto",padding:sections?0:"10px 10px 20px"}}>
       {showProfilePicker&&<DamageProfileSheet current={dmgProfile} onSelect={setDmgProfile} onClose={()=>setShowProfilePicker(false)}/>}
       {showTargetPicker&&<TargetProfileSheet current={tgtProfile} onSelect={setTgtProfile} onClose={()=>setShowTargetPicker(false)}/>}
 
       {/* Fit Validation */}
-      {(()=>{
+      {show("validation")&&(()=>{
         const fr=n=>Math.abs(n)>=100?String(Math.round(Math.abs(n))):Math.abs(n).toFixed(1);
         const issues=[];
         if((cs.cpuUsed??0)>(cs.cpuTotal??0)+0.01) issues.push({sev:"err",msg:t("CPU overloaded by {n} tf",{n:fr(cs.cpuUsed-cs.cpuTotal)})});
@@ -1766,7 +1678,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
       })()}
 
       {/* Resistances */}
-      <div style={card}>
+      {show("resists")&&<div style={card}>
         {/* stopPropagation: the whole header row collapses the section, and tapping the number for
             its exact value must not also close what you are reading. */}
         {/* The clip is shown as an ADDITION rather than merged straight in, because it is a pool you
@@ -1833,10 +1745,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
           </div>
         </div>);})}
         </>}
-      </div>
+      </div>}
 
       {/* Recharge Rates */}
-      <div style={card}>
+      {show("recharge")&&<div style={card}>
         <SectionHead id="recharge" title={t("Recharge Rates")}/>
         {isOpen("recharge")&&(() => {
             // Convert HP/s to EHP/s using the selected incoming damage profile.
@@ -1920,10 +1832,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
               </div>}
             </>);
           })()}
-      </div>
+      </div>}
 
       {/* Firepower */}
-      <div style={card}>
+      {show("firepower")&&<div style={card}>
         <SectionHead id="firepower" title={t("Firepower")} right={
           <span style={{display:"flex",alignItems:"center",gap:5}}>
             {/* Overload every gun at once. It sits here rather than only in the module menu for the
@@ -2000,10 +1912,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
         <AmmoAdvisor ship={ship} slots={dSlots} setSlots={setSlots} drones={drones??[]} skills={skills}
           opts={csOpts} onPickTarget={()=>setShowTargetPicker(true)}/>
         </>}
-      </div>
+      </div>}
 
       {/* Remote Reps — text labels, same style as other sections */}
-      {(cs.remoteRepModules?.length??0)>0&&(()=>{
+      {show("remotereps")&&(cs.remoteRepModules?.length??0)>0&&(()=>{
         // Triglavian logistics: a Mutadaptive remote armor repairer spools its rep amount.
         const spoolRep = (cs.remoteRepModules||[]).find(m=>(m.spoolFactor??1)>1);
         const armorMax = spoolRep ? (cs.remoteArmorPS??0) - (spoolRep.repPS??0) + (spoolRep.repPSMax??0) : (cs.remoteArmorPS??0);
@@ -2056,7 +1968,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
       })()}
 
       {/* Mining — only on fits that actually mine, so it never takes space on a combat ship. */}
-      {(cs.mining?.totalM3S??0)>0&&(()=>{
+      {show("mining")&&(cs.mining?.totalM3S??0)>0&&(()=>{
         const mn=cs.mining;
         const cols=[
           {key:"lasers",label:t("Lasers"),val:mn.moduleM3S,color:C.rig},
@@ -2085,7 +1997,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
       })()}
 
       {/* Cap */}
-      <div style={card}>
+      {show("cap")&&<div style={card}>
         <SectionHead id="cap" title={t("Capacitor")} right={(()=>{
           // h/m/s stay as they are: the same single-letter duration markers the EVE client uses.
           const fmtDur=(s)=>{if(s==null)return "?";s=Math.round(s);if(s<60)return s+"s";const m=Math.floor(s/60),sec=s%60;if(m<60)return sec?`${m}m ${sec}s`:`${m}m`;const h=Math.floor(m/60),mm=m%60;return mm?`${h}h ${mm}m`:`${h}h`;};
@@ -2123,11 +2035,11 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
           </div>
         </div>
         </>}
-      </div>
+      </div>}
 
       {/* Targeting & Misc */}
-      <div style={card}>
-        <SectionHead id="targeting" title={t("Targeting and Misc")}/>
+      {show("targeting")&&<div style={card}>
+        <SectionHead id="targeting" title={sections?.includes("targeting:mobility")?t("Mobility"):sections?.includes("targeting:sensors")?t("Targeting"):t("Targeting and Misc")}/>
         {/* Every figure here is rounded to stay legible in a 1fr column, and for one of them that
             rounding is dangerous: align time is quantised to whole server ticks, so a 4.003 s align
             displayed as "4.00" hides a fifth second of exposure and reads as already under the wire.
@@ -2171,7 +2083,9 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
               // multiplier — the same value feeding the align-time cell above it. Grouped digits
               // rather than decimals: kg fractions are noise, but "12.5M" hiding 250,000 kg is not.
               ["mass",     t("Mass"),      `${fmtN(cs.mass??0)} kg`,         cs.mass!=null?`${Math.round(cs.mass).toLocaleString()} kg`:null],
-            ];
+            ].filter(([id])=>!sections||sections.includes("targeting")
+              ||(sections.includes("targeting:sensors")&&SENSOR_ROWS.has(id))
+              ||(sections.includes("targeting:mobility")&&!SENSOR_ROWS.has(id)));
           })().map(([id,label,val,exact],i,arr)=>{
             const bb=arr.length>(i+2)?`1px solid ${C.border}`:"none";
             const br=(i%2===0)?`1px solid ${C.border}`:"none";
@@ -2194,10 +2108,10 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
             </div>);
           })}
         </div>}
-      </div>
+      </div>}
 
       {/* Fit Value */}
-      <div style={card}>
+      {show("fitvalue")&&<div style={card}>
         <SectionHead id="fitvalue" title={t("Fit Value")} right={
           <span style={{fontSize:11,fontWeight:700,display:"flex",alignItems:"baseline",gap:5}}>
             <span style={{color:C.rig}}>{priceLoading?'…':`${fmtISK(hullPrice)}${unknownAbyssals>0?' + ?':''}`}</span>
@@ -2239,7 +2153,7 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
             </div>);
           })}
         </>}
-      </div>
+      </div>}
     </div>
   );
 }

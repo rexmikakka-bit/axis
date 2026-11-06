@@ -121,6 +121,14 @@ function isNative() {
   return typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 }
 
+// The desktop shell (Tauri, src/desktop/esi-desktop.js) logs in the way the phone does — system
+// browser out, eveauth-visviva:// deep link back — but has neither Capacitor's Browser nor its native
+// networking, so it hands in its own: `openUrl` (the system browser) and `fetch` (Tauri's HTTP
+// plugin, so the token exchange never depends on login.eveonline.com's CORS). The phone sets none.
+let shell = null;
+export function setEsiShell(s) { shell = s && typeof s.openUrl === 'function' ? s : null; }
+const usesDeepLink = () => isNative() || !!shell;
+
 // Is this deep-link URL our SSO callback? Lives here, next to the redirect_uri it has to agree
 // with, because the native listener in App.jsx used to hardcode the prefix separately — and when
 // the scheme gained its mandatory `eveauth-` prefix, that copy was missed. The listener then
@@ -138,7 +146,7 @@ export async function beginLogin(scopes = ESI_SCOPES) {
   const verifier = randomToken();
   const challenge = await challengeFromVerifier(verifier);
   const state = randomToken();
-  const redirectUri = isNative() ? ESI_NATIVE_CALLBACK_URL : ESI_CALLBACK_URL;
+  const redirectUri = usesDeepLink() ? ESI_NATIVE_CALLBACK_URL : ESI_CALLBACK_URL;
   try { localStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state, redirectUri })); } catch {}
   const params = new URLSearchParams({
     response_type: 'code',
@@ -150,7 +158,9 @@ export async function beginLogin(scopes = ESI_SCOPES) {
     code_challenge_method: 'S256',
   });
   const url = `${SSO_AUTHORIZE_URL}?${params.toString()}`;
-  if (isNative()) {
+  if (shell) {
+    await shell.openUrl(url);
+  } else if (isNative()) {
     const { Browser } = await import('@capacitor/browser');
     await Browser.open({ url });
   } else {
@@ -159,7 +169,7 @@ export async function beginLogin(scopes = ESI_SCOPES) {
 }
 
 async function tokenRequest(bodyParams) {
-  const resp = await fetch(SSO_TOKEN_URL, {
+  const resp = await (shell?.fetch ?? fetch)(SSO_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(bodyParams).toString(),
@@ -210,7 +220,7 @@ export async function completeLoginFromCallback(callbackUrl) {
 // ?code=&state= from an SSO redirect (native builds never hit this — they use the deep-link
 // listener instead, see CLAUDE.md's ESI section for the App.jsx wiring).
 export async function handleWebRedirectOnLoad() {
-  if (typeof window === 'undefined' || isNative()) return null;
+  if (typeof window === 'undefined' || usesDeepLink()) return null;
   const params = new URLSearchParams(window.location.search);
   if (!params.has('code') || !params.has('state')) return null;
   try {

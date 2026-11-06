@@ -24,13 +24,22 @@ const PAGE_SIZE=100;
 // replaced global fetch by then, so the request never goes through the webview's origin checks — but
 // a plain browser refuses it, which would make the whole market tab unreviewable on the dev server.
 // `vite.config.js` proxies this prefix; nothing but a `npm run dev` browser session ever sees it.
+// Ask isNativePlatform(), not whether `window.Capacitor` exists: Capacitor's web runtime defines that
+// global in a plain browser too, which once sent every dev-server request straight into the CORS wall.
+//
+// The desktop shell (Tauri) has no CapacitorHttp and, once built, no dev server to proxy through. It
+// hands in its HTTP plugin's fetch instead (src/desktop/main.jsx), which sends the request from Rust
+// where CORS does not apply. Injected rather than imported so the phone app never contains it.
 const DEV_PROXY='/mutamarket-api';
+let nativeFetch=null;
+export function setMutaMarketFetch(fetcher){nativeFetch=typeof fetcher==='function'?fetcher:null;}
 function apiBase(){
-  return (import.meta.env?.DEV&&typeof window!=='undefined'&&!window.Capacitor)?DEV_PROXY:MUTAMARKET_API;
+  if(nativeFetch)return MUTAMARKET_API;
+  return (import.meta.env?.DEV&&typeof window!=='undefined'&&!window.Capacitor?.isNativePlatform?.())?DEV_PROXY:MUTAMARKET_API;
 }
 
 async function fetchPage(path,signal){
-  const {body}=await networkJSON(`${apiBase()}${path}`,{signal,headers:{'User-Agent':MUTAMARKET_USER_AGENT,Accept:'application/json'}});
+  const {body}=await networkJSON(`${apiBase()}${path}`,{signal,fetcher:nativeFetch??globalThis.fetch,headers:{'User-Agent':MUTAMARKET_USER_AGENT,Accept:'application/json'}});
   return {rows:body?.data??[],cursor:body?.meta?.next_cursor??null};
 }
 

@@ -19,6 +19,8 @@ import { DAMAGE_PROFILES } from "../data/damage-profiles.js";
 import { NEW_SHIP_TRAITS } from "../data/new-ships.js";
 import { PRERELEASE_TRAITS } from "../data/prerelease-ships.js";
 import { PRERELEASE_RIG_TRAITS, applyPrereleaseRigModules } from "../data/prerelease-rigs.js";
+import { PRERELEASE_MODULE_TRAITS, applyPrereleaseModuleRecords } from "../data/prerelease-modules.js";
+import { applyPrereleaseTraitEdits } from "../data/prerelease-balance.js";
 import { isValidCharge } from "../dogma-engine.js";
 import { classifyHull } from "./ship-taxonomy.js";
 import { t } from "./i18n.js";
@@ -31,7 +33,8 @@ import { t } from "./i18n.js";
 // First-wins on a duplicate name, matching the `.find` it replaces.
 // The pre-release Synchronizer rigs join the module list, market tree and icon map here, before
 // anything below indexes them. Their dogma types were added in dogma-engine-init.js.
-applyPrereleaseRigModules(modulesData, marketGroupsData, TYPE_ICONS);
+applyPrereleaseRigModules(modulesData, marketGroupsData, TYPE_ICONS, marketTreeData);
+applyPrereleaseModuleRecords(modulesData, marketTreeData);
 
 const MODULE_BY_NAME = new Map();
 for (const m of Object.values(modulesData ?? {})) if (m?.name && !MODULE_BY_NAME.has(m.name)) MODULE_BY_NAME.set(m.name, m);
@@ -297,6 +300,9 @@ Promise.all([import('../data-bundle.js'), import('../data/ship-traits.json')]).t
   Object.assign(shipTraits, NEW_SHIP_TRAITS);
   Object.assign(shipTraits, PRERELEASE_TRAITS);
   Object.assign(shipTraits, PRERELEASE_RIG_TRAITS);
+  Object.assign(shipTraits, PRERELEASE_MODULE_TRAITS);
+  // The 24.02 bonus rewrites (Sacrilege, Cerberus, Hawk, Vengeance, the T3C subsystems), line by line.
+  applyPrereleaseTraitEdits(shipTraits, tidByName);
   // Variations for module groups gaining newer faction/navy members (grouped by group+size,
   // since the precomputed bundle predates them). Override so existing members (e.g. T2 MGC) gain
   // the new siblings; each affected group's full variation list is rebuilt from current type data.
