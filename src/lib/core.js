@@ -31,7 +31,7 @@ import { t } from "./i18n.js";
 // First-wins on a duplicate name, matching the `.find` it replaces.
 // The pre-release Synchronizer rigs join the module list, market tree and icon map here, before
 // anything below indexes them. Their dogma types were added in dogma-engine-init.js.
-applyPrereleaseRigModules(modulesData, marketGroupsData, TYPE_ICONS);
+applyPrereleaseRigModules(modulesData, marketGroupsData, TYPE_ICONS, marketTreeData);
 
 const MODULE_BY_NAME = new Map();
 for (const m of Object.values(modulesData ?? {})) if (m?.name && !MODULE_BY_NAME.has(m.name)) MODULE_BY_NAME.set(m.name, m);

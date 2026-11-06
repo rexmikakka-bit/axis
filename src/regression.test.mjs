@@ -8717,6 +8717,16 @@ Nanofiber Internal Structure II
   const bonuses = r => ['synchronizerBonus1', 'synchronizerBonus2', 'synchronizerBonus3', 'synchronizerBonus4'].map(n => r.get(n)).join('/');
   const DB = 'Dark Blood Heat Sink', NEUT = 'Heavy Energy Neutralizer II', RIG = 'Medium Dark Blood Synchronizer';
 
+  // The market tree the desktop Browser's everything view and the cargo picker read (market-tree.json,
+  // patched by core.js), not only the per-rack module tree: missing there, the rigs could not be found
+  // with no rack selected.
+  await import('./lib/core.js');
+  const MT = (await import('./data/market-tree.json', { with: { type: 'json' } })).default;
+  const mtRow = MT.t[String(tid(RIG))];
+  check('sync', 'in the market tree: Rigs > Synchronizer Rigs > Medium', mtRow ? `${MT.g[MT.g[MT.g[mtRow[0]].p].p].n} > ${MT.g[MT.g[mtRow[0]].p].n} > ${MT.g[mtRow[0]].n}` : 'missing',
+    'Rigs > Synchronizer Rigs (Pre-release) > Medium Synchronizer Rigs');
+  check('sync', 'all 27 in the market tree', Object.values(MT.t).filter(r => / Synchronizer$/.test(r[1])).length, 27, 0);
+
   const none = raw('Omen', [[NEUT]], RIG);
   check('sync', 'no Dark Blood modules: the screenshot numbers', bonuses(none.rig), '10/10/5/5');
   check('sync', 'neut drain +10% (600 GJ)', none.items[0].get('energyNeutralizerAmount'), 660);

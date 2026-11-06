@@ -330,11 +330,21 @@ export function applyPrereleaseRigs(types, effects, attrs) {
   return RIGS.map(r => r.name);
 }
 
-/** Adds the rigs to modules.json's records, the market tree and the icon map. core.js, before indexing. */
-export function applyPrereleaseRigModules(modulesData, marketGroups, typeIcons) {
+/**
+ * Adds the rigs to modules.json's records, the market tree and the icon map. core.js, before indexing.
+ * `marketTree` is market-tree.json ({g, t}): the cargo picker's and the desktop Browser's everything
+ * view read that tree rather than marketGroups, so without it the rigs showed only under a rig rack.
+ */
+export function applyPrereleaseRigModules(modulesData, marketGroups, typeIcons, marketTree = null) {
   if (!RIGS.length) return;
   marketGroups[MG_ROOT] ??= { name: 'Synchronizer Rigs (Pre-release)', parent: MG_RIGS };
   for (const s of SIZES) marketGroups[s.mg] ??= { name: `${s.name} Synchronizer Rigs`, parent: MG_ROOT };
+  if (marketTree) {
+    const first = RIGS[0].id;
+    marketTree.g[MG_ROOT] ??= { n: 'Synchronizer Rigs (Pre-release)', p: MG_RIGS, i: first };
+    for (const s of SIZES) marketTree.g[s.mg] ??= { n: `${s.name} Synchronizer Rigs`, p: MG_ROOT, i: RIGS.find(r => r.size === s)?.id ?? first };
+    for (const r of RIGS) marketTree.t[r.id] ??= [r.size.mg, r.name, r.size.volume];
+  }
   for (const r of RIGS) {
     modulesData[r.id] ??= {
       typeID: r.id, name: r.name, groupID: GROUP, groupName: GROUP_NAME,
