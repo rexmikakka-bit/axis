@@ -1,13 +1,18 @@
 # Axis — EVE Online fitting calculator (mobile)
 
-> **Renamed from "Vis Viva" / "Visviva" to "Axis".** Everything a user sees says Axis. Three things
+> **Renamed from "Vis Viva" / "Visviva" to "Axis".** Everything a user sees says Axis. Two things
 > deliberately still say `visviva` and must NOT be "cleaned up":
 >
 > | Still `visviva` | Why |
 > | --- | --- |
 > | Bundle ID `com.rexmikakka.visviva` (Android `applicationId` + namespace, Java package, iOS bundle ID, `strings.xml` `package_name`/`custom_url_scheme`) | Permanent identity. Changing it makes Android treat the app as a brand-new install (no update path, all local data lost) and orphans the App Store Connect record, provisioning profile and TestFlight testers. Never user-visible. |
 > | ESI deep link `eveauth-visviva://auth-callback` (`esi-config.js`, `AndroidManifest.xml`, `patch-ios-project.sh`) | Registered as a Callback URL on the EVE developer application. Changing it breaks ESI login until it is re-registered AND every install updates. Never user-visible. |
-> | The GitHub repo / clone URL | Not renamed yet. |
+>
+> The GitHub repo itself was renamed `visviva` → `axis` (2026-11-06). GitHub redirects the old repo,
+> clone and release URLs, but NOT the Pages site: `rexmikakka-bit.github.io/visviva/` is a 404 and the
+> guide + privacy policy now live at `rexmikakka-bit.github.io/axis/`. Never create a new repo named
+> `visviva` on this account — that silently kills the redirects. A local clone may still sit in a
+> folder named `visviva`; that is harmless.
 >
 > localStorage keys DID move `visviva_*` → `axis_*`, carried by storage migration **v1 → v2**
 > (`lib/storage-migrate.js`). Saved fits were always `pyfa-*` and were untouched. Backup files now
@@ -69,8 +74,8 @@ CI runs this on every PR (`.github/workflows/regression.yml`).
 ### A fresh clone
 
 ```bash
-git clone https://github.com/rexmikakka-bit/visviva.git
-cd visviva
+git clone https://github.com/rexmikakka-bit/axis.git
+cd axis
 npm install
 npm test          # if this is not green on a clean checkout, stop and ask
 npm run dev
