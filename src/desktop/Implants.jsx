@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName } from "../calc.js";
@@ -10,6 +10,8 @@ import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { implantTarget, typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
+import { fetchPrices } from "../prices.js";
+import { fmtResource } from "../lib/fmt.js";
 import { useItemDrop, DropHint } from "./items-context.jsx";
 
 // The desktop Implants window: the ten slots as a numbered list in two groups, a search across every
@@ -28,6 +30,20 @@ export default function ImplantsPanel({ s }) {
   const results = useMemo(() => searchImplants(query), [query]);
   const rs = useRowSelect();
   const drop = useItemDrop("implants");
+  // What the plugged-in set costs, at the chosen hub — shown in the header's empty space.
+  const setIds = (s.implants ?? []).filter(i => i.name && i.name !== EMPTY).map(i => i.typeID ?? tidByName(i.name)).filter(Boolean);
+  const setKey = setIds.join(",");
+  const [setValue, setSetValue] = useState(null);   // {total, missing}
+  useEffect(() => {
+    if (!setIds.length) { setSetValue(null); return; }
+    let live = true;
+    fetchPrices(setIds, s.priceHub, s.priceSource).then(m => {
+      if (!live) return;
+      const prices = setIds.map(id => m?.get(id) ?? m?.get(String(id)));
+      setSetValue({ total: prices.reduce((a, p) => a + (p > 0 ? p : 0), 0), missing: prices.filter(p => !(p > 0)).length });
+    }).catch(() => { if (live) setSetValue(null); });
+    return () => { live = false; };
+  }, [setKey, s.priceHub, s.priceSource]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const implants = s.implants ?? [];
   const set = s.setImplants;
@@ -50,7 +66,11 @@ export default function ImplantsPanel({ s }) {
     <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       <DropHint over={drop.over} ok={drop.ok} label={t("Plug in")} />
       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
-        <span style={{ fontSize: TYPE.label, color: C.textMid, flex: 1 }}>{t("{n}/10 fitted", { n: filled })}</span>
+        <span style={{ fontSize: TYPE.label, color: C.textMid }}>{t("{n}/10 fitted", { n: filled })}</span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: "right", paddingRight: 6, fontSize: TYPE.label, color: C.textMid, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+          title={setValue?.missing ? t("{n} without a price at {hub}", { n: setValue.missing, hub: s.priceHub ?? "Jita" }) : t("Set value at {hub}", { hub: s.priceHub ?? "Jita" })}>
+          {setValue && setValue.total > 0 && <><span style={{ color: C.text }}>{fmtResource(setValue.total)}</span> ISK{setValue.missing ? " +" : ""}</>}
+        </span>
         {naming == null
           ? <Menu label={`${t("Loadouts")} ▾`} buttonStyle={{ height: 26, border: `1px solid ${C.borderStrong}`, fontSize: 12.5 }} items={[
               { label: t("Save current as…"), onSelect: () => setNaming(""), disabled: !filled },

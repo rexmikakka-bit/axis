@@ -11,6 +11,7 @@ import { moduleTarget, chargeTarget } from "./inspect.js";
 import { useItems, useItemDrop, DropHint } from "./items-context.jsx";
 import { currentDrag, draggedItem, isItemDrag, itemKind, chargePatch } from "./items.js";
 import { resourceColor } from "../components/ui.jsx";
+import { requestShipInfo } from "./kit.jsx";
 import { getCachedPrices } from "../prices.js";
 
 // The desktop Fitting window's table (docs/desktop-handoff.md section 3, "Fitting"). Drawn by
@@ -123,7 +124,7 @@ function StateToggle({ row, states, onSet }) {
 
 export function FitTable({ api }) {
   const { hub, source, cols, setCols } = useContext(FitTableConfig);
-    const { SECS, getDisplayRows, slots, setSlots, cs, engineStatsBySlotID, validStatesFor,
+    const { SECS, getDisplayRows, slots, setSlots, ship, cs, engineStatsBySlotID, validStatesFor,
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
             removeMod, duplicateMod, duplicateRoom, hardpointRoom, fillHardpoints,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
@@ -138,6 +139,7 @@ export function FitTable({ api }) {
     const [chargeRows, setChargeRows] = useState(() => { try { return localStorage.getItem("axis_desk_charge_rows") === "1"; } catch { return false; } });
     const flipChargeRows = () => setChargeRows(v => { try { localStorage.setItem("axis_desk_charge_rows", v ? "0" : "1"); } catch { /* private mode */ } return !v; });
     const [chargeMenu, setChargeMenu] = useState(null);   // {x, y, secKey, row, unload}
+    const [blankMenu, setBlankMenu] = useState(null);     // {x, y}: right-click on the table's empty space
     // Browser items dropped here: a module is fitted to its rack, a charge loads into every module
     // that takes it — or, dropped on one row, into that row (all of a grouped row's members).
     const items = useItems();
@@ -297,6 +299,8 @@ export function FitTable({ api }) {
           <span />
         </div>
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.secKey, menu.row)} onClose={() => setMenu(null)} />}
+        {blankMenu && <ContextMenu x={blankMenu.x} y={blankMenu.y} onClose={() => setBlankMenu(null)} items={[
+          { heading: ship?.name }, { label: t("Ship info"), icon: ship?.typeID ? eveIcon(ship.typeID, 32) : undefined, onSelect: requestShipInfo }]} />}
         {chargeMenu && <ContextMenu x={chargeMenu.x} y={chargeMenu.y} onClose={() => setChargeMenu(null)} items={[
           ...chargeMenuItems(chargeMenu.row, bareAmmo(chargeMenu.row.ammo), c => loadInto(chargeMenu.secKey, chargeMenu.row, c)),
           { divider: true },
@@ -304,7 +308,9 @@ export function FitTable({ api }) {
           { divider: true },
           { label: chargeMenu.row.count > 1 ? t("Unload charge from all {n}", { n: chargeMenu.row.count }) : t("Unload charge"), danger: true, onSelect: () => chargeMenu.unload() },
         ]} />}
-        <div tabIndex={0} onKeyDown={onKey} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
+        {/* Right-click below the slots: the hull's info, as tapping the hull icon on the phone. */}
+        <div tabIndex={0} onKeyDown={onKey} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}
+          onContextMenu={(e) => { if (e.target !== e.currentTarget) return; e.preventDefault(); setBlankMenu({ x: e.clientX, y: e.clientY }); }}>
           {SECS.map(sec => {
             const rows = getDisplayRows(sec.key);
             const fitted = (slots[sec.key] ?? []).filter(m => m?.typeID && !m.orphan && m.type !== "empty");

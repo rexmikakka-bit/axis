@@ -12,6 +12,8 @@ import { tabFits } from "./tab-fits.js";
 import { useInspect } from "./inspect-context.jsx";
 import { boosterTarget } from "./inspect.js";
 import { useItemDrop, useFitDrop, DropHint } from "./items-context.jsx";
+import { ContextMenu } from "./ContextMenu.jsx";
+import { LINK_DEFS, CATEGORIES, STRENGTHS, ALL_LINKS, BUFF_NAMES, LINK_UNIT, linksOf, makeLink, isLink, linkLabel, linkBursts } from "../lib/command-links.js";
 
 // The phone's Effects screen, split into four desktop windows (Owen floated splitting it):
 // Boosters, Projected, Command links, Environment. Each edits the same session state the phone's
@@ -218,8 +220,33 @@ export function ProjectedPanel({ s, jamTarget }) {
 }
 
 // ── Command links ────────────────────────────────────────────────────────────────────────────
+// pyfa's Generic Links menu: Max Links in one click, All Links, then a submenu per category, each link
+// with its strength — mindlink strengths on top, then without — as pyfa lays it out.
+function linkMenuItems(onAdd) {
+  const strengths = (lt) => [
+    ...STRENGTHS.map(st => ({ label: t("{n}%/lvl + Mindlink", { n: st }), onSelect: () => onAdd(makeLink(lt, st, true)) })),
+    { divider: true },
+    ...STRENGTHS.map(st => ({ label: t("{n}%/lvl", { n: st }), onSelect: () => onAdd(makeLink(lt, st, false)) })),
+  ];
+  return [
+    { label: t("Max Links"), hint: t("5%/lvl + Mindlink"), onSelect: () => onAdd(makeLink(ALL_LINKS, 5, true)) },
+    { divider: true },
+    { label: t("All Links"), submenu: strengths(ALL_LINKS) },
+    { divider: true },
+    ...CATEGORIES.map(([cat, label]) => ({ label: t(label), submenu: linksOf(cat).map(lt => ({ label: LINK_DEFS[lt][0], submenu: strengths(lt) })) })),
+  ];
+}
+
 export function CommandPanel({ s }) {
   const [picker, setPicker] = useState(false);
+  const [linkMenu, setLinkMenu] = useState(null);   // {x, y, items}
+  const addLink = (l) => s.setCmdFits(prev => [...(prev ?? []), l]);
+  const setAt = (i, patch) => s.setCmdFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, ...patch } : p));
+  // Right-click anywhere in the window: add a fit, or a generic link — pyfa's command view menu.
+  const openMenu = (e) => { e.preventDefault(); setLinkMenu({ x: e.clientX, y: e.clientY, items: [
+    { label: t("Add command fit…"), onSelect: () => setPicker(true) },
+    { label: t("Generic links"), submenu: linkMenuItems(addLink) },
+  ] }); };
   // A dragged fit is taken only if it actually has command bursts running, as the picker filters.
   const fitOf = (ship, name) => s.fitsDB?.[ship]?.find(f => f.name === name);
   const drop = useFitDrop((ship, name) => { const f = fitOf(ship, name); return !!f && hasCommandBursts(ship, f); },
@@ -228,10 +255,46 @@ export function CommandPanel({ s }) {
   const list = s.cmdFits ?? [];
   return (
     <Shell drop={drop} dropLabel={t("Add command links")}>
-      <Header onAdd={() => setPicker(true)} addLabel={t("Fit")}>{t("Command burst bonuses from a fleet support fit, using its modules, charges and active state.")}</Header>
+      <div onContextMenu={openMenu} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
+        <span style={{ fontSize: TYPE.small, color: C.textMid, flex: 1 }}>{t("Command bursts from a fleet support fit, or generic links at a chosen strength.")}</span>
+        <button type="button" style={btn()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setLinkMenu({ x: r.left, y: r.bottom + 4, items: linkMenuItems(addLink) }); }}>
+          + {t("Generic links")} ▾</button>
+        <button type="button" style={btn()} onClick={() => setPicker(true)}>+ {t("Fit")}</button>
+      </div>
       <Body>
-        {!list.length && <None>{t("No command fits applied")}</None>}
+        {!list.length && <None>{t("No command links applied. Add a fleet support fit, or generic links (right-click works too).")}</None>}
         {list.map((f, i) => {
+          if (isLink(f)) {
+            // A generic link: its strength and mindlink edited in place, a line per buff it applies.
+            const on = f.active !== false;
+            return (
+              <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
+                <div style={{ ...rowStyle(), borderBottom: "none" }}>
+                  <Check on={on} onClick={() => setAt(i, { active: !on })} title={on ? t("Applied to this fit") : t("Ignored")} />
+                  <div style={{ flex: 1, minWidth: 0, fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={linkLabel(f)}>
+                    {linkLabel(f)} <span style={{ color: C.textMid }}>· {t("generic")}</span>
+                  </div>
+                  <select value={f.strength} onChange={e => setAt(i, { strength: Number(e.target.value) })} aria-label={t("Strength")} title={t("The command ship's bonus per level, at level V")}
+                    style={{ height: 24, fontSize: 12.5, background: C.bg, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 5, padding: "0 4px" }}>
+                    {STRENGTHS.map(st => <option key={st} value={st}>{t("{n}%/lvl", { n: st })}</option>)}
+                  </select>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: C.textMid, whiteSpace: "nowrap" }} title={t("A warfare mindlink: +25% strength")}>
+                    <input type="checkbox" checked={!!f.mindlink} onChange={() => setAt(i, { mindlink: !f.mindlink })} style={{ accentColor: C.accent }} />{t("Mindlink")}
+                  </label>
+                  <Remove onClick={() => s.setCmdFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
+                </div>
+                <div style={{ padding: "0 12px 6px 38px" }}>
+                  {linkBursts(f).map((b, j) => (
+                    <div key={j} style={{ display: "flex", justifyContent: "space-between", gap: 10, minHeight: 22, alignItems: "center" }}>
+                      <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t(BUFF_NAMES[b.buffID] ?? "Command burst")}</span>
+                      <span style={{ fontSize: TYPE.label, color: C.rig, fontVariantNumeric: "tabular-nums" }}>{b.value > 0 ? "+" : ""}{Math.round(b.value * 10) / 10}{LINK_UNIT}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
           const src = s.fitsDB?.[f.ship]?.find(x => x.name === f.fitName);
           const bursts = src ? computeCommandBursts({ name: f.ship, typeID: tidByName(f.ship) }, src.slots, s.sourceSkills(src), { implants: src.implants, boosters: src.boosters }) : [];
           const on = f.active !== false;
@@ -259,6 +322,8 @@ export function CommandPanel({ s }) {
           );
         })}
       </Body>
+      </div>
+      {linkMenu && <ContextMenu x={linkMenu.x} y={linkMenu.y} items={linkMenu.items} onClose={() => setLinkMenu(null)} />}
       {picker && <FitPickerSheet title={t("Select Command Ship Fit")} fitsDB={s.fitsDB} filterFn={hasCommandBursts} pinned={tabFits(s.openFitTabs, s.fitsDB, hasCommandBursts)}
         onSelect={(ship, fit) => s.setCmdFits(prev => [...(prev ?? []), { ship, fitName: fit.name }])} onClose={() => setPicker(false)} />}
     </Shell>

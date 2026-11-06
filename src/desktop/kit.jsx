@@ -82,6 +82,10 @@ export function Empty({ children }) {
   return <div style={{ padding: 14, fontSize: TYPE.label, color: C.textMid }}>{children}</div>;
 }
 
+/** Ask the main window for the open fit's hull info sheet (a right-click on empty space). */
+export const SHIP_INFO_EVENT = "axis-ship-info";
+export const requestShipInfo = () => window.dispatchEvent(new Event(SHIP_INFO_EVENT));
+
 /**
  * A desktop dialog: a centred panel over a dimmed workspace. Escape or a click outside closes it.
  * For a choice too big for the window it starts from (the ammo picker).

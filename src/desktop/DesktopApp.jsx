@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName, TYPES } from "../calc.js";
+import { eveIcon } from "../lib/icons.js";
 import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText } from "../lib/core.js";
 import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame } from "../components/ui.jsx";
@@ -12,6 +13,7 @@ import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
 import DeskSettings, { SETTINGS_EVENT } from "./Settings.jsx";
+import { SHIP_INFO_EVENT } from "./kit.jsx";
 import { ChooserSheet, PilotSheet } from "../components/layout.jsx";
 import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
@@ -239,6 +241,12 @@ function DesktopApp() {
   });
   const flash = (kind, msg, ms = 3000) => banner.notify(kind, msg, ms);
   useEffect(() => { initKeyboardTracking(); }, []);
+  // The hull's info sheet asked for from a right-click on empty space (the phone's hull-icon tap).
+  useEffect(() => {
+    const open = () => { if (s.activeFit?.ship) setSheet("shipinfo"); };
+    window.addEventListener(SHIP_INFO_EVENT, open);
+    return () => window.removeEventListener(SHIP_INFO_EVENT, open);
+  });
   // Settings asked for from inside a window (Settings.jsx requestSettings): open and raise it.
   useEffect(() => {
     const open = () => openWindow(setLayoutState, "settings");
@@ -436,6 +444,7 @@ function DesktopApp() {
         </header>
 
         <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra}
+          backgroundItems={hasFit ? [{ heading: s.activeFit.ship }, { label: t("Ship info"), icon: eveIcon(tidByName(s.activeFit.ship), 32), onSelect: () => setSheet("shipinfo") }] : null}
           onPopOut={popOut} onDock={dock} backdrop={<Backdrop url={bd.url} settings={bd.settings} />} />
       </div>
 

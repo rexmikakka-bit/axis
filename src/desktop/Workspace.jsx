@@ -77,7 +77,8 @@ const SectionLabel = ({ children }) => (
 // records the detached state they report back through `setState`.
 // `backdrop` (optional) is drawn behind the workspace and does not scroll with it — the user's
 // background picture (Backdrop.jsx).
-export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, onPopOut, onDock, backdrop }) {
+// `backgroundItems` (optional): the right-click menu on bare workspace (DesktopApp: the hull's info).
+export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, onPopOut, onDock, backdrop, backgroundItems }) {
   const layout = state.windows;
   // `extra` rides along only when the windows actually changed, so a pointer move that snaps to the
   // same spot re-renders nothing.
@@ -274,7 +275,8 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
         <div ref={wsRef} style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative", zIndex: 1,
                                   backgroundImage: state.snapGrid ? `radial-gradient(${C.border} 1px, transparent 1px)` : "none",
                                   backgroundSize: `${GRID * 2}px ${GRID * 2}px`, backgroundAttachment: "local" }}>
-          <div style={{ position: "relative", width: size.w, height: size.h, minWidth: "100%", minHeight: "100%" }}>
+          <div style={{ position: "relative", width: size.w, height: size.h, minWidth: "100%", minHeight: "100%" }}
+            onContextMenu={(e) => { if (e.target !== e.currentTarget || !backgroundItems?.length) return; e.preventDefault(); setChipMenu({ x: e.clientX, y: e.clientY, items: backgroundItems }); }}>
             {WINDOWS.map(w => { const g = layout[w.id]; return shown(g) && !isTabMember(layout, w.id) ? win(w.id, g, g.z === top, windowTitle?.(w.id) ?? t(w.title)) : null; })}
           </div>
         </div>

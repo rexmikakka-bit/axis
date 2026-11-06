@@ -9,6 +9,7 @@ import { byRecentlyModified } from "../lib/fit-order.js";
 import { boosterSideEffectsFor, computeProjectedReps, computeCommandBursts, calcRangeFactor, stackingPenalty, jamChanceFrom, SKILL_DEFAULTS, tidByName, TYPES } from "../calc.js";
 import { t } from "../lib/i18n.js";
 import { projectedFitEffects } from "../lib/projection.js";
+import { LINK_DEFS, CATEGORIES, STRENGTHS, ALL_LINKS, BUFF_NAMES, LINK_UNIT, linksOf, makeLink, isLink, linkLabel, linkBursts, strengthLabel } from "../lib/command-links.js";
 
 const BOOSTER_SIDE_EFFECTS = {
   "Blue Pill":     [{attr:"Shield Capacity",penalty:"-22.5%"},{attr:"Turret Optimal Range",penalty:"-22.5%"},{attr:"Cap Capacity",penalty:"-22.5%"},{attr:"Missile Explosion Velocity",penalty:"-22.5%"}],
@@ -128,6 +129,49 @@ function environmentList(){
   }
   return out.filter(g=>g.count);
 }
+// Generic command links on the phone (pyfa's "Generic Links", lib/command-links.js). pyfa nests
+// link > strength > mindlink three menus deep, which is a lot of tapping on a phone, so here the
+// strength and the mindlink are chosen ONCE at the top and every link below adds at that strength:
+// one tap for Max Links, two for anything else. A link's strength can still be changed on its card.
+export function GenericLinksSheet({onAdd,onClose}){
+  const[strength,setStrength]=useState(5);
+  const[mindlink,setMindlink]=useState(true);
+  const[open,setOpen]=useState(()=>new Set());
+  const add=(lt,st=strength,ml=mindlink)=>{haptic();onAdd(makeLink(lt,st,ml));onClose();};
+  const chip=(on)=>({flex:1,padding:"8px 0",borderRadius:6,fontSize:12,fontWeight:700,cursor:"pointer",background:on?C.accentLight:C.surface,border:`1px solid ${on?C.accentBorder:C.border}`,color:on?C.accent:C.textMid});
+  const row={display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 14px",borderBottom:`1px solid ${C.border}`,cursor:"pointer"};
+  return(<BottomSheet title={t("Generic Links")} onClose={onClose} height="80vh" fillHeight>
+    <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.textMute,letterSpacing:.6,textTransform:"uppercase",marginBottom:6}}>{t("Strength (command ship bonus per level)")}</div>
+      <div style={{display:"flex",gap:5,marginBottom:8}}>
+        {STRENGTHS.map(st=><button key={st} onClick={()=>setStrength(st)} style={chip(strength===st)}>{st}%</button>)}
+      </div>
+      <button onClick={()=>setMindlink(v=>!v)} aria-pressed={mindlink} style={{...chip(mindlink),width:"100%",flex:"none"}}>{mindlink?"✓ ":""}{t("Mindlink (+25%)")}</button>
+    </div>
+    <div onClick={()=>add(ALL_LINKS,5,true)} className="press" style={{...row,background:C.accentLight}}>
+      <span style={{fontSize:13,fontWeight:700,color:C.accent}}>{t("Max Links")}</span>
+      <span style={{fontSize:10,color:C.textMute}}>{t("every link · 5%/lvl + Mindlink")}</span>
+    </div>
+    <div onClick={()=>add(ALL_LINKS)} className="press" style={row}>
+      <span style={{fontSize:12,fontWeight:600,color:C.text}}>{t("All Links")}</span>
+      <span style={{fontSize:10,color:C.textMute}}>{strengthLabel(makeLink(ALL_LINKS,strength,mindlink),t("Mindlink"))}</span>
+    </div>
+    {CATEGORIES.map(([cat,label])=>{const isOpen=open.has(cat);return(<div key={cat}>
+      <div onClick={()=>setOpen(o=>{const n=new Set(o);n.has(cat)?n.delete(cat):n.add(cat);return n;})} className="press"
+        style={{display:"flex",alignItems:"center",gap:6,padding:"9px 14px",background:C.surfaceAlt,borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}>
+        <span style={{fontSize:10,color:C.textMute,transform:isOpen?"rotate(90deg)":"none",display:"inline-block",width:10}}>▶</span>
+        <span style={{fontSize:12,fontWeight:700,color:C.text}}>{t(label)}</span>
+      </div>
+      {isOpen&&linksOf(cat).map(lt=>(
+        <div key={lt} onClick={()=>add(lt)} className="press" style={{...row,padding:"10px 14px 10px 30px"}}>
+          <span style={{fontSize:12,fontWeight:500,color:C.text}}>{LINK_DEFS[lt][0]}</span>
+          <span style={{fontSize:10,color:C.textMute}}>{linkBursts(makeLink(lt,strength,mindlink)).map(b=>`${t(BUFF_NAMES[b.buffID]??"")} ${b.value>0?"+":""}${Math.round(b.value*10)/10}%`).slice(0,2).join(" · ")}</span>
+        </div>
+      ))}
+    </div>);})}
+  </BottomSheet>);
+}
+
 export function EnvironmentPickerSheet({current,onSelect,onClose}){
   const[search,setSearch]=useState("");
   const[openCat,setOpenCat]=useState(()=>new Set(["Wormhole"]));
@@ -491,6 +535,7 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
   const[infoItem,setInfoItem]=useState(null);   // {typeID,name} for the shared Info/Variations sheet
   const[showProjPicker,setShowProjPicker]=useState(false);
   const[showCmdPicker,setShowCmdPicker]=useState(false);
+  const[showLinks,setShowLinks]=useState(false);   // the Generic Links sheet
   const[showEnvPicker,setShowEnvPicker]=useState(false);
   // The open fit tabs as both pickers' shortcut list, same as the graph's target picker. They arrive
   // already reconciled against fitsDB, so a pointer here always names a fit that exists. The fit
@@ -675,6 +720,23 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
       <div style={{fontSize:11,color:C.textMute,marginBottom:12}}>{t("Apply command burst bonuses from a fleet support ship fit. Bursts use the source fit's modules, charges, and active state.")}</div>
       {cmdFits.length===0&&<div style={{textAlign:"center",color:C.textMute,padding:"24px 0",fontSize:13}}>{t("No command fits applied")}</div>}
       {cmdFits.map((f,i)=>{
+        if(isLink(f)){
+          const on=f.active!==false;
+          const patch=(p)=>setCmdFits(cmdFits.map((x,j)=>j===i?{...x,...p}:x));
+          return(<div key={i} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:8,opacity:on?1:0.55}}>
+            <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:8}}>
+              <button title={on?t("Applied to this fit"):t("Ignored")} onClick={()=>patch({active:!on})}
+                style={{width:24,height:24,borderRadius:5,flexShrink:0,background:on?C.accentLight:"none",border:`1px solid ${on?C.accentBorder:C.borderStrong}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,lineHeight:1,color:on?C.accent:""}}>{on?"✓":""}</button>
+              <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:on?C.text:C.textMid}}>{linkLabel(f)}</div><div style={{fontSize:10,color:C.textMute,marginTop:2}}>{t("Generic link")}</div></div>
+              <button onClick={()=>setCmdFits(cmdFits.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontSize:14,flexShrink:0}}>x</button>
+            </div>
+            <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
+              {STRENGTHS.map(st=><button key={st} onClick={()=>patch({strength:st})} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",background:f.strength===st?C.accentLight:C.surfaceAlt,border:`1px solid ${f.strength===st?C.accentBorder:C.border}`,color:f.strength===st?C.accent:C.textMid}}>{st}%</button>)}
+              <button onClick={()=>patch({mindlink:!f.mindlink})} aria-pressed={!!f.mindlink} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",background:f.mindlink?C.accentLight:C.surfaceAlt,border:`1px solid ${f.mindlink?C.accentBorder:C.border}`,color:f.mindlink?C.accent:C.textMid}}>{t("Mindlink")}</button>
+            </div>
+            {linkBursts(f).map((b,j)=><div key={j} style={{fontSize:11,color:C.rig,paddingLeft:8,marginBottom:3}}>- {t(BUFF_NAMES[b.buffID]??"Command burst")}: {b.value>0?"+":""}{Math.round(b.value*10)/10}{LINK_UNIT}</div>)}
+          </div>);
+        }
         const srcFit=fitsDB[f.ship]?.find(x=>x.name===f.fitName);
         const bursts=srcFit?computeCommandBursts({name:f.ship,typeID:tidByName(f.ship)},srcFit.slots,sourceSkills(srcFit),{implants:srcFit.implants,boosters:srcFit.boosters}):[];
         const on=f.active!==false;   // opt-out, see the projected tab
@@ -690,7 +752,11 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
           {bursts.map((b,j)=><div key={j} style={{fontSize:11,color:C.rig,paddingLeft:8,marginBottom:3}}>- {b.label}: {b.value>0?"+":""}{Math.round(b.value*10)/10}{WARFARE_BUFF_UNIT[b.buffID]||"%"}</div>)}
         </div>);
       })}
-      <button className="press" onClick={()=>{haptic();setShowCmdPicker(true);}} style={{width:"100%",padding:"12px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("+ Add Command Fit")}</button>
+      <div style={{display:"flex",gap:8}}>
+        <button className="press" onClick={()=>{haptic();setShowCmdPicker(true);}} style={{flex:1,padding:"12px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("+ Add Command Fit")}</button>
+        <button className="press" onClick={()=>{haptic();setShowLinks(true);}} style={{flex:1,padding:"12px 0",background:C.surface,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("+ Generic Links")}</button>
+      </div>
+      {showLinks&&<GenericLinksSheet onAdd={l=>setCmdFits(prev=>[...prev,l])} onClose={()=>setShowLinks(false)}/>}
       {showCmdPicker&&<FitPickerSheet title={t("Select Command Ship Fit")} fitsDB={fitsDB} filterFn={hasCommandBursts} pinned={cmdTabFits} onSelect={(ship,fit)=>setCmdFits(prev=>[...prev,{ship,fitName:fit.name}])} onClose={()=>setShowCmdPicker(false)}/>}
     </div>)}
     </div>

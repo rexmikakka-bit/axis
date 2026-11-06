@@ -1,5 +1,6 @@
 import { computeCommandBursts, computeProjectedReps, projectionResistances, assistanceFactors,
          applyRemoteRepDiminishing, calcRangeFactor, stackingPenalty, tidByName } from "../calc.js";
+import { isLink, linkBursts } from './command-links.js';
 
 // What OTHER fits do to a fit: the command links it sits under and the modules projected onto it.
 //
@@ -22,6 +23,8 @@ export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
     // `active` is opt-OUT (undefined counts as on), so fits saved before the toggle existed keep
     // applying and no storage migration is needed.
     if(cf.active===false)continue;
+    // A generic link (lib/command-links.js) carries its bursts itself: no booster fit to look up.
+    if(isLink(cf)){for(const b of linkBursts(cf))out.push(b);continue;}
     const fit=fitsDB?.[cf.ship]?.find(f=>f.name===cf.fitName);
     if(!fit)continue;
     // The BOOSTER'S OWN fit decides who flies it: its `slots.pilot` if it names one, otherwise the

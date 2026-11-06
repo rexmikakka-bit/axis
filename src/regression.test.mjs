@@ -8989,6 +8989,33 @@ Nanofiber Internal Structure II
 }
 
 // -----------------------------------------------------------------------------
+// GENERIC COMMAND LINKS — src/lib/command-links.js, pyfa's "Generic Links". The table and formula are
+// pyfa's (eos/saveddata/commandLink.py); the anchor below ties them to OUR engine too: a generic link
+// at a real command ship's own bonus must equal what computeCommandBursts gets from that ship.
+// -----------------------------------------------------------------------------
+{
+  console.log('\nGENERIC COMMAND LINKS');
+  const CL = await import('./lib/command-links.js');
+  const burst = (n, ammo) => ({ id: 'h0', name: n, typeID: typeIDByName(n), type: 'passive', state: 'active', ammo });
+  const clay = { name: 'Claymore', typeID: typeIDByName('Claymore') };
+  const claySlots = { high: [burst('Skirmish Command Burst II', 'Evasive Maneuvers Charge')], mid: [], low: [], rigs: [] };
+  const real = computeCommandBursts(clay, claySlots, SKILLS_ALL_V, { implants: [{ slot: 10, name: 'Skirmish Command Mindlink' }] });
+  const generic = CL.linkBursts(CL.makeLink('skirmish_evasive', 3, true));
+  // The Claymore's skirmish bonus is 3%/lvl: its real burst and the 3%/lvl generic link are one number.
+  check('links', 'Claymore Evasive Maneuvers + mindlink = generic 3%/lvl + mindlink', generic[0].value, real.find(b => b.buffID === 20).value, 1e-9);
+  check('links', 'without the mindlink, the same', CL.linkBursts(CL.makeLink('skirmish_evasive', 3, false))[0].value,
+    computeCommandBursts(clay, claySlots, SKILLS_ALL_V, {}).find(b => b.buffID === 20).value, 1e-9);
+  check('links', 'pyfa Max Links: Evasive at 5%/lvl + mindlink', CL.linkBursts(CL.makeLink('all', 5, true)).find(b => b.buffID === 20).value, -17.578125, 1e-9);
+  check('links', 'All Links carries every modelled buff', CL.linkBursts(CL.makeLink('all', 5, true)).length, 15, 0);
+  check('links', '0%/lvl is skills and a T2 burst alone', CL.linkMultiplier(0, false), 1.875, 1e-9);
+  const ext = buildExternalBursts([CL.makeLink('shield_harmonizing', 4, true), { ...CL.makeLink('armor_reinforcement', 5, true), active: false }], {}, () => null);
+  check('links', 'a link joins the command bursts; a switched-off one does not', ext.map(b => b.buffID).join(','), '10');
+  check('links', 'a stored link reads back', JSON.stringify(CL.cleanLink(JSON.parse(JSON.stringify(CL.makeLink('info_sensor', 2, false))))), JSON.stringify(CL.makeLink('info_sensor', 2, false)));
+  check('links', 'an unknown link type is dropped', CL.cleanLink({ kind: 'link', linkType: 'mining_all', strength: 5 }) === null ? 1 : 0, 1, 0);
+  check('links', 'an off-menu strength is dropped', CL.cleanLink({ kind: 'link', linkType: 'shield_all', strength: 7 }) === null ? 1 : 0, 1, 0);
+}
+
+// -----------------------------------------------------------------------------
 // DESKTOP INSPECTORS — src/desktop/inspect.js (what a window is looking at) and the floating-window
 // half of layout.js. A wrong rule here shows the wrong item, or loses a pinned window on restart.
 // -----------------------------------------------------------------------------
