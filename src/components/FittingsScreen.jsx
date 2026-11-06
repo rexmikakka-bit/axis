@@ -346,7 +346,9 @@ const HERO_MIN = 78;
 // (390 wide against 844 tall), so on the device this is simply the full width.
 const heroMaxFor = (width, vh) => Math.max(HERO_MIN, Math.round(Math.min(width, vh * 0.92 - 34 - 120)));
 
-export function ShipInfoSheet({ship, cs, onClose}) {
+// `embedded` (desktop): the same sheet drawn INSIDE a window rather than over the screen — no backdrop,
+// no drag handle, no close button (the window has its own), filling whatever box it is put in.
+export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
   const [tab, setTab] = useState('traits');
   // Which attribute rows have their modifier breakdown expanded. Deliberately the only state here:
   // the traced twin is derived below rather than stored, so it cannot go stale against a recomputed
@@ -369,7 +371,10 @@ export function ShipInfoSheet({ship, cs, onClose}) {
   useEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
-    const sync = () => setHeroMax(heroMaxFor(el.clientWidth, window.innerHeight));
+    // In a window, a wide banner rather than a square: the window is the box, not the screen.
+    const sync = () => setHeroMax(embedded
+      ? Math.max(HERO_MIN, Math.round(Math.min(el.clientWidth * 0.5, el.clientHeight * 0.4)))
+      : heroMaxFor(el.clientWidth, window.innerHeight));
     sync();
     const ro = new ResizeObserver(sync);
     ro.observe(el);
@@ -553,14 +558,15 @@ export function ShipInfoSheet({ship, cs, onClose}) {
     setOpenAttrs(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   return (
-    <div style={{position:'fixed',inset:0,zIndex:300,display:'flex',flexDirection:'column'}}
-         onClick={sheet.dismiss}>
-      <div style={{flex:1,background:'rgba(0,0,0,.5)',opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}/>
+    <div style={embedded?{height:'100%',display:'flex',flexDirection:'column'}:{position:'fixed',inset:0,zIndex:300,display:'flex',flexDirection:'column'}}
+         onClick={embedded?undefined:sheet.dismiss}>
+      {!embedded&&<div style={{flex:1,background:'rgba(0,0,0,.5)',opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}/>}
       {/* Taller than the usual sheet because the art is the point of it — and the cap has to clear
           HERO_MAX plus the tab strip, or the picture is paying for the extra height without showing
           any more of the ship. */}
       <div ref={sheetRef}
-           style={{position:'relative',background:C.surface,borderRadius:'16px 16px 0 0',maxHeight:'92vh',
+           style={embedded?{position:'relative',background:C.surface,flex:1,minHeight:0,display:'flex',flexDirection:'column'}
+             :{position:'relative',background:C.surface,borderRadius:'16px 16px 0 0',maxHeight:'92vh',
                    display:'flex',flexDirection:'column',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',
                    ...sheetTransform(sheet)}}
            onClick={e=>e.stopPropagation()}>
@@ -569,13 +575,13 @@ export function ShipInfoSheet({ship, cs, onClose}) {
               header bar left to hold it, and the picture goes all the way to the top edge. It opts
               back into the pointer events the hero as a whole declines, and reaches well below the
               pill so there is something to actually hit. */}
-          <SheetGrabber grabHandlers={sheet.grabHandlers} onArt
-                        style={{position:'absolute',top:0,left:0,right:0,padding:'8px 0 16px',pointerEvents:'auto'}}/>
+          {!embedded&&<SheetGrabber grabHandlers={sheet.grabHandlers} onArt
+                        style={{position:'absolute',top:0,left:0,right:0,padding:'8px 0 16px',pointerEvents:'auto'}}/>}
           {/* Close sits on its own scrim: over a bright nebula a bare glyph disappears. */}
-          <button onClick={sheet.dismiss} aria-label={t("Close")}
+          {!embedded&&<button onClick={sheet.dismiss} aria-label={t("Close")}
             style={{position:'absolute',top:10,right:10,width:30,height:30,borderRadius:15,border:'none',
                     cursor:'pointer',color:'#fff',fontSize:18,lineHeight:1,pointerEvents:'auto',
-                    background:'rgba(0,0,0,.42)',backdropFilter:'blur(6px)'}}>×</button>
+                    background:'rgba(0,0,0,.42)',backdropFilter:'blur(6px)'}}>×</button>}
           <div style={{position:'absolute',left:16,right:16,bottom:10}}>
             {/* Faction and class, in the eyebrow-over-name order the snapshot card already uses, so a
                 hull introduces itself the same way wherever you meet it. hullClass is CCP's own group

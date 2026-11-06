@@ -124,9 +124,20 @@ export function useRowSelect() {
 export function DialogFrame({ title, onClose, children, headerExtra, footerExtra, dismissRequested, fillHeight, height }) {
   useEffect(() => { if (dismissRequested) onClose?.(); }, [dismissRequested]);   // eslint-disable-line react-hooks/exhaustive-deps
   const tall = fillHeight || height === "100vh" || height === "88vh";
+  // A picker opened from "+ Booster", "+ Fit", Cargo's "+ Add"… is for typing into: its search box
+  // gets the cursor straight away (Owen). The FIRST text field, whichever sheet it is; a sheet with
+  // none is left alone. After the frame, so the field exists and the dialog has taken focus.
+  const bodyRef = useRef(null);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const el = bodyRef.current?.querySelector('input:not([type]), input[type="text"], input[type="search"]');
+      if (el && !el.disabled && !el.readOnly) el.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
   return (
     <Dialog title={title} onClose={onClose} width={tall ? 720 : 640}>
-      <div style={{ display: "flex", flexDirection: "column", minHeight: tall ? "70vh" : undefined, maxHeight: "calc(100vh - 150px)" }}>
+      <div ref={bodyRef} style={{ display: "flex", flexDirection: "column", minHeight: tall ? "70vh" : undefined, maxHeight: "calc(100vh - 150px)" }}>
         {headerExtra && <div style={{ flex: "none" }}>{headerExtra}</div>}
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>{children}</div>
         {footerExtra && <div style={{ flex: "none" }}>{footerExtra}</div>}

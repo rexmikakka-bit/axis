@@ -13,10 +13,61 @@ import { LAYOUT_EVENT, LOCK_EVENT } from "./kit.jsx";
 // holding the detached tray and the layout controls. What a window CONTAINS is the caller's
 // (`renderWindow`); this only places, stacks and remembers them.
 
+// ── Reopening a closed window (Ctrl+Shift+T, as a browser reopens a tab) ─────────────────────────
+// Every layout change goes through useLayoutState's setter, so closes are noticed there, whoever
+// made them: a title bar's ×, the Windows menu, a tab's ×, an inspector's ×. Each close remembers the
+// windows it hid as they were, with their tab group's host and members, so reopening puts the window
+// back exactly where and how it was, in its group if it had one. A preset or saved layout being
+// applied hides windows on purpose and is not recorded. The newest 20 closes are kept, this session.
+export const CLOSED_EVENT = "axis-window-closed";
+const closedStack = [];
+const shown = (w) => !!w && w.open && !w.detached;
+function noteClosed(before, after) {
+  const ids = Object.keys(before).filter(id => shown(before[id]) && !shown(after[id]));
+  if (!ids.length || ids.length > 8) return;
+  const top = closedStack[closedStack.length - 1];
+  if (top && top.ids.join() === ids.join() && ids.every(id => top.entries[id] === before[id])) return;   // StrictMode's second run
+  const entries = {};
+  for (const id of ids) {
+    entries[id] = before[id];
+    const host = before[id].in;
+    if (host && before[host]) entries[host] = before[host];
+    for (const m of before[id].stack ?? []) if (before[m]) entries[m] = before[m];
+  }
+  closedStack.push({ ids, entries });
+  if (closedStack.length > 20) closedStack.shift();
+  queueMicrotask(() => window.dispatchEvent(new CustomEvent(CLOSED_EVENT, { detail: { ids } })));
+}
+/**
+ * Reopen the most recent close whose windows are all still closed in `current` (the layout's
+ * windows now). False when there is none. The entry is taken off the stack HERE, not inside the
+ * state updater, which React may run twice.
+ */
+export function reopenClosed(setState, current) {
+  let e = null;
+  while (closedStack.length && !e) {
+    const top = closedStack.pop();
+    if (!top.ids.some(id => shown(current?.[id]))) e = top;   // otherwise it was reopened by hand since
+  }
+  if (!e) return false;
+  setState(s => {
+    const top = Math.max(0, ...Object.values(s.windows).map(w => w.z || 0));
+    const windows = { ...s.windows, ...e.entries };
+    for (const id of e.ids) windows[id] = { ...windows[id], z: top + 1 };
+    return { ...s, windows };
+  });
+  return true;
+}
+
 /** The persisted layout state (axis_desktop_layout), shared by the app and the workspace. */
 export function useLayoutState() {
-  const [state, setState] = useState(() => readLayoutState(localStorage));
+  const [state, setRaw] = useState(() => readLayoutState(localStorage));
   useEffect(() => { writeLayoutState(localStorage, state); }, [state]);
+  const setState = useCallback((fn) => setRaw(prev => {
+    const next = typeof fn === "function" ? fn(prev) : fn;
+    if (next !== prev && next?.windows !== prev.windows && next?.preset === prev.preset) noteClosed(prev.windows, next.windows);
+    return next;
+  }), []);
   return [state, setState];
 }
 

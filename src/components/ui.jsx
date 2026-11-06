@@ -38,6 +38,7 @@ import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
 import { PRERELEASE_RIG_DESCRIPTIONS, isPrereleaseRig, prereleaseSkillApplies } from "../data/prerelease-rigs.js";
 import { PRERELEASE_MODULE_DESCRIPTIONS } from "../data/prerelease-modules.js";
+import { parseItemLink, resolveItemLink } from "../lib/abyssal-paste.js";
 import { PrereleaseSkillControl } from "./prerelease-skill.jsx";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
@@ -789,6 +790,19 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
   const onSearchPaste=e=>{
     const text=e.clipboardData?.getData("text");
     if(!text)return;
+    // An item link copied in EVE (<url=showinfo:type//item>): its roll is read from ESI first
+    // (lib/abyssal-paste.js). It lands the same way a pasted abyssal text does.
+    const link=parseItemLink(text);
+    if(link){
+      e.preventDefault();
+      setJustAdded({name:t("Reading the roll from EVE…"),count:1,key:Date.now(),abyssal:true,note:true});
+      resolveItemLink(link).then(m=>{
+        const n=onSelect({id:Date.now(),name:m.name,typeID:m.typeID,type:"module",state:"active",mutaplasmid:m.mutaplasmid,mutations:m.mutations,abyssalItemId:m.abyssalItemId});
+        setJustAdded({name:m.name,count:n||1,key:Date.now(),abyssal:true});
+        haptic("light");
+      }).catch(err=>setJustAdded({name:t("Couldn't read that item from EVE: {why}",{why:err?.message??""}),count:0,key:Date.now(),abyssal:true,note:true}));
+      return;
+    }
     const parsed=parseAbyssal(text);
     if(!parsed)return;
     e.preventDefault();
@@ -940,7 +954,7 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
               Faction/...) and Abyssal's tier color is pink, a different thing from the red used for
               mutaplasmid/grade badges everywhere else (ui.jsx's own grade badge above, the fit list's
               ▲ marker, drones.jsx) — this toast should match THAT red, not the tier pink. */}
-          {justAdded&&<div key={justAdded.key} className="vv-in" style={{position:"absolute",top:8,right:10,zIndex:20,background:justAdded.abyssal?C.danger:C.accent,color:"#fff",fontSize:11,fontWeight:700,padding:"5px 10px",borderRadius:99,boxShadow:"0 2px 8px rgba(0,0,0,.35)",pointerEvents:"none",maxWidth:"65%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>+ {justAdded.abyssal?`${t("Abyssal")} `:""}{justAdded.name}{justAdded.count>1?` (x${justAdded.count})`:""}</div>}
+          {justAdded&&<div key={justAdded.key} className="vv-in" style={{position:"absolute",top:8,right:10,zIndex:20,background:justAdded.abyssal?C.danger:C.accent,color:"#fff",fontSize:11,fontWeight:700,padding:"5px 10px",borderRadius:99,boxShadow:"0 2px 8px rgba(0,0,0,.35)",pointerEvents:"none",maxWidth:"65%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{justAdded.note?justAdded.name:<>+ {justAdded.abyssal?`${t("Abyssal")} `:""}{justAdded.name}{justAdded.count>1?` (x${justAdded.count})`:""}</>}</div>}
         </ResourceStrip>
       }
       footerExtra={

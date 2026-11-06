@@ -78,7 +78,7 @@ const isMissileLauncher = tid => usesLauncherHardpoint(TYPES[String(tid)]?.e);
 // Returns null if module can fit the ship, or an error string if not.
 // `subsystems` is the fit's current T3C subsystem array (sub0=Core, sub1=Defensive, sub2=Offensive,
 // sub3=Propulsion) — irrelevant for any other hull, so callers not dealing with T3Cs can omit it.
-function checkFitRestriction(modTypeID, ship, subsystems) {
+export function checkFitRestriction(modTypeID, ship, subsystems) {
   if (!ship?.typeID || !modTypeID) return null;
   const attrs = TYPES[String(modTypeID)]?.a ?? {};
 
@@ -740,7 +740,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
       {TableView?<TableView api={{SECS,getDisplayRows,slots,setSlots,ship,cs:_cs,engineStatsBySlotID,StateDot,gestureMemory,validStatesFor,
           openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
           openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
-          setRowState,removeMod,duplicateMod,duplicateRoom,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
+          setRowState,removeMod,duplicateMod,duplicateRoom,updateMod,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
           undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
       /* Dense sets a relative line height: the root's 145% is a fixed 26px by the time it gets here
           (see InlineFrame in ui.jsx), taller than a whole dense row. */

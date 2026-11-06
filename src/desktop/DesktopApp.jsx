@@ -3,7 +3,8 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName, TYPES } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
-import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText } from "../lib/core.js";
+import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText, moduleByName } from "../lib/core.js";
+import { parsePastedModule, resolveItemLink, pastedSlot } from "../lib/abyssal-paste.js";
 import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame, BottomSheet } from "../components/ui.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
@@ -11,7 +12,7 @@ import { deskCss } from "./kit.jsx";
 import { useBackdrop, Backdrop } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
-import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
+
 import DeskSettings, { SETTINGS_EVENT } from "./Settings.jsx";
 import { SHIP_INFO_EVENT, requestLayout, requestLockToggle } from "./kit.jsx";
 import { ChooserSheet, PilotSheet } from "../components/layout.jsx";
@@ -19,7 +20,7 @@ import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
 import { SkillsProvider } from "../components/skill-mark.jsx";
 import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
-import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, openInspector, Button } from "./Workspace.jsx";
+import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, openInspector, Button, reopenClosed, CLOSED_EVENT } from "./Workspace.jsx";
 import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
 import { FirepowerPanel } from "./Firepower.jsx";
@@ -32,7 +33,7 @@ import DronesPanel from "./Drones.jsx";
 import FightersPanel from "./Fighters.jsx";
 import { ProjectedPanel, CommandPanel, BoostersPanel, EnvironmentPanel } from "./Effects.jsx";
 import { WINDOWS, isFloatId, readLayoutState } from "./layout.js";
-import { activeFitRef, targetKey } from "./inspect.js";
+import { activeFitRef, targetKey, typeTarget } from "./inspect.js";
 import { InspectContext } from "./inspect-context.jsx";
 import { ItemsContext } from "./items-context.jsx";
 import { addItem, accepts as itemAccepts } from "./items.js";
@@ -122,6 +123,7 @@ const SHORTCUTS = () => [
   ]],
   [t("Layouts"), [
     ["Alt+1 … 9", t("Switch to a layout, in the order they appear at the bottom")], ["Ctrl+Shift+L", t("Lock layout")],
+    ["Ctrl+Shift+T", t("Reopen the last closed window")],
   ]],
   [t("Module state dot"), [
     [t("Click"), t("Run or stop")], [t("Double-click · right-click"), t("Overheat")], [t("Hold · Ctrl-click"), t("Offline")],
@@ -161,7 +163,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     // Only what reads them: the Drones window (bay, bandwidth, drone stats) and the two sheets. Cargo
     // and Projected never did, and a Drones tab hidden behind another tab is not drawn — computing
     // two extra full fit calculations for it on every edit was part of the booster lag.
-    snapshot: isOpen("drones") || sheet === "shipinfo" || sheet === "snapshot",
+    snapshot: isOpen("drones") || sheet === "snapshot",
     drones: isOpen("drones"),
   });
   const hullAttrs = TYPES[tidByName(s.activeFit?.ship)]?.attrs ?? null;
@@ -172,6 +174,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
   const hasFighters = shipFighter.tubes > 0;
   const items = {
     hasFighters,
+    // A short message on the app's banner, for windows that refuse something (Fitting's Paste).
+    notify: (msg, ms = 3000) => notify?.("none", msg, ms),
     accepts: (to, item) => itemAccepts(to, item, { hasFighters }),
     add: (item, to, extra) => {
       // Whatever took the item comes up (Owen): its window opens, or its tab comes to the front.
@@ -296,9 +300,18 @@ function DesktopApp() {
   });
   const flash = (kind, msg, ms = 3000) => banner.notify(kind, msg, ms);
   useEffect(() => { initKeyboardTracking(); }, []);
+  // A window closed: say so, and how to get it back.
+  useEffect(() => {
+    const said = (e) => {
+      const names = (e.detail?.ids ?? []).map(id => t(WINDOWS.find(w => w.id === id)?.title ?? "Info"));
+      if (names.length) flash("none", t("Closed {names} · Ctrl+Shift+T reopens it", { names: names.join(", ") }), 3500);
+    };
+    window.addEventListener(CLOSED_EVENT, said);
+    return () => window.removeEventListener(CLOSED_EVENT, said);
+  });
   // The hull's info sheet asked for from a right-click on empty space (the phone's hull-icon tap).
   useEffect(() => {
-    const open = () => { if (s.activeFit?.ship) setSheet("shipinfo"); };
+    const open = () => openShipInfo();
     window.addEventListener(SHIP_INFO_EVENT, open);
     return () => window.removeEventListener(SHIP_INFO_EVENT, open);
   });
@@ -351,6 +364,9 @@ function DesktopApp() {
   };
   const setCols = (id, c) => setLayoutState(st => ({ ...st, cols: { ...st.cols, [id]: c } }));
   const insp = useInspectorState(s, { setLayoutState, post: sync.post, adderRef, remoteAdd });
+  // Ship info is a floating window on the desktop (an inspector on the hull's type, which draws the
+  // phone's Ship info sheet inside it), not the phone's full-screen sheet. One per hull.
+  const openShipInfo = () => { const tid = tidByName(s.activeFit?.ship); if (tid) insp.value.inspect(typeTarget(tid), "info"); };
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openWindowFor: (id) => openWindow(setLayoutState, id), openProfilePicker: () => setSheet("dmgprofile"),
@@ -400,7 +416,12 @@ function DesktopApp() {
       if (e.key === "Tab") return go(() => step(e.shiftKey ? -1 : 1));
       if (e.key === "PageDown") return go(() => step(1));
       if (e.key === "PageUp") return go(() => step(-1));
-      if (e.shiftKey) { if (k === "l") go(() => requestLockToggle()); return; }
+      if (e.shiftKey) {
+        if (k === "l") go(() => requestLockToggle());
+        // Reopen the last closed window, where and how it was (Workspace.jsx's closed stack).
+        if (k === "t") go(() => { if (!reopenClosed(setLayoutState, keysRef.current.windows)) flash("none", t("No closed window to reopen"), 2000); });
+        return;
+      }
       // Graphs to the front, never away: open it if closed, raise it if open, and if it is a tab in
       // another window, make it that window's shown tab, in place (Owen: it is often stacked with
       // the Fitting window).
@@ -425,6 +446,10 @@ function DesktopApp() {
       if (!text.trim()) return;
       const parsed = parseEFT(text);
       if (parsed.error) {
+        // Not a fit: maybe ONE module (an EVE item link, an abyssal roll, an EFT line). It goes into
+        // the open fit's first free slot of its rack, through the Fitting window's own add.
+        const one = keysRef.current.hasFit ? parsePastedModule(text) : null;
+        if (one) { e.preventDefault(); pasteModule(one); return; }
         // Only speak up when it looked like a fit: a stray paste of anything else stays silent.
         if (/^\s*\[/.test(text)) flash("none", t("That isn't a fit Axis can read: {why}", { why: parsed.error }), 4000);
         return;
@@ -432,6 +457,20 @@ function DesktopApp() {
       e.preventDefault();
       keysRef.current.s.importFit(parsed);
       flash("success", t('Imported "{name}"', { name: parsed.fitName }));
+    };
+    const pasteModule = async (one) => {
+      const { ship: sh, adder } = keysRef.current;
+      let mod = one.mod;
+      if (one.kind === "link") {
+        flash("loading", t("Reading the roll from EVE…"), 8000);
+        try { mod = await resolveItemLink(one.link); } catch (err) { flash("none", t("Couldn't read that item from EVE: {why}", { why: err?.message ?? "" }), 5000); return; }
+      }
+      const placed = pastedSlot(sh, mod);
+      if (!placed || !adder.current) { flash("none", t("{name} doesn't go in any rack this ship has", { name: mod.name }), 4000); return; }
+      // The adder takes a browser-style module record; a roll travels as its mutaplasmid + values.
+      const n = adder.current(placed.secKey, { ...moduleByName(mod.name), name: mod.name, typeID: mod.typeID,
+        ...(mod.mutaplasmid ? { mutaplasmid: mod.mutaplasmid, mutations: { ...mod.mutations }, abyssalItemId: mod.abyssalItemId } : {}) });
+      flash(n ? "success" : "none", n ? t("Fitted {name}", { name: mod.name }) : t("No free slot for {name}", { name: mod.name }), 3000);
     };
     window.addEventListener("keydown", onKey);
     document.addEventListener("paste", onPaste);
@@ -467,7 +506,7 @@ function DesktopApp() {
     setBrowserMode({ mode: "ships", n: Date.now() });
   };
   const hasFit = !!s.activeFit?.ship;
-  keysRef.current = { s, hasFit, sheet, newTab };
+  keysRef.current = { s, hasFit, sheet, newTab, ship, adder: adderRef, windows: layoutState.windows };
 
   return (
     <InspectContext.Provider value={insp.value}><SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
@@ -526,7 +565,7 @@ function DesktopApp() {
             { label: t("Import Fit"), onSelect: () => setSheet("import"), hint: "Ctrl+O" },
             { label: t("Export Fit"), onSelect: () => setSheet("export"), disabled: !hasFit, hint: "Ctrl+S" },
             { label: t("Export Snapshot"), onSelect: () => setSheet("snapshot"), disabled: !hasFit },
-            { label: t("Ship info"), onSelect: () => setSheet("shipinfo"), disabled: !hasFit },
+            { label: t("Ship info"), onSelect: openShipInfo, disabled: !hasFit },
             { label: t("Optimize Fit Price"), onSelect: () => s.optimizeFitPrice(), disabled: !hasFit, hint: "Ctrl+D" },
             { label: t("Shopping List"), onSelect: () => setSheet("shopping"), disabled: !hasFit },
             { divider: true },
@@ -537,7 +576,7 @@ function DesktopApp() {
         </header>
 
         <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra}
-          backgroundItems={hasFit ? [{ heading: s.activeFit.ship }, { label: t("Ship info"), icon: eveIcon(tidByName(s.activeFit.ship), 32), onSelect: () => setSheet("shipinfo") }] : null}
+          backgroundItems={hasFit ? [{ heading: s.activeFit.ship }, { label: t("Ship info"), icon: eveIcon(tidByName(s.activeFit.ship), 32), onSelect: openShipInfo }] : null}
           onPopOut={popOut} onDock={dock} backdrop={<Backdrop url={bd.url} settings={bd.settings} />} />
       </div>
 
@@ -560,7 +599,6 @@ function DesktopApp() {
       {sheet === "dmgprofile" && <DamageProfileSheet current={s.dmgProfile} onSelect={s.setDmgProfile} onClose={close} />}
       {sheet === "pilot" && <PilotSheet pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
         missing={s.skillCheck.missing} appSkills={s.skills} skillProfiles={s.skillProfiles} onClose={close} />}
-      {sheet === "shipinfo" && hasFit && <ShipInfoSheet ship={ship ?? { name: s.activeFit.ship }} cs={stats.snapshot} onClose={close} />}
       {sheet === "snapshot" && <SnapshotModal onClose={close} assist={s.projectedEffects?.assist} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}
         shipName={s.activeFit?.ship} shipTypeID={tidByName(s.activeFit?.ship)} shipFaction={shipMeta.faction} shipClass={shipMeta.cls} slots={s.slots}
         cs={stats.snapshot} drones={s.drones} fighters={s.fighters} implants={s.implants} boosters={s.boosters} cmdFits={s.cmdFits} projFits={s.projFits}
