@@ -1669,9 +1669,14 @@ function check(group, label, actual, expected, tol = 0.005) {
   };
   const RL = "Zainou 'Deadeye' Rapid Launch RL-1005";
   const cerbDps = (implants) => calcFitStats(cerb, cerbSlots, [], null, { implants }).weaponDps.total;
-  check('inert', 'Cerberus DPS, no implant', cerbDps([]), 558.0114, 0.005);
-  check('inert', 'Rapid Launch implant ACTIVE', cerbDps([{ name: RL }]), 587.3804, 0.005);
-  check('inert', 'Rapid Launch implant DISABLED', cerbDps([{ name: RL, active: false }]), 558.0114, 0.005);
+  // 24.02 (pre-release, data/prerelease-balance.js) takes the Cerberus's kinetic bonus back from 2.5%
+  // to 5% per level, so the eos figures above scale by 1.25/1.125 on this all-kinetic fit — which
+  // lands exactly on the 620.0127 eos gave before 24.01 cut it. Back to 558.0114 / 587.3804 if
+  // the pre-release layer is ever removed without CCP shipping the change.
+  const k2402 = 1.25 / 1.125;
+  check('inert', 'Cerberus DPS, no implant', cerbDps([]), 558.0114 * k2402, 0.005);
+  check('inert', 'Rapid Launch implant ACTIVE', cerbDps([{ name: RL }]), 587.3804 * k2402, 0.005);
+  check('inert', 'Rapid Launch implant DISABLED', cerbDps([{ name: RL, active: false }]), 558.0114 * k2402, 0.005);
 
   // A rig can be offlined here even though the game does not allow it, because pyfa allows it and it
   // is the only way to ask what a rig is worth without pulling it off the fit. Offline has to mean
@@ -8357,9 +8362,28 @@ Nanofiber Internal Structure II
   // Hawk and Vengeance: a kinetic-only (resp. rocket-only) damage bonus became an all-missile one.
   // Four damage types each, or the hull is quietly flying without part of its bonus.
   const dmg=new Set([114,116,117,118]);
-  for(const [hull,attr] of [['Hawk',463],['Vengeance',464],['Cerberus',487]])
+  // 24.02 (pre-release) splits the Hawk's and Cerberus's bonus again — kinetic on its own attribute
+  // (shipBonus3CF / shipBonusCC3), the other three on the old one — so between them the pair must
+  // still cover all four.
+  for(const [hull,attrs] of [['Hawk',[463,1624]],['Vengeance',[464]],['Cerberus',[487,1535]]])
     check('balance',`the ${hull} missile bonus reaches all four damage types`,
-      new Set(modsOf(hull,attr).filter(m=>dmg.has(m.modifiedAttributeID)).map(m=>m.modifiedAttributeID)).size,4,0);
+      new Set(attrs.flatMap(a=>modsOf(hull,a)).filter(m=>dmg.has(m.modifiedAttributeID)).map(m=>m.modifiedAttributeID)).size,4,0);
+  // Every hull effect putting missile damage on a charge must be in calc.js's SHIP_MISSILE_DMG: the
+  // engine never delivers an OwnerRequiredSkillModifier to a loaded charge, so an effect missing
+  // there is a bonus the hull silently flies without. 24.01's Hawk and Vengeance effects were, for
+  // a whole release (87.9 rocket DPS against eos's 120.8). 12165 is the Sidewinder's pilot-security
+  // bonus, applied separately on purpose (see the note above the table).
+  {
+    const { SHIP_MISSILE_DMG_IDS } = await import('./calc.js');
+    const listed=new Set(SHIP_MISSILE_DMG_IDS());
+    const MD_SK=new Set(['Cruise Missiles','Heavy Assault Missiles','Heavy Missiles','Light Missiles','Missile Launcher Operation','Rockets','Torpedoes','XL Cruise Missiles','XL Torpedoes','Auto-Targeting Missiles','Bomb Deployment']);
+    const unlisted=new Set();
+    for(const t of Object.values(TYPES)) if((t.c??t.category)===6) for(const e of t.e??[]){
+      if(listed.has(e)||e===12165) continue;
+      if((EFFECTS[e]?.m??[]).some(m=>m.func==='OwnerRequiredSkillModifier'&&dmg.has(m.modifiedAttributeID)&&MD_SK.has(TYPES[m.skillTypeID]?.n))) unlisted.add(e);
+    }
+    check('balance','every hull missile-damage effect reaches the charge',[...unlisted].join(',')||'none','none');
+  }
   // The Hawk's and Vengeance's replacements are filtered on Missile Launcher Operation, not on the
   // narrower skill they replaced — that widening IS the buff, and it is invisible in a DPS number
   // taken with the old ammo.
@@ -8695,6 +8719,76 @@ Nanofiber Internal Structure II
   check('prerelease', 'export to EVE carries the real hull typeID', exported.ship_type_id, 97793, 0);
 }
 
+// ─── 24.02 FRACTURED SKIES, PRE-RELEASE ───────────────────────────────────────────────────────────
+// data/prerelease-balance.js and data/prerelease-modules.js, from CCP's expansion notes (2026-11-06).
+// NOT pyfa-validated: pyfa has none of it yet. Each expected value is the notes' figure applied to an
+// eos-validated baseline. The first check pins every change as APPLIED; the day CCP's data carries
+// them, it fails and lists the groups to delete from prerelease-balance.js.
+{
+  console.log('\n24.02 FRACTURED SKIES (pre-release)');
+  const { APPLIED_BALANCE, applyPrereleaseTraitEdits } = await import('./data/prerelease-balance.js');
+  const { Fit } = await import('./dogma-engine-init.js');
+  check('2402', 'every 24.02 change applied (37: hulls, subsystems, charges, ISA, fighters)', APPLIED_BALANCE.length, 37, 0);
+  const A = (n, attr) => TYPES[tid(n)]?.attrs?.[attr];
+  check('2402', 'Legion speed / powergrid', `${A('Legion', 'maxVelocity')}/${A('Legion', 'powerOutput')}`, '200/650');
+  check('2402', 'Proteus signature', A('Proteus', 'signatureRadius'), 165, 0);
+  check('2402', 'Void Bomb delay / speed', `${A('Void Bomb', 'explosionDelay')}/${A('Void Bomb', 'maxVelocity')}`, '12000/2500');
+  check('2402', 'Focused Void Bomb untouched', A('Focused Void Bomb', 'explosionDelay'), 15000, 0);
+  check('2402', 'Imperial Navy Templar shield / attack damage', `${A('Imperial Navy Templar', 'shieldCapacity')}/${A('Imperial Navy Templar', 'fighterAbilityAttackMissileDamageEM')}`, '7260/108');
+  check('2402', 'Ametat II now requires Amarr Fighter Specialization', (TYPES[tid('Ametat II')].rs ?? []).includes('Amarr Fighter Specialization') ? 1 : 0, 1, 0);
+  check('2402', 'Oracle Navy Issue locks 7, per the notes', A('Oracle Navy Issue', 'maxLockedTargets'), 7, 0);
+  check('2402', 'Synchronizers: one per ship', A('Medium Dark Blood Synchronizer', 'maxGroupFitted'), 1, 0);
+
+  // Missile hulls, against eos's 24.01 figures for the same four-launcher fits (Rocket Launcher II,
+  // all V): 120.8243 rocket DPS for the Hawk and the Vengeance alike, any damage type. The Vengeance's
+  // damage is untouched by 24.02, so it pins the 24.01 fix that put its bonus (and the Hawk's) on the
+  // charge at all. The Hawk's 37.5% becomes 50% kinetic and 25% the rest.
+  const rockets = (hull, ammo) => calcFitStats({ typeID: tid(hull), name: hull },
+    { high: Array.from({ length: 4 }, () => M('Rocket Launcher II', 'active', ammo)), mid: [], low: [], rigs: [] }, [], null, {}).weaponDps.total;
+  check('2402', 'Vengeance rockets = eos 24.01 (its bonus reaches the charge)', rockets('Vengeance', 'Scourge Rocket'), 120.8243, 0.0005);
+  check('2402', 'Hawk kinetic rockets: 37.5% -> 50%', rockets('Hawk', 'Scourge Rocket'), 120.8243 * 1.5 / 1.375, 0.0005);
+  check('2402', 'Hawk EM rockets: 37.5% -> 25%', rockets('Hawk', 'Mjolnir Rocket'), 120.8243 * 1.25 / 1.375, 0.0005);
+
+  // Vengeance: no capacitor recharge bonus any more (its V value is the base now), 3%/lvl armor.
+  const veng = new Fit(tid('Vengeance'));
+  veng.setSkill('Assault Frigates', 5); veng.calculate();
+  check('2402', 'Vengeance cap recharge is the hull base, no AF bonus', veng.ship.get('rechargeRate'), 140625, 0);
+  check('2402', 'Vengeance armor: 1,016 x 1.15 (AF V)', veng.ship.get('armorHP'), 1016 * 1.15, 1e-9);
+  // Tengu Electronic Efficiency Gate: 15% sensor dampener resistance at Caldari Core Systems V.
+  const tengu = new Fit(tid('Tengu'));
+  tengu.setSkill('Caldari Core Systems', 5);
+  tengu.setSubsystems(['Tengu Core - Electronic Efficiency Gate', 'Tengu Defensive - Covert Reconfiguration', 'Tengu Offensive - Accelerated Ejection Bay', 'Tengu Propulsion - Interdiction Nullifier'].map(tid));
+  tengu.calculate();
+  check('2402', 'Tengu EEG: sensor dampener resistance 0.85 at V', tengu.ship.get('sensorDampenerResistance'), 0.85, 1e-9);
+  check('2402', 'Tengu EEG: weapon disruption resistance 0.85 at V', tengu.ship.get('weaponDisruptionResistance'), 0.85, 1e-9);
+
+  // Integrated Sensor Array, ACTIVE: light fighter attack explosion velocity x1.2, radius x0.9.
+  const thanatos = { typeID: tid('Thanatos'), name: 'Thanatos' };
+  const isaGraph = (state) => calcFitStats(thanatos, { high: [M('Integrated Sensor Array', state)], mid: [], low: [], rigs: [] }, [], null,
+    { fighters: [{ name: 'Firbolg II', qty: 1, active: true }] }).graphWeapons.find(w => w.kind === 'fighter' && w.explosionRadius > 0);
+  const on = isaGraph('active'), off = isaGraph('online');
+  check('2402', 'ISA active: light fighter explosion velocity x1.2', on.explosionVelocity / off.explosionVelocity, 1.2, 1e-9);
+  check('2402', 'ISA active: light fighter explosion radius x0.9', on.explosionRadius / off.explosionRadius, 0.9, 1e-9);
+
+  // Aberrant modules: the passive figure while online, the active one while running.
+  const rifterSpeed = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Overdrive Injector System"), state); f.calculate(); return f.ship.get('maxVelocity'); };
+  const bare = (() => { const f = new Fit(tid('Rifter')); f.calculate(); return f.ship.get('maxVelocity'); })();
+  check('2402', 'Aberrant Overdrive online: +8%', rifterSpeed('online') / bare, 1.08, 1e-9);
+  check('2402', 'Aberrant Overdrive active: +15%', rifterSpeed('active') / bare, 1.15, 1e-9);
+  const capRech = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Cap Recharger"), state); f.calculate(); return f.ship.get('rechargeRate'); };
+  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.75 active', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.7500');
+  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
+  let refused = 0;
+  try { slotsToEsiFitting(tid('Rifter'), 'x', { high: [], mid: [], low: [M("Vigilant 'Vital' Overdrive Injector System", 'active')], rigs: [] }, [], [], []); } catch { refused = 1; }
+  check('2402', 'an Aberrant module is never exported to ESI (placeholder typeID)', refused, 1, 0);
+
+  // Trait text follows the live changes, line by line.
+  const traits = JSON.parse(JSON.stringify((await import('./data/ship-traits.json', { with: { type: 'json' } })).default));
+  const edited = applyPrereleaseTraitEdits(traits, tid);
+  check('2402', 'every trait edit found its line', edited, 14, 0);
+  check('2402', 'Hawk traits name the kinetic split', traits[tid('Hawk')].skills.find(s => s.header.startsWith('Caldari Frigate')).bonuses.map(b => b.number).join(','), '10%,5%,5%');
+}
+
 // ─── PRE-RELEASE SYNCHRONIZER RIGS ────────────────────────────────────────────────────────────────
 // The nine Synchronizer rigs (data/prerelease-rigs.js), built from preview screenshots. NOT
 // pyfa-validated: pyfa has no such rigs. Every expected value is the screenshot's percentage applied
@@ -8789,10 +8883,10 @@ Nanofiber Internal Structure II
 
   // The skill, through calcFitStats the way the app runs it.
   const omen = lv => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: [{ typeID: tid(RIG), state: 'online' }] },
-    [], { ...SKILLS_ALL_V, synchronizerRigging: lv }, {}).capRechargeMs;
+    [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, {}).capRechargeMs;
   check('sync', 'skill at 0: full 200% penalty', omen(0), 1271250);
   check('sync', 'skill at V: penalty halved to 100%', omen(5), 847500);
-  check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizerRigging')?.group ?? '', 'Rigging');
+  check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.group ?? '', 'Rigging');
   const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
   check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '9/9/9');
   check('sync', 'calibration 250 on every size', [...new Set(rigNode.children.flatMap(c => c.mods.map(m => m.calib)))].join(','), '250');

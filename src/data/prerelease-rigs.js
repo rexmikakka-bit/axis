@@ -12,8 +12,11 @@
 //     penalty does not grow.
 //   - ABYSSAL modules never count, even when their base type is a faction module. Every other fitted
 //     module whose name starts with the faction's name does, offline ones included ("fitted").
-//   - a rumoured skill reduces the penalty by 10% per level (50% at V). Its name and numbers are
-//     placeholders: see SKILL below.
+//   - a skill reduces the penalty by 10% per level (50% at V): see SKILL below.
+//
+// CCP's Fractured Skies expansion notes (2026-11-06) then gave all nine rigs in text. Every bonus and
+// penalty matched; they also confirmed the ECM reading below, named the skill Synchronization
+// Rigging (10% less drawback per level), and said only one Synchronizer fits a ship at a time.
 //
 // What was guessed rather than read off the screenshot:
 //   - Small and Large sizes. Only Medium was shown. Owen asked for all three with the same numbers.
@@ -39,12 +42,15 @@
 // Synchronizer". When CCP ships them, delete this file, its call sites and the pre-release skill
 // control (lib/prerelease-skill.js and its users), and add the real effects to the bundle.
 
+import { isPrereleaseModule } from './prerelease-modules.js';
+
 const GROUP = 990950;
 const GROUP_NAME = 'Rig Synchronizer';
 const SKILL_ID = 990940;
-export const PRERELEASE_SKILL_NAME = 'Synchronizer Rigging';
+export const PRERELEASE_SKILL_NAME = 'Synchronization Rigging';
 // The SKILL_CATALOG key calc.js derives for it (camel-cased name). App.jsx sets it on every pilot.
-export const PRERELEASE_SKILL_KEY = 'synchronizerRigging';
+// Its level is stored under its own key (lib/prerelease-skill.js), so the rename kept everyone's.
+export const PRERELEASE_SKILL_KEY = 'synchronizationRigging';
 
 // Attributes. One drawback and four bonus slots per rig, like CCP's `drawback` (1138) on its rigs.
 const A_DRAWBACK = 990901;
@@ -94,7 +100,7 @@ const FACTIONS = [
       [group(G_ENERGY_TURRET, DAMAGE, B4)],
     ],
     lines: [
-      ['200%', 'penalty to ship capacitor recharge rate'],
+      ['200%', 'penalty to ship capacitor recharge time'],
       ['10%', 'bonus to Energy Nosferatu and Energy Neutralizer drain amount'],
       ['10%', 'bonus to the benefits of overheating Energy Nosferatu and Energy Neutralizer modules'],
       ['5%', 'bonus to Energy Nosferatu and Energy Neutralizer optimal range and effectiveness falloff'],
@@ -267,8 +273,8 @@ const EFF_SKILL = 990990;
 const EFF_SKILL_PRESCALE = 2725; // Armor Rigging's: rigDrawbackBonus (1139) *= skillLevel
 const A_SKILL_BONUS = 1139;      // rigDrawbackBonus, the attribute every rigging skill carries
 
-export const PRERELEASE_NOTICE = 'PRE-RELEASE: CCP has shown this rig but not shipped it yet. Its numbers come off a preview screenshot, so expect them to change when it goes live.';
-const SKILL_NOTICE = 'PRE-RELEASE: rumoured, not shown by CCP. Placeholder name and numbers: 10% less Synchronizer rig penalty per level, 50% at V. No character has it, so Axis applies the level you set here to every pilot.';
+export const PRERELEASE_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies on 10 November. Its bonuses are from the expansion notes, not the game data yet, so a figure may still change when it goes live. Only one Synchronizer fits a ship.';
+const SKILL_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies (25 million ISK in the empire schools). 10% less Synchronizer rig drawback per level, 50% at V. No character has it yet, so Axis applies the level you set here to every pilot.';
 
 export const PRERELEASE_RIG_TYPE_IDS = new Set();
 // typeID -> trait entry, for core.js to merge into shipTraits (the info sheet's Traits tab).
@@ -294,6 +300,7 @@ export function applyPrereleaseRigs(types, effects, attrs) {
       const a = {
         4: 200, 9: 40, 38: 0, 161: s.volume, 162: 100, 422: 1, 633: 0,
         1153: CALIBRATION, 1547: s.rigSize,
+        1544: 1,   // maxGroupFitted: one Synchronizer per ship (the expansion notes)
         ...(f.v[0] != null && { [A_DRAWBACK]: f.v[0] }),
         ...Object.fromEntries(A_BONUS.map((aid, i) => [aid, f.v[i + 1]])),
       };
@@ -350,15 +357,16 @@ export function applyPrereleaseRigModules(modulesData, marketGroups, typeIcons, 
       typeID: r.id, name: r.name, groupID: GROUP, groupName: GROUP_NAME,
       marketGroupID: r.size.mg,
       marketGroupPath: ['Ship and Module Modifications', 'Rigs', 'Synchronizer Rigs (Pre-release)', `${r.size.name} Synchronizer Rigs`],
-      slot: 'rigs', meta: 'Faction', cpu: 0, pg: 0, cal: CALIBRATION, maxGroupFit: null, rigSize: r.size.rigSize,
+      slot: 'rigs', meta: 'Faction', cpu: 0, pg: 0, cal: CALIBRATION, maxGroupFit: 1, rigSize: r.size.rigSize,
       chargeGroups: [], requiredSkills: [],
     };
     typeIcons[r.id] ??= ICONS[r.id];
   }
 }
 
-/** True for a rig or skill added here. */
-export const isPrereleaseRig = typeID => PRERELEASE_RIG_TYPE_IDS.has(Number(typeID)) || Number(typeID) === SKILL_ID;
+/** True for a rig or skill added here, or a pre-release Aberrant module (prerelease-modules.js): every
+ *  user — the Pre-release badge, the info sheet's traits, the ESI export block — treats them alike. */
+export const isPrereleaseRig = typeID => PRERELEASE_RIG_TYPE_IDS.has(Number(typeID)) || Number(typeID) === SKILL_ID || isPrereleaseModule(typeID);
 
 /** True where the skill control means something: the skill itself, or a rig with a penalty. */
 export const prereleaseSkillApplies = typeID => Number(typeID) === SKILL_ID

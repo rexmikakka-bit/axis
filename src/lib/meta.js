@@ -15,6 +15,8 @@ import { TYPES } from "../calc.js";
 // Standup ... II genuinely IS the Tech II tier.
 const META_BY_MG={1:"T1",2:"T2",3:"Storyline",4:"Faction",5:"Officer",6:"Deadspace",
                   14:"T3",15:"Abyssal",17:"Premium",19:"Limited",
+                  // A placeholder: the pre-release Aberrant modules (data/prerelease-modules.js).
+                  990:"Aberrant",
                   52:"Faction",53:"T2",54:"T1"};
 const metaOf=(typeID,fallback)=>{
   const t=typeID!=null?TYPES[typeID]:null;
@@ -23,8 +25,8 @@ const metaOf=(typeID,fallback)=>{
 };
 const META_COLORS={T1:"#94a3b8",T2:"#f5a524",Storyline:"#a3e635",Faction:"#22c55e",
                    Deadspace:"#3b82f6",Officer:"#a855f7",T3:"#2dd4bf",Abyssal:"#f472b6",
-                   Premium:"#a855f7",Limited:"#f5a524"};
-const META_ORDER={T1:0,T2:1,Storyline:2,Faction:3,Deadspace:4,Officer:5,T3:6,Abyssal:7,Premium:8,Limited:9};
+                   Premium:"#a855f7",Limited:"#f5a524",Aberrant:"#e879f9"};
+const META_ORDER={T1:0,T2:1,Storyline:2,Faction:3,Deadspace:4,Officer:5,T3:6,Abyssal:7,Premium:8,Limited:9,Aberrant:10};
 
 // ── pyfa's ordering for a list of siblings ────────────────────────────────────
 // pyfa blocks items into FOUR tabs, not one per metaGroup (`Market.META_MAP`, service/market.py):

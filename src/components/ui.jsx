@@ -37,6 +37,7 @@ import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
 import { PRERELEASE_RIG_DESCRIPTIONS, isPrereleaseRig, prereleaseSkillApplies } from "../data/prerelease-rigs.js";
+import { PRERELEASE_MODULE_DESCRIPTIONS } from "../data/prerelease-modules.js";
 import { PrereleaseSkillControl } from "./prerelease-skill.jsx";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
@@ -44,7 +45,7 @@ function useTypeDescriptions() {
   useEffect(() => {
     if (_typeDescsCache) { setDescs(_typeDescsCache); return; }
     import("../data/type-descriptions.json").then(m => {
-      _typeDescsCache = { ...m.default, ...PRERELEASE_RIG_DESCRIPTIONS };
+      _typeDescsCache = { ...m.default, ...PRERELEASE_RIG_DESCRIPTIONS, ...PRERELEASE_MODULE_DESCRIPTIONS };
       setDescs(_typeDescsCache);
     });
   }, []);
@@ -1481,7 +1482,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
         </div>
       )}
       {/* A pre-release Synchronizer rig shows its bonus text (the in-game Traits tab) and the control
-          for the rumoured skill that cuts its penalty, right where you are reading about it. */}
+          for the skill that cuts its penalty, right where you are reading about it. */}
       {isPrereleaseRig(typeID) && hasTraits(typeID) && <div style={{marginBottom:2}}><TraitsPanel typeID={typeID}/></div>}
       {prereleaseSkillApplies(typeID) && <PrereleaseSkillControl/>}
       {/* Under the description, above the skills — it is a fact about the item, not a stat. */}

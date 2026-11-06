@@ -1,8 +1,9 @@
 import TYPE_ICONS from "../data/type-icons.json";
 import { PRERELEASE_SHIP_ART } from "../data/prerelease-ships.js";
+import { PRERELEASE_MODULE_ART } from "../data/prerelease-modules.js";
 
-// A pre-release hull's placeholder typeID has no art anywhere, so it borrows its base hull's.
-const artID = typeID => PRERELEASE_SHIP_ART[typeID] ?? typeID;
+// A pre-release hull's or module's placeholder typeID has no art anywhere, so it borrows its base's.
+const artID = typeID => PRERELEASE_SHIP_ART[typeID] ?? PRERELEASE_MODULE_ART[typeID] ?? typeID;
 
 // ── Icons & renders ─────────────────────────────────────────────────────────────
 // These are BUNDLED from src/assets/, not fetched. The shipped app has to work offline, so the art

@@ -10,11 +10,12 @@
 //     resolution and sensor strength for the Oracle, Talos and Tornado. The Naga's fitting line only;
 //     the rest of its stats were not shown.
 //
-// What was guessed rather than read off a source:
-//   - the Naga Navy Issue's HP, speed, inertia, lock range, scan resolution and sensor strength:
-//     scaled off the Naga by how much the other three grew over their base hulls.
-//   - everything no source covers (signature, capacitor, cargo, mass, heat, resists, drone bay): the
-//     base hull's.
+//   - CCP's Fractured Skies expansion notes (2026-11-06), whose Attributes and Fitting tabs give every
+//     hull's base stats. Checked attribute by attribute against these four: all matched except max
+//     locked targets (Oracle, Talos, Tornado), the Talos's scan resolution, the Naga's sensor strength
+//     and the Naga's and Tornado's cargo, which now follow the notes.
+//
+// What is still not from a source:
 //   - which dogma attribute each bonus line touches, written the way CCP writes the base hull's.
 //   - typeIDs (990001-990004): placeholders well clear of CCP's range. Never exported to ESI. The art is
 //     the base hull's (PRERELEASE_SHIP_ART).
@@ -78,7 +79,7 @@ const SHIPS = [
     id: ORACLE_NI, name: 'Oracle Navy Issue', base: 4302,
     a: {
       14: 7, 13: 3, 12: 7, 102: 6, 101: 0, 11: 1200, 48: 345,
-      263: 2000, 265: 2700, 9: 2500, 37: 225, 70: 0.47, 76: 70000, 564: 230, 208: 22,
+      263: 2000, 265: 2700, 9: 2500, 37: 225, 70: 0.47, 76: 70000, 564: 230, 208: 22, 192: 7,
       [ABC1]: -10,  // large energy turret activation cost (effect 5354, as the Oracle)
       [ABC2]: 15,   // large energy turret damage          (effect 5355, as the Oracle)
       [ABC3]: 7.5,  // large energy turret optimal range   (new, 990101)
@@ -97,7 +98,7 @@ const SHIPS = [
     id: TALOS_NI, name: 'Talos Navy Issue', base: 4308,
     a: {
       14: 7, 13: 4, 12: 6, 102: 6, 101: 0, 11: 975, 48: 360,
-      263: 2200, 265: 2400, 9: 2750, 37: 265, 70: 0.43, 76: 75000, 564: 210, 210: 25,
+      263: 2200, 265: 2400, 9: 2750, 37: 265, 70: 0.43, 76: 75000, 564: 220, 210: 25, 192: 8,
       [GBC2]: 15,   // large hybrid damage        (effect 5359, as the Talos)
       [GBC1]: 7.5,  // large hybrid falloff       (new, 990103; the Talos's tracking bonus, moved)
       [GBC3]: -15,  // armor plate mass penalty   (new, 990105)
@@ -117,7 +118,7 @@ const SHIPS = [
     id: NAGA_NI, name: 'Naga Navy Issue', base: 4306,
     a: {
       14: 7, 13: 7, 12: 3, 102: 0, 101: 6, 11: 650, 48: 475,
-      263: 2700, 265: 2000, 9: 2200, 37: 220, 70: 0.5, 76: 80000, 564: 210, 211: 25,
+      263: 2700, 265: 2000, 9: 2200, 37: 220, 70: 0.5, 76: 80000, 564: 210, 211: 26, 38: 700,
       [CBC1]: 10,   // torpedo and cruise missile kinetic damage             (new, 990108)
       [CBC2]: 5,    // torpedo and cruise missile EM/thermal/explosive damage (new, 990109)
       [CBC3]: 10,   // cruise missile and torpedo max velocity               (new, 990110)
@@ -135,7 +136,7 @@ const SHIPS = [
     id: TORNADO_FI, name: 'Tornado Fleet Issue', base: 4310,
     a: {
       14: 7, 13: 6, 12: 4, 102: 6, 101: 0, 11: 865, 48: 375,
-      263: 2400, 265: 2250, 9: 2250, 37: 280, 70: 0.52, 76: 65000, 564: 240, 209: 21,
+      263: 2400, 265: 2250, 9: 2250, 37: 280, 70: 0.52, 76: 65000, 564: 240, 209: 21, 192: 7, 38: 600,
       [MBC1]: -10,  // large projectile rate of fire   (effect 5360, as the Tornado)
       [MBC2]: 7.5,  // large projectile falloff        (effect 5361, as the Tornado)
       [MBC3]: -15,  // MWD signature radius penalty    (new, 990111)
@@ -153,7 +154,7 @@ const SHIPS = [
 
 // One literal on purpose: check-suite-deps reads `from '…'` as an import, so a string ending in the
 // word "from" followed by a `+` continuation trips it.
-export const PRERELEASE_NOTICE = 'PRE-RELEASE: CCP has announced this ship but not shipped it yet. Its bonuses and stats come off CCP\'s preview images, with a few gaps filled by Axis, so expect them to change when it goes live.';
+export const PRERELEASE_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies on 10 November. Its bonuses and stats are from the Fractured Skies expansion notes, not the game data yet, so a figure may still change when it goes live.';
 
 // Trait entries for core.js to merge into shipTraits, filled in by applyPrereleaseShips() for the
 // hulls it actually added.

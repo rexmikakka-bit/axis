@@ -4,7 +4,7 @@ import { useSyncSkillLevel, setSyncSkillLevel } from "../lib/prerelease-skill.js
 import { PRERELEASE_SKILL_NAME } from "../data/prerelease-rigs.js";
 import { SourceBadge } from "./source-badge.jsx";
 
-// The one control for the pre-release Synchronizer Rigging skill (lib/prerelease-skill.js). Shown at
+// The one control for the pre-release Synchronization Rigging skill (lib/prerelease-skill.js). Shown at
 // the top of Settings > Skills and on every Synchronizer rig's info sheet. The level buttons work
 // like SkillsPanel's rows: tap a level to set it, tap the current level again to untrain.
 export function PrereleaseSkillControl(){
@@ -27,7 +27,7 @@ export function PrereleaseSkillControl(){
         </div>
       </div>
       <div style={{fontSize:11,color:C.textMute,lineHeight:1.45,marginTop:6}}>
-        {t("Rumoured skill: {pct}% less Synchronizer rig penalty at this level (10% per level). Applies to every pilot, since no character has it yet.",{pct:lv*10})}
+        {t("Synchronization Rigging: {pct}% less Synchronizer rig drawback at this level (10% per level). Applies to every pilot, since no character has it yet.",{pct:lv*10})}
       </div>
     </div>
   );

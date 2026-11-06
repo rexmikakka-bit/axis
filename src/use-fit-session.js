@@ -178,7 +178,7 @@ export function useFitSession({ onFitOpened, notify } = {}) {
   useEffect(()=>esi.onCharactersChanged(()=>setEsiSkills(esi.getAllCharacterSkills())),[]);
   // The sheet THIS fit is flown with. A fit can name its pilot (`slots.pilot`); with none named it
   // falls back to the app-wide sheet, which is what every fit did before pilots existed.
-  // The pre-release Synchronizer Rigging level (lib/prerelease-skill.js) is laid over every pilot:
+  // The pre-release Synchronization Rigging level (lib/prerelease-skill.js) is laid over every pilot:
   // no character has the skill yet, so this is the only place its level can come from.
   const syncSkill=useSyncSkillLevel();
   // A fit that names no pilot is flown at All Skills V — on the phone and the desktop alike (Owen,

@@ -1,6 +1,6 @@
-// The level of the pre-release Synchronizer Rigging skill (data/prerelease-rigs.js).
+// The level of the pre-release Synchronization Rigging skill (data/prerelease-rigs.js).
 //
-// App-wide and outside the skill sheet on purpose. The skill is rumoured, so no character has it:
+// App-wide and outside the skill sheet on purpose. The skill is not in the game data yet, so no character has it:
 // an ESI-synced pilot would always read 0 and an unset one would read V, and neither is something a
 // user can change from where they are looking. App.jsx instead lays this one level over every
 // pilot's skills, and the control for it sits in plain sight (Settings > Skills, and the rig's own
