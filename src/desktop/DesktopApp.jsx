@@ -379,7 +379,7 @@ function DesktopApp() {
   useEffect(() => {
     const typing = (el) => !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
     const onKey = (e) => {
-      const { s: cur, hasFit, sheet: open, layout, newTab: startTab } = keysRef.current;
+      const { s: cur, hasFit, sheet: open, newTab: startTab } = keysRef.current;
       const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey;
       const go = (fn) => { e.preventDefault(); fn(); };
       // Ctrl+F: the Browser's search box, opened and focused, whatever has focus now.
@@ -401,11 +401,10 @@ function DesktopApp() {
       if (e.key === "PageDown") return go(() => step(1));
       if (e.key === "PageUp") return go(() => step(-1));
       if (e.shiftKey) { if (k === "l") go(() => requestLockToggle()); return; }
-      if (k === "g") return go(() => {
-        // Opens and raises the Graphs window; a second Ctrl+G with it already open puts it away.
-        const g = layout.windows.graphs;
-        if (g?.open && !g.detached) toggleWindow(setLayoutState, "graphs"); else openWindow(setLayoutState, "graphs");
-      });
+      // Graphs to the front, never away: open it if closed, raise it if open, and if it is a tab in
+      // another window, make it that window's shown tab, in place (Owen: it is often stacked with
+      // the Fitting window).
+      if (k === "g") return go(() => openWindow(setLayoutState, "graphs"));
       if (k === "t") return go(startTab);
       if (k === "w") { if (at >= 0) go(() => cur.closeFitTab(tabs[at])); return; }
       if (k === " ") return go(() => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "toggle", n: Date.now() }); });
@@ -468,7 +467,7 @@ function DesktopApp() {
     setBrowserMode({ mode: "ships", n: Date.now() });
   };
   const hasFit = !!s.activeFit?.ship;
-  keysRef.current = { s, hasFit, sheet, layout: layoutState, newTab };
+  keysRef.current = { s, hasFit, sheet, newTab };
 
   return (
     <InspectContext.Provider value={insp.value}><SheetFrame.Provider value={DialogFrame}><SkillsProvider value={s.fitSkills}>
