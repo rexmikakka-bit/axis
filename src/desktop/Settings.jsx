@@ -14,7 +14,7 @@ import { ASSET_SCOPE, assetLocation } from "../lib/abyssal-library.js";
 import { readAbyssals, saveAbyssalScan } from "../lib/abyssal-store.js";
 import { scanAbyssals, importAbyssals } from "../lib/abyssal-import.js";
 import { requireOnline } from "../lib/network-request.js";
-import { EsiSkillAlignPanel, useEsiCharacters, friendlyError } from "../components/esi-ui.jsx";
+import { EsiSkillAlignPanel, useEsiCharacters, friendlyError, esiPermissions, grantEsiScopes } from "../components/esi-ui.jsx";
 import { PrereleaseSkillControl } from "../components/prerelease-skill.jsx";
 import { BackdropControls } from "./Backdrop.jsx";
 import { TYPE, WEIGHT } from "./kit.jsx";
@@ -206,7 +206,7 @@ function SkillsSection({ s }) {
   return (
     <>
       <Heading first>{t("Skill sheet")}</Heading>
-      <Note>{t("Your own skills. A fit uses them only when its pilot is set to “My skills” with the pilot button above the fit; every other fit is flown at All Skills V unless you pick a pilot for it.")}</Note>
+      <Note>{t("Your own skills. A fit uses them only when its pilot is set to “Your Skills”; every other fit is flown at All Skills V unless you pick a pilot for it.")}</Note>
       <div style={{ height: 8 }} />
       <Choices>
         {SKILL_PRESETS.map(p => <Choice key={p.id} on={matches(p.map)} color={PRESET_COLORS[p.id]} onClick={() => setSkills({ ...p.map })}>{p.label()}</Choice>)}
@@ -464,6 +464,33 @@ function AbyssalSync({ c, saved, onSaved }) {
   );
 }
 
+// Every ESI permission for one character, granted or not, granted from here (esi-ui.jsx
+// esiPermissions): a chip per permission, ✓ when granted and a button when not, and one login for
+// all of the missing ones.
+function EsiPermissions({ c, onError }) {
+  const perms = esiPermissions(), has = (sc) => c.scopes?.includes(sc);
+  const missing = perms.filter(p => !has(p.scope)).map(p => p.scope);
+  const grant = async (scopes) => { try { await grantEsiScopes(c, scopes); } catch (e) { onError(friendlyError(e)); } };
+  return (
+    <div style={{ padding: "0 0 10px 46px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: TYPE.small, color: C.textMid, flex: 1 }}>
+          {t("Permissions")}: <span style={{ color: C.text }}>{perms.length - missing.length}</span> {t("of")} {perms.length}</span>
+        {missing.length > 0 && <button type="button" onClick={() => grant(missing)} style={button(false)}
+          title={t("Log in once more and grant every permission below")}>{t("Grant all")}</button>}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {perms.map(p => has(p.scope)
+          ? <span key={p.scope} title={p.what} style={{ height: 24, display: "inline-flex", alignItems: "center", padding: "0 10px", borderRadius: 12, fontSize: 12,
+                                                      color: C.success, background: `${C.success}18`, border: `1px solid ${C.success}55` }}>✓ {p.label}</span>
+          : <button key={p.scope} type="button" title={`${p.what} · ${t("click to grant")}`} onClick={() => grant([p.scope])}
+              style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12, cursor: "pointer", color: C.textMid, background: "transparent",
+                       border: `1px dashed ${C.borderStrong}` }}>+ {p.label}</button>)}
+      </div>
+    </div>
+  );
+}
+
 function EsiSection({ s }) {
   const { characters, activeId, loginError, refresh, switchActive, remove } = useEsiCharacters();
   const [busy, setBusy] = useState(null);       // characterId being synced
@@ -509,14 +536,14 @@ function EsiSection({ s }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: TYPE.label, color: on ? C.accent : C.text }}>{c.characterName}</div>
               <div style={{ fontSize: TYPE.small, color: C.textMid }}>
-                {t({ one: "{n} scope granted", other: "{n} scopes granted" }, { n: c.scopes?.length ?? 0 })}
-                {synced?.id === c.characterId && <span style={{ color: C.success }}> · ✓ {synced.msg}</span>}
+                {synced?.id === c.characterId ? <span style={{ color: C.success }}>✓ {synced.msg}</span> : on ? t("Active character") : null}
               </div>
             </div>
             <button type="button" onClick={() => sync(c.characterId)} disabled={busy != null} style={{ ...button(false), opacity: busy != null && busy !== c.characterId ? 0.5 : 1 }}>
               {busy === c.characterId ? t("Syncing…") : t("Sync skills")}</button>
             <button type="button" onClick={() => remove(c.characterId)} style={danger()}>{t("Unlink")}</button>
           </div>
+          <EsiPermissions c={c} onError={setError} />
           <AbyssalSync c={c} saved={rolls.filter(r => String(r.characterId) === String(c.characterId)).length}
             onSaved={(r) => { setRolls(r); window.dispatchEvent(new Event(ABYSSALS_CHANGED)); }} />
           </div>

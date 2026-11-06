@@ -23,6 +23,60 @@ export function friendlyError(e) {
   return e?.message || String(e);
 }
 
+// ─── Every ESI permission the app can use, in one place ──────────────────────────────────────
+// Settings › ESI lists them per character and grants any that are missing, so nothing has to be
+// unlocked from inside the feature that needs it (Owen, 2026-11-05). The first three are what a first
+// login asks for (ESI_SCOPES); the rest were requested on demand. All seven are enabled on the
+// registered application (see OPTIONAL_SCOPES_REGISTERED below), which SSO requires for any scope.
+// A function, so its t() calls run at render (lib/i18n.js).
+export function esiPermissions() {
+  return [
+    { scope: "esi-skills.read_skills.v1", label: t("Skills"), what: t("Sync this character's trained skills") },
+    { scope: "esi-fittings.read_fittings.v1", label: t("Read saved fittings"), what: t("Import fits saved in the game") },
+    { scope: "esi-fittings.write_fittings.v1", label: t("Save fittings"), what: t("Export fits to the game's saved fittings") },
+    { scope: ASSET_SCOPE, label: t("Assets"), what: t("My Abyssals, and importing a hangar ship as it is fitted") },
+    { scope: esi.UI_SCOPE, label: t("Open contracts in EVE"), what: t("Open a contract in your running EVE client") },
+    { scope: esi.SHIP_SCOPE, label: t("Current ship"), what: t("Import the ship you are flying") },
+    { scope: esi.STRUCTURE_SCOPE, label: t("Citadel names"), what: t("Name the citadels your ships are docked in") },
+  ];
+}
+/**
+ * Log in again for this character with what it already has plus `scopes`. ESI scopes are fixed when
+ * a token is granted, so adding one means a fresh login; the old grant is kept by asking for it again.
+ */
+export function grantEsiScopes(character, scopes) {
+  return esi.beginLogin([...new Set([...ESI_SCOPES, ...(character?.scopes ?? []), ...scopes])]);
+}
+
+// The phone's list for one character: each permission granted (✓) or with a Grant button, and one
+// login for every missing one. The desktop draws its own (desktop/Settings.jsx) from the same list.
+function EsiPermissionsPanel({ character, onError }) {
+  const perms = esiPermissions();
+  const has = (scope) => character?.scopes?.includes(scope);
+  const missing = perms.filter(p => !has(p.scope)).map(p => p.scope);
+  const grant = async (scopes) => { try { await grantEsiScopes(character, scopes); } catch (e) { onError?.(friendlyError(e)); } };
+  return (
+    <div style={{ marginBottom: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: C.textMid, letterSpacing: .6, textTransform: "uppercase" }}>{t("Permissions")}</span>
+        {missing.length > 0 && <button onClick={() => grant(missing)} style={{ background: "none", border: `1px solid ${C.accent}`, color: C.accent, borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+          {t("Grant all")}</button>}
+      </div>
+      {perms.map(p => (
+        <div key={p.scope} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${C.border}55` }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{p.label}</div>
+            <div style={{ fontSize: 10, color: C.textMute, marginTop: 1 }}>{p.what}</div>
+          </div>
+          {has(p.scope)
+            ? <span style={{ fontSize: 11, color: C.success, fontWeight: 700 }}>✓ {t("Granted")}</span>
+            : <button onClick={() => grant([p.scope])} style={{ background: "none", border: `1px solid ${C.border}`, color: C.textMid, borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{t("Grant")}</button>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Shared row-list character switcher. Renders nothing if zero or one character is linked (nothing
 // to switch between) — callers should still show their own "not connected" state in that case.
 function CharacterPicker({ characters, activeId, onSwitch }) {
@@ -139,6 +193,7 @@ export function EsiSettingsPanel({ setSkills }) {
                 </button>
               </div>
             )}
+            {activeChar && <EsiPermissionsPanel character={activeChar} onError={setError} />}
             <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
               <button onClick={syncSkills} disabled={busy || !activeId} style={{ flex: 1, padding: "10px 0", background: C.accent, border: "none", borderRadius: 8, color: "#fff", fontSize: 13, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
                 {busy ? t("Syncing…") : t("Sync Skills from {name}", { name: activeChar?.characterName ?? t("character") })}
