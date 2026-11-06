@@ -11,7 +11,7 @@ import { useBackdrop, Backdrop } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
 import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
-import DeskSettings from "./Settings.jsx";
+import DeskSettings, { SETTINGS_EVENT } from "./Settings.jsx";
 import { ChooserSheet, PilotSheet } from "../components/layout.jsx";
 import { FeedbackModal } from "../components/feedback.jsx";
 import { EsiImportModal, EsiExportModal } from "../components/esi-ui.jsx";
@@ -242,6 +242,12 @@ function DesktopApp() {
   });
   const flash = (kind, msg, ms = 3000) => banner.notify(kind, msg, ms);
   useEffect(() => { initKeyboardTracking(); }, []);
+  // Settings asked for from inside a window (Settings.jsx requestSettings): open and raise it.
+  useEffect(() => {
+    const open = () => openWindow(setLayoutState, "settings");
+    window.addEventListener(SETTINGS_EVENT, open);
+    return () => window.removeEventListener(SETTINGS_EVENT, open);
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const [layoutState, setLayoutState] = useLayoutState();
   const bd = useBackdrop();

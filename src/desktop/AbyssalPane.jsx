@@ -13,6 +13,7 @@ import { AbyssalBadge, fmtMutaVal, mutaLabel } from "../components/ui.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { dragProps } from "./items.js";
+import { requestSettings, ABYSSALS_CHANGED } from "./Settings.jsx";
 
 // Market › My Abyssals: your saved rolls (the phone module picker's My Abyssals, components/
 // abyssal-library.jsx), across every rack at once. Same store, same grouping and filters
@@ -20,8 +21,8 @@ import { dragProps } from "./items.js";
 // container, with Favorites and Jita 4-4. A roll fits AS that roll (libraryModule), by double-click
 // or by dragging it onto the Fitting window, and opens as itself in an item window.
 //
-// Importing new rolls from EVE is the phone library's job (it scans assets through ESI); on desktop
-// it is reached from an empty slot's module picker, and what it saves shows up here.
+// New rolls come in from EVE through Settings › ESI (each character's Sync abyssals — the phone
+// library's own scan and import); "Sync from EVE…" here opens it, and what it saves shows up here.
 
 const RACKS = [["high", "High"], ["mid", "Mid"], ["low", "Low"], ["rigs", "Rig"]];
 const PAGE = 60;
@@ -40,7 +41,13 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow })
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);
   const [limit, setLimit] = useState(PAGE);
-  useEffect(() => { let live = true; readAbyssals().then(r => { if (live) setRecords(r); }).catch(e => { if (live) setError(e.message); }); return () => { live = false; }; }, []);
+  useEffect(() => {
+    let live = true;
+    const load = () => readAbyssals().then(r => { if (live) setRecords(r); }).catch(e => { if (live) setError(e.message); });
+    load();
+    window.addEventListener(ABYSSALS_CHANGED, load);   // a sync in Settings › ESI
+    return () => { live = false; window.removeEventListener(ABYSSALS_CHANGED, load); };
+  }, []);
   useEffect(() => setLimit(PAGE), [selected, search, favorites, jita, groupBy]);
 
   const words = abyssalSearchWords(search);
@@ -90,11 +97,12 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow })
         <span style={{ flex: 1 }} />
         {chip(favorites, `★ ${t("Favorites")}`, () => setFavorites(v => !v))}
         {chip(jita, t("Jita 4-4"), () => setJita(v => !v))}
+        {chip(false, t("Sync from EVE…"), () => requestSettings("esi"))}
       </div>
       {error && <div role="alert" style={{ padding: "4px 12px", fontSize: 12.5, color: C.danger }}>{error}</div>}
       {!all.length ? (
         <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid, lineHeight: 1.45 }}>
-          {t("No saved abyssal modules yet.")} {t("Import them from EVE through an empty slot's module picker (double-click the slot, then My Abyssals), or save one from its info window.")}
+          {t("No saved abyssal modules yet.")} {t("Sync them from EVE in Settings › ESI, or save one from its info window.")}
         </div>
       ) : <>
         {!words.length && <div role="tree" style={{ flex: "1 1 45%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>

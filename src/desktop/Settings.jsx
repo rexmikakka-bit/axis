@@ -34,6 +34,17 @@ const SECTIONS = [
 ];
 const SECTION_KEY = "axis_desk_settings_section";
 
+// Anything can ask for Settings open at a section ("esi" from the Browser's My Abyssals): the section
+// is remembered first, so a Settings window that is not open yet starts there, and an open one
+// switches. DesktopApp opens the window on the same event.
+export const SETTINGS_EVENT = "axis-open-settings";
+/** Fired when a sync saves rolls, so the Browser's My Abyssals re-reads them. */
+export const ABYSSALS_CHANGED = "axis-abyssals-changed";
+export function requestSettings(section) {
+  try { localStorage.setItem(SECTION_KEY, section); } catch { /* still switches an open window */ }
+  window.dispatchEvent(new CustomEvent(SETTINGS_EVENT, { detail: section }));
+}
+
 // ── Small desktop controls ─────────────────────────────────────────────────────────────────────
 function Heading({ children, first }) {
   return <div style={{ fontSize: TYPE.section, fontWeight: WEIGHT.value, letterSpacing: ".06em", textTransform: "uppercase", color: C.textMid,
@@ -506,7 +517,8 @@ function EsiSection({ s }) {
               {busy === c.characterId ? t("Syncing…") : t("Sync skills")}</button>
             <button type="button" onClick={() => remove(c.characterId)} style={danger()}>{t("Unlink")}</button>
           </div>
-          <AbyssalSync c={c} saved={rolls.filter(r => String(r.characterId) === String(c.characterId)).length} onSaved={setRolls} />
+          <AbyssalSync c={c} saved={rolls.filter(r => String(r.characterId) === String(c.characterId)).length}
+            onSaved={(r) => { setRolls(r); window.dispatchEvent(new Event(ABYSSALS_CHANGED)); }} />
           </div>
         );
       })}
@@ -538,6 +550,11 @@ function AboutSection() {
 
 export default function DeskSettings({ s, bd }) {
   const [section, setSection] = useState(() => { try { return localStorage.getItem(SECTION_KEY) || "skills"; } catch { return "skills"; } });
+  useEffect(() => {
+    const go = (e) => { if (typeof e.detail === "string") setSection(e.detail); };
+    window.addEventListener(SETTINGS_EVENT, go);
+    return () => window.removeEventListener(SETTINGS_EVENT, go);
+  }, []);
   useEffect(() => { try { localStorage.setItem(SECTION_KEY, section); } catch { /* private mode */ } }, [section]);
   // "workspace" was its own section until the background moved into Interface.
   const cur = section === "workspace" ? "interface" : SECTIONS.some(([k]) => k === section) ? section : "skills";
