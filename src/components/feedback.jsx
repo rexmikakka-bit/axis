@@ -5,7 +5,7 @@ import { useDeskSheet, DESK_OVERLAY, deskPanel } from "../lib/sheet-frame.js";
 import { fitToEFT } from "../lib/eft-export.js";
 import { t } from "../lib/i18n.js";
 
-const REPO_URL = "https://github.com/rexmikakka-bit/visviva";
+const REPO_URL = "https://github.com/rexmikakka-bit/axis";
 
 // The export sheet's own dump, not a second hand-rolled one: this used to walk the racks itself and
 // so silently dropped the drone bay, fighters, cargo, offline modules and abyssal rolls — every one

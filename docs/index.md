@@ -4,7 +4,7 @@ title: Axis guide
 
 # Axis guide
 
-Short how-tos for [Axis](https://github.com/rexmikakka-bit/visviva), the free EVE Online fitting tool for iOS and Android. If you know pyfa, these cover the parts that aren't obvious from a phone screen.
+Short how-tos for [Axis](https://github.com/rexmikakka-bit/axis), the free EVE Online fitting tool for iOS and Android. If you know pyfa, these cover the parts that aren't obvious from a phone screen.
 
 - [Importing a fit](importing-fits.md): paste an EFT fit, or pull one from your character.
 - [Importing from pyfa](pyfa-import.md): bring your whole pyfa library across from its XML backup.
@@ -17,7 +17,7 @@ Short how-tos for [Axis](https://github.com/rexmikakka-bit/visviva), the free EV
 - [Abyssal modules and Variations tab](abyssals.md): import your rolls, find listings, compare and filter variants, and fit specific modules.
 - [Shopping list](shopping-list.md): collect the MutaMarket contracts a fit needs and copy or open them.
 
-Get Axis on the [App Store](https://apps.apple.com/us/app/axis-mobile-fitting-tool/id6798416488) or as an [Android APK](https://github.com/rexmikakka-bit/visviva/releases).
+Get Axis on the [App Store](https://apps.apple.com/us/app/axis-mobile-fitting-tool/id6798416488) or as an [Android APK](https://github.com/rexmikakka-bit/axis/releases).
 
 Most screenshots are taken from the app running in a desktop browser at phone size, so the notch and safe-area spacing look slightly different from a real device.
 
