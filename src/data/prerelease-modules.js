@@ -87,5 +87,21 @@ export function applyPrereleaseModuleRecords(modulesData, marketTree = null) {
   }
 }
 
+/**
+ * Files each Aberrant module in its Tech I module's variation family (core.js's moduleVariations,
+ * typeID -> the family's list): appended to the list, and that list set for every member, so the
+ * Variations tab of any member — the Tech I, the T2, a faction one — offers the Aberrant one, and
+ * the Aberrant one's own tab lists the family. Run after the bundle's variations are loaded.
+ */
+export function applyPrereleaseModuleVariations(moduleVariations) {
+  for (const m of MODULES) {
+    if (!PRERELEASE_MODULE_TYPE_IDS.has(m.id)) continue;
+    const family = moduleVariations[String(m.base)] ?? [{ typeID: m.base, name: null }];
+    if (family.some(v => Number(v.typeID) === m.id)) continue;
+    const next = [...family, { typeID: m.id, name: m.name, meta: 'Aberrant' }];
+    for (const v of next) moduleVariations[String(v.typeID)] = next;
+  }
+}
+
 /** True for a module added here. */
 export const isPrereleaseModule = typeID => PRERELEASE_MODULE_TYPE_IDS.has(Number(typeID));

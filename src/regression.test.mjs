@@ -8814,6 +8814,16 @@ Nanofiber Internal Structure II
   let refused = 0;
   try { slotsToEsiFitting(tid('Rifter'), 'x', { high: [], mid: [], low: [M("Vigilant 'Vital' Overdrive Injector System", 'active')], rigs: [] }, [], [], []); } catch { refused = 1; }
   check('2402', 'an Aberrant module is never exported to ESI (placeholder typeID)', refused, 1, 0);
+  // Each Aberrant module is a variation of its Tech I module's family, both ways round.
+  {
+    const { variantsOf } = await import('./lib/core.js');
+    const names = (n) => variantsOf(tid(n)).map(v => v.name);
+    check('2402', 'Shield Boost Amplifier II lists the Aberrant one', names('Shield Boost Amplifier II').includes("Vigilant 'Vital' Shield Boost Amplifier") ? 1 : 0, 1, 0);
+    check('2402', 'and the Aberrant one lists the family', names("Vigilant 'Vital' Shield Boost Amplifier").includes('Shield Boost Amplifier II') ? 1 : 0, 1, 0);
+    check('2402', 'every Aberrant module joined a family',
+      ["Vigilant 'Vital' Overdrive Injector System", "Vigilant 'Vital' Shield Boost Amplifier", "Vigilant 'Vital' Drone Navigation Computer", "Vigilant 'Vital' Cap Recharger"]
+        .filter(n => names(n).length > 1).length, 4, 0);
+  }
 
   // Trait text follows the live changes, line by line.
   const traits = JSON.parse(JSON.stringify((await import('./data/ship-traits.json', { with: { type: 'json' } })).default));
