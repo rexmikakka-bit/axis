@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import DeskWindow from "./DeskWindow.jsx";
-import { WINDOWS, PRESETS, GRID, presetLayout, fitToHeight, bringToFront, snapMove, snapResize, clampIntoView, canvasSize,
+import { WINDOWS, PRESETS, GRID, presetLayout, fitPreset, bringToFront, snapMove, snapResize, clampIntoView, canvasSize,
          readLayoutState, writeLayoutState, cleanLayout, MIN_W, MIN_H, floatsOf, dockedOf, openFloat,
          renameNamed, overwriteNamed, deleteNamed, setPresetHidden, TITLE_H, stackOf, isTabMember,
          combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed, moveTab } from "./layout.js";
@@ -110,7 +110,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
     if (el && PRESETS.some(p => p.id === state.preset) && JSON.stringify(dockedOf(state.windows)) === JSON.stringify(presetLayout(state.preset)))
       // From the preset itself, not s.windows: StrictMode runs this twice, and scaling the already
       // scaled layout again squeezed it twice over. Inspector windows ride along untouched.
-      setState(s => PRESETS.some(p => p.id === s.preset) ? { ...s, windows: { ...fitToHeight(presetLayout(s.preset), el.clientHeight), ...floatsOf(s.windows) } } : s);
+      setState(s => PRESETS.some(p => p.id === s.preset) ? { ...s, windows: { ...fitPreset(s.preset, { w: el.clientWidth, h: el.clientHeight }), ...floatsOf(s.windows) } } : s);
   }, []);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Window operations ─────────────────────────────────────────────────────────────────────────
@@ -205,8 +205,8 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   }, dockedEdit(id)), [setLayout]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyPreset = (id) => {
-    const h = wsRef.current?.clientHeight;
-    setState(s => ({ ...s, windows: { ...fitToHeight(presetLayout(id), h), ...floatsOf(s.windows) }, preset: id }));
+    const el = wsRef.current, view = { w: el?.clientWidth, h: el?.clientHeight };
+    setState(s => ({ ...s, windows: { ...fitPreset(id, view), ...floatsOf(s.windows) }, preset: id }));
   };
   const applyNamed = (name) => {
     setState(s => s.named[name] ? { ...s, windows: { ...dockedOf(cleanLayout(s.named[name])), ...floatsOf(s.windows) }, preset: `named:${name}` } : s);

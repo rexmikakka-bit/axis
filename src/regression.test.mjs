@@ -8923,6 +8923,18 @@ Nanofiber Internal Structure II
     .some(b => fit850[a].x < fit850[b].x + fit850[b].w && fit850[b].x < fit850[a].x + fit850[a].w && fit850[a].y < fit850[b].y + fit850[b].h && fit850[b].y < fit850[a].y + fit850[a].h)) ? 1 : 0, 0, 0);
   check('desk', 'fit to height: widths untouched', fit850.fitting.w, def.fitting.w, 0);
   check('desk', 'fit to height: a tall workspace leaves it alone', D.fitToHeight(def, 1400) === def ? 1 : 0, 1, 0);
+  // Standard: Owen's arrangement, with its tab group, squeezed both ways onto a smaller workspace.
+  const std = D.presetLayout('standard');
+  check('desk', 'Standard: the contents window is one tab group, Cargo shown', `${std.drones.stack.join(',')}|${std.drones.active}|${std.implants.in}`,
+    'drones,cargo,implants,boosters,projected,command|cargo|drones');
+  check('desk', 'Standard: the group survives cleanLayout', D.cleanLayout(JSON.parse(JSON.stringify(std))).drones.stack.length, 6, 0);
+  check('desk', 'Standard: on its own 1640x1136 workspace, left exactly as drawn', D.fitPreset('standard', { w: 1700, h: 1150 }).targeting.x, 1192, 0);
+  const stdSmall = D.fitPreset('standard', { w: 1440, h: 850 });
+  const shown = D.WINDOW_IDS.filter(a => stdSmall[a].open && !D.isTabMember(stdSmall, a));
+  check('desk', 'Standard on 1440x850: everything inside it', shown.every(a => stdSmall[a].x + stdSmall[a].w <= 1440 && stdSmall[a].y + stdSmall[a].h <= 850) ? 1 : 0, 1, 0);
+  check('desk', 'Standard on 1440x850: still no overlaps', shown.some(a => shown.filter(b => b > a)
+    .some(b => stdSmall[a].x < stdSmall[b].x + stdSmall[b].w && stdSmall[b].x < stdSmall[a].x + stdSmall[a].w && stdSmall[a].y < stdSmall[b].y + stdSmall[b].h && stdSmall[b].y < stdSmall[a].y + stdSmall[a].h)) ? 1 : 0, 0, 0);
+  check('desk', 'the other presets are not squeezed sideways', D.fitPreset('default', { w: 1000, h: 1200 }).targeting.x, 984, 0);
   // Pop-out sync sends only the hulls whose arrays changed. Built from the same reference contract
   // the IndexedDB writer uses: one edit replaces exactly one hull's array.
   const P = await import('./desktop/fits-patch.js');

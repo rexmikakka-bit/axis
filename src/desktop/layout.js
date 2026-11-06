@@ -91,9 +91,29 @@ const PRESET_GEOMETRY = {
     browser: [8, 8, 240, 560, false], cargo: [8, 576, 240, 408, false], projected: [256, 616, 356, 368, false],
     fitting: [8, 8, 640, 584, true], firepower: [8, 600, 640, 384, true], graphs: [656, 8, 776, 976, true],
   },
+  // Owen's own arrangement (2026-11-05), drawn on a 1640x1136 workspace: a full-height browser, a tall
+  // Fitting table over one tabbed window of the fit's contents, and the stat column with Capacitor
+  // and Fit price side by side. The tabs' own rects are where each goes when pulled out of the group.
+  standard: {
+    ...CLOSED_BY_DEFAULT,
+    browser: [8, 8, 336, 1128, true], fitting: [352, 8, 832, 808, true],
+    drones: [352, 824, 832, 312, true], cargo: [1616, 8, 400, 192, true], implants: [1240, 912, 352, 208, true],
+    boosters: [340, 600, 380, 360, true], projected: [352, 792, 832, 328, true], command: [300, 640, 356, 300, true],
+    environment: [892, 792, 340, 140, false],
+    resources: [1192, 8, 448, 208, true], defense: [1192, 224, 448, 304, true], firepower: [1192, 536, 448, 200, true],
+    capacitor: [1192, 744, 216, 120, true], price: [1416, 744, 224, 120, true], targeting: [1192, 872, 448, 264, true],
+  },
 };
+// A preset's tab groups: host -> [tabs, host first; the tab shown].
+const PRESET_GROUPS = {
+  standard: { drones: [['drones', 'cargo', 'implants', 'boosters', 'projected', 'command'], 'cargo'] },
+};
+// The workspace a preset is drawn for, when it is not the 1440 x PRESET_HEIGHT the others share. Such
+// a preset is squeezed to a smaller workspace in both directions (fitPreset).
+const PRESET_SIZE = { standard: [1640, 1136] };
 export const PRESETS = [
   { id: 'default', title: 'Default' },
+  { id: 'standard', title: 'Standard' },
   { id: 'mirrored', title: 'Mirrored' },
   { id: 'focus', title: 'Focus' },
   { id: 'graphs', title: 'Graphs' },
@@ -107,6 +127,10 @@ export function presetLayout(id) {
     const [x, y, w, h, open] = g[wid];
     out[wid] = { x, y, w, h, open, detached: false, z: i + 1 };
   });
+  for (const [host, [stack, active]] of Object.entries(PRESET_GROUPS[id] ?? {})) {
+    out[host] = { ...out[host], stack, active };
+    for (const m of stack) if (m !== host) out[m] = { ...out[m], in: host };
+  }
   return out;
 }
 
@@ -121,9 +145,9 @@ export const PRESET_HEIGHT = 984;
  * bars rather than MIN_H: the Resources strip is drawn shorter than MIN_H to begin with, and lifting
  * it to MIN_H here pushed it into the window below.
  */
-export function fitToHeight(layout, viewH) {
-  if (!(viewH > 0) || viewH >= PRESET_HEIGHT + GRID) return layout;
-  const k = (viewH - GRID) / PRESET_HEIGHT;
+export function fitToHeight(layout, viewH, refH = PRESET_HEIGHT) {
+  if (!(viewH > 0) || viewH >= refH + GRID) return layout;
+  const k = (viewH - GRID) / refH;
   const out = {};
   for (const [id, w] of Object.entries(layout)) {
     if (w.float) { out[id] = w; continue; }
@@ -132,6 +156,27 @@ export function fitToHeight(layout, viewH) {
     out[id] = { ...w, y: top, h: Math.max(TITLE_H * 2, bottom - top) };
   }
   return out;
+}
+
+/** fitToHeight's sideways twin, for a preset drawn wider than 1440: x and width scale, floored at MIN_W. */
+export function fitToWidth(layout, viewW, refW) {
+  if (!(viewW > 0) || !(refW > 0) || viewW >= refW + GRID) return layout;
+  const k = (viewW - GRID) / refW;
+  const out = {};
+  for (const [id, w] of Object.entries(layout)) {
+    if (w.float) { out[id] = w; continue; }
+    const left = Math.round((w.x - GRID) * k / GRID) * GRID + GRID;
+    const right = Math.round((w.x + w.w) * k / GRID) * GRID;
+    out[id] = { ...w, x: left, w: Math.max(MIN_W, right - left) };
+  }
+  return out;
+}
+
+/** Preset `id` fitted to a workspace of `view` ({w, h}): squeezed to it, never stretched. */
+export function fitPreset(id, view = {}) {
+  const [refW, refH] = PRESET_SIZE[id] ?? [null, PRESET_HEIGHT];
+  const tall = fitToHeight(presetLayout(id), view.h, refH);
+  return refW ? fitToWidth(tall, view.w, refW) : tall;
 }
 
 // ── Floating inspector windows ─────────────────────────────────────────────────────────────────
