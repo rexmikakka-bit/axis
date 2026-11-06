@@ -1962,13 +1962,27 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
   // whichever rep-amount attribute is populated (armor/shield/structureDamageAmount all default to 0,
   // so a >0 test cleanly picks it without a presence check). Drones orbit the ship they assist, so
   // their reps apply at full strength regardless of the projection range (huge optimal, no falloff).
+  // A logistic drone reps from right beside its target, so it reps in FULL wherever it can get there:
+  // anywhere inside the SOURCE ship's drone control range (skills and Drone Link Augmentors
+  // included, the same figure its own drones' DPS uses), and not at all beyond it. Expressed as an
+  // optimal with no falloff, which calcRangeFactor already treats as exactly that step, so every
+  // card and the stats read it without knowing it is a drone. (Owen's rule, 2026-11-06. pyfa
+  // instead compares the drone's own maxRange — 5 km on a light bot — with the ship-to-ship
+  // distance, which assumes the drones never leave their mothership.)
+  const droneReach = fit.ship.get('droneControlDistance') ?? 20000;
   for (const { item, qty, name } of droneItems) {
     if (!item || item.groupName !== 'Logistic Drone') continue;
     const dur = (item.get('duration') ?? 0) / 1000;
     if (dur <= 0) continue;
     const amt = { armor: item.get('armorDamageAmount') ?? 0, shield: item.get('shieldBonus') ?? 0, hull: item.get('structureDamageAmount') ?? 0 };
     for (const kind of ['armor', 'shield', 'hull']) {
-      if (amt[kind] > 0) reps.push({ kind, name, rawPS: (amt[kind] / dur) * qty, optimal: 1e9, falloff: 0 });
+      // amount/cycleS are ONE drone's, and `sources` how many there are: the incoming-rep
+      // diminishing-returns curve (applyRemoteRepDiminishing) takes each drone as its own source, as
+      // eos does (it runs a drone's projected effect once per active drone). Without them a single
+      // flight of maintenance bots turned the whole layer's incoming reps into NaN, which the Stats
+      // tab read as 0 — a Basilisk's five remote boosters vanished along with its bots (issue #105).
+      // rawPS stays the whole flight's, which is what every per-fit card sums.
+      if (amt[kind] > 0) reps.push({ kind, name, rawPS: (amt[kind] / dur) * qty, amount: amt[kind], cycleS: dur, sources: qty, optimal: droneReach, falloff: 0 });
     }
   }
   return { reps, caps, webs, neuts, painters, scrams, damps, sensorBoosts, trackDisr, guideDisr, ecm };

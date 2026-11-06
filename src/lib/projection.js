@@ -90,7 +90,8 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
     const eff=projectedFitEffects(pf.ship,fit,fitsDB,sourceSkills);
     const rangeM=(pf.rangeKm??30)*1000;
     const rf=(o,fo)=>calcRangeFactor(o,fo,rangeM,true);
-    if(AF.rep>0)for(const r of eff.reps)repEntries[r.kind].push({amount:r.amount*AF.rep*rf(r.optimal,r.falloff),cycleS:r.cycleS});
+    // One entry per rep SOURCE: a flight of logistic drones is `sources` of them (computeProjectedReps).
+    if(AF.rep>0)for(const r of eff.reps)for(let n=0;n<(r.sources??1);n++)repEntries[r.kind].push({amount:r.amount*AF.rep*rf(r.optimal,r.falloff),cycleS:r.cycleS});
     for(const w of eff.webs)webMults.push(1+(w.speedFactor*rz('web')*rf(w.optimal,w.falloff))/100);
     for(const n of eff.neuts)neutGJs+=n.gjPerSec*rz('neut')*rf(n.optimal,n.falloff);
     // Remote capacitor transfer is ASSISTANCE: refused wholesale by disallowAssistance (an
