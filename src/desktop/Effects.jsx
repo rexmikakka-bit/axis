@@ -55,19 +55,24 @@ const None = ({ children }) => <div style={{ padding: "12px", fontSize: TYPE.lab
 // side effect to simulate it, the stat on the left, the change on the right (red while it applies).
 // The data and the toggle are the phone card's (boosterSideEffectState), so the two cannot disagree.
 function SideEffects({ booster, onUpdate }) {
+  const [open, setOpen] = useState(false);
   const { effects, chancePct, toggled } = boosterSideEffectState(booster);
   if (!effects.length) return null;
   const on = effects.filter(e => e.enabled).length;
   return (
-    <div style={{ padding: "2px 12px 8px 38px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, minHeight: 22 }}>
+    <div style={{ padding: open ? "0 12px 8px 38px" : "0 12px 4px 38px" }}>
+      {/* Collapsed by default (Owen); the header still says how many are being simulated, so a
+          penalty that is on never hides. Its own click, kept off the row's select / double-click. */}
+      <button type="button" aria-expanded={open} onClick={ev => { ev.stopPropagation(); setOpen(v => !v); }} onDoubleClick={ev => ev.stopPropagation()}
+        style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 22, width: "100%", padding: 0, border: "none", background: "none", cursor: "pointer", textAlign: "left" }}>
+        <span aria-hidden="true" style={{ fontSize: 9, color: C.textMid, width: 10, display: "inline-block", transform: open ? "rotate(90deg)" : "none", transition: "transform .12s" }}>▶</span>
         <span style={{ fontSize: TYPE.small, color: C.warning }}>{t("Side effects")}</span>
         <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t("{pct}% chance each", { pct: chancePct })}</span>
         {on > 0 && <span style={{ fontSize: TYPE.small, color: C.danger, marginLeft: "auto" }}>{t("{n} simulated", { n: on })}</span>}
-      </div>
-      {effects.map((e, i) => (
-        <label key={e.key ?? i} title={t("Simulate this side effect")}
-          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, cursor: "pointer" }}>
+      </button>
+      {open && effects.map((e, i) => (
+        <label key={e.key ?? i} title={t("Simulate this side effect")} onDoubleClick={ev => ev.stopPropagation()}
+          style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, cursor: "pointer", paddingLeft: 18 }}>
           <input type="checkbox" checked={!!e.enabled} onChange={() => onUpdate(toggled(i))}
             style={{ width: 14, height: 14, accentColor: C.danger, flex: "none", cursor: "pointer", margin: 0 }} />
           <span style={{ flex: 1, minWidth: 0, fontSize: TYPE.small, color: e.enabled ? C.text : C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.label}</span>
