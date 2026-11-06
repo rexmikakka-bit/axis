@@ -244,7 +244,9 @@ requirement-only skill actually reaches the engine instead of falling through to
 ## Per-fit pilot (`slots.pilot`) — one resolver, and it must stay the only one
 
 A fit can name whose skills it is flown with: `slots.pilot` is `"allV"`, `"alpha"`, `"me"` or
-`"esi:<characterId>"`, absent meaning "the app-wide sheet". `resolvePilotSkills()` in `src/lib/pilot.js`
+`"esi:<characterId>"`, absent meaning **All Skills V** (since 2026-11-05, both apps: the app-wide sheet
+applies only to a fit set to `"me"`, "Your Skills" in the pilot sheet; `use-fit-session.js` passes
+`SKILL_DEFAULTS` as the fallback). `resolvePilotSkills()` in `src/lib/pilot.js`
 is the **only** place that decision is made, and it is deliberately pure and esi-free (`calc.js` and
 the regression suite import it; `esi.js` touches `localStorage` and `fetch`) — the per-character skill
 cache is passed in. It is written at sync time to `axis_esi_skills`; an `esi:` pilot that has never
@@ -253,7 +255,7 @@ synced falls back rather than guessing, because a character connected on another
 Three things here are load-bearing:
 
 - **`fallback` is the caller's, not `appSkills`.** They are different questions: "no pilot named"
-  resolves to the app sheet in the app and to all V in a headless caller, while an unresolvable
+  resolves to all V (the app's choice, no longer the app sheet), while an unresolvable
   `esi:` pilot must never quietly borrow *your* skills.
 - **A projection/command SOURCE fit resolves through the SAME resolver with the SAME fallback as the
   fit being edited**, so a saved fit reads identically whether you are editing it or projecting it.

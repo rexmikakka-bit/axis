@@ -122,6 +122,8 @@ function SkillsPanel({skills,setSkills,profiles,setProfiles}){
   const matches=map=>SKILL_CATALOG.every(e=>lvlOf(e.key)===(map[e.key]??0));
   return(
     <div>
+      {/* Fits default to All V since 2026-11-05 (use-fit-session.js), so say where this sheet applies. */}
+      <div style={{fontSize:11,color:C.textMute,lineHeight:1.5,marginBottom:10}}>{t("Your own skills. A fit uses them only when its pilot is set to “Your Skills”; every other fit is flown at All Skills V unless you pick a pilot for it.")}</div>
       <EsiSkillAlignPanel setSkills={setSkills}/>
       <SkillProfilesPanel skills={skills} setSkills={setSkills} profiles={profiles} setProfiles={setProfiles}/>
       <PrereleaseSkillControl/>

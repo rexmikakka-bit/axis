@@ -190,8 +190,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
 /** One window, popped out into its own OS window. Closing it (or Dock) puts it back in the workspace. */
 function SatelliteApp({ id }) {
   const banner = useBanner();
-  // Desktop: a fit with no pilot chosen is All Skills V (use-fit-session.js unassignedAllV).
-  const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify, unassignedAllV: true });
+  const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify });
   const adderRef = useRef(null);
   const sync = useSessionSync(s, { onMessage: (m) => {
     if (m.type === "add") adderRef.current?.(m.secKey, m.mod);
@@ -237,8 +236,6 @@ function DesktopApp() {
     // The fit lives in its own window here, so opening one changes no navigation.
     onFitOpened: () => {},
     notify: banner.notify,
-    // A fit with no pilot chosen is flown at All Skills V; the pilot button sets this fit's alone.
-    unassignedAllV: true,
   });
   const flash = (kind, msg, ms = 3000) => banner.notify(kind, msg, ms);
   useEffect(() => { initKeyboardTracking(); }, []);
@@ -458,7 +455,7 @@ function DesktopApp() {
       {sheet === "esiimport" && <EsiImportModal onClose={close} onImport={s.importFit} />}
       {sheet === "esiexport" && <EsiExportModal activeFit={s.activeFit} slots={s.slots} drones={s.drones} cargoItems={s.cargoItems} fighters={s.fighters} implants={s.implants} boosters={s.boosters} onClose={close} />}
       {sheet === "dmgprofile" && <DamageProfileSheet current={s.dmgProfile} onSelect={s.setDmgProfile} onClose={close} />}
-      {sheet === "pilot" && <PilotSheet unsetIsAllV pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
+      {sheet === "pilot" && <PilotSheet pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
         missing={s.skillCheck.missing} appSkills={s.skills} skillProfiles={s.skillProfiles} onClose={close} />}
       {sheet === "shipinfo" && hasFit && <ShipInfoSheet ship={ship ?? { name: s.activeFit.ship }} cs={stats.snapshot} onClose={close} />}
       {sheet === "snapshot" && <SnapshotModal onClose={close} assist={s.projectedEffects?.assist} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}

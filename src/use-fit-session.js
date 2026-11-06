@@ -39,10 +39,7 @@ export const THEME_PREF_KEY = 'axis_theme_pref';
 const AUTOFILL_HARDPOINTS_KEY = 'axis_autofill_hardpoints';
 const CLOSE_BROWSER_ON_ADD_KEY = 'axis_close_browser_on_add';
 
-// `unassignedAllV` (desktop only): a fit that names no pilot is flown at All Skills V rather than the
-// app-wide sheet, so the sheet only ever applies to a fit that chose it ("me"), and a pilot picked on
-// one fit stays that fit's. The phone passes nothing and keeps the app-wide fallback.
-export function useFitSession({ onFitOpened, notify, unassignedAllV = false } = {}) {
+export function useFitSession({ onFitOpened, notify } = {}) {
   const banner = (kind, msg, ms) => notify?.(kind, msg, ms);
   const[_tick,_setTick]=useState(0);
   useEffect(()=>{
@@ -184,7 +181,10 @@ export function useFitSession({ onFitOpened, notify, unassignedAllV = false } = 
   // The pre-release Synchronizer Rigging level (lib/prerelease-skill.js) is laid over every pilot:
   // no character has the skill yet, so this is the only place its level can come from.
   const syncSkill=useSyncSkillLevel();
-  const unassigned=unassignedAllV?SKILL_DEFAULTS:skills;
+  // A fit that names no pilot is flown at All Skills V — on the phone and the desktop alike (Owen,
+  // 2026-11-05). The app-wide sheet (Settings › Skills) applies only to a fit that chose it ("me",
+  // "Your Skills" in the pilot sheet), so a pilot picked on one fit stays that fit's alone.
+  const unassigned=SKILL_DEFAULTS;
   const pilotSkills=useMemo(()=>resolvePilotSkills(slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:unassigned}),
                           [slots?.pilot,skills,esiSkills,skillProfiles,unassigned]);
   const fitSkills=useMemo(()=>({...pilotSkills,[PRERELEASE_SKILL_KEY]:syncSkill}),[pilotSkills,syncSkill]);

@@ -197,10 +197,9 @@ function SkillBook({ok,count,onClick,custom}){
 // One control, two questions: WHO flies this fit, and what can't they use. They belong together —
 // the gap list is only meaningful relative to a pilot, and picking a different one rewrites it.
 // `pilot` is a string on the fit (lib/pilot.js): absent means "your skills", the app-wide sheet.
-// `unsetIsAllV` (desktop only): there a fit with no pilot is flown at All V (use-fit-session.js), so
-// "Your Skills" has to be stored as an explicit PILOT_ME and an unset pilot reads as All V. The phone
-// passes nothing: unset still means the app-wide sheet.
-export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],onClose,unsetIsAllV=false}){
+// A fit with no pilot is flown at All V (use-fit-session.js), so "Your Skills" is stored as an explicit
+// PILOT_ME and an unset pilot reads as All V.
+export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],onClose}){
   const sheet=useSheetDrag(onClose);
   const chars=(()=>{ try{ return esi.listCharacters(); }catch{ return []; } })();
   const cached=(()=>{ try{ return esi.getAllCharacterSkills(); }catch{ return {}; } })();
@@ -208,7 +207,7 @@ export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],on
     // "Your Skills" is the only option that doesn't say what you'd be flying with — the other rows
     // name a character or a ceiling. Naming the sheet here saves a trip to Settings to find out
     // whether it is still all V, still aligned to a pilot, or something you edited by hand.
-    {id:unsetIsAllV?PILOT_ME:null,label:t("Your Skills ({sheet})",{sheet:describeSkillSheet(appSkills,{esiSkills:cached,characters:chars,profiles:skillProfiles})}),
+    {id:PILOT_ME,label:t("Your Skills ({sheet})",{sheet:describeSkillSheet(appSkills,{esiSkills:cached,characters:chars,profiles:skillProfiles})}),
      sub:t("The sheet in Settings → Skills")},
     {id:PILOT_ALL_V,label:t("All V"),sub:t("Every skill trained to V")},
     {id:PILOT_ALPHA,label:t("Alpha"),sub:t("CCP's alpha clone ceiling")},
@@ -230,7 +229,7 @@ export function PilotSheet({pilot,setPilot,missing,appSkills,skillProfiles=[],on
       sub:t({one:"Saved profile — {n} trained skill",other:"Saved profile — {n} trained skills"},{n:SKILL_CATALOG.filter(e=>(p.skills?.[e.key]??5)>0).length}),
     })),
   ];
-  const cur=pilot??(unsetIsAllV?PILOT_ALL_V:null);
+  const cur=pilot??PILOT_ALL_V;
   const desk=useDeskSheet();   // desktop: a centred dialog, same content (lib/sheet-frame.js)
   return(
     <div onClick={sheet.dismiss} style={desk?DESK_OVERLAY:{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
