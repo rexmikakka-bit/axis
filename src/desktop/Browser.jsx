@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
@@ -66,7 +66,7 @@ function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub,
 // With an ✕ to clear it once there is something in it; Escape in the box clears it too.
 const SearchBox = ({ value, onChange, placeholder }) => (
   <div style={{ position: "relative", margin: "8px 10px 6px", flex: "none" }}>
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+    <input data-desk-search value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
       onKeyDown={e => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange(""); } }}
       style={{ height: 28, boxSizing: "border-box", width: "100%", padding: value ? "0 30px 0 10px" : "0 10px", borderRadius: 6, fontSize: 13.5,
                background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
@@ -392,12 +392,19 @@ function ShipsPane({ s }) {
   );
 }
 
-// `modeRequest` ({mode, n}): switch to that mode now — the header's "+" asks for Ships.
+// `modeRequest` ({mode, n, focus}): switch to that mode now — the header's "+" asks for Ships,
+// Ctrl+Space for "toggle" (pyfa's ship/market switch) — and with `focus`, put the cursor in the
+// search box (Ctrl+F).
 export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequest }) {
   const [mode, setMode] = useState("ships");
-  useEffect(() => { if (modeRequest?.mode) setMode(modeRequest.mode); }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (modeRequest?.mode === "toggle") setMode(m => (m === "ships" ? "market" : "ships"));
+    else if (modeRequest?.mode) setMode(modeRequest.mode);
+    if (modeRequest?.focus) requestAnimationFrame(() => { const el = rootRef.current?.querySelector("[data-desk-search]"); el?.focus(); el?.select?.(); });
+  }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div role="tablist" style={{ display: "flex", margin: "8px 10px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 6, overflow: "hidden", flex: "none" }}>
         {[["market", t("Market")], ["ships", t("Ships")]].map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)}

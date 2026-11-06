@@ -7,6 +7,7 @@ import { WINDOWS, PRESETS, GRID, presetLayout, fitPreset, bringToFront, snapMove
          renameNamed, overwriteNamed, deleteNamed, setPresetHidden, TITLE_H, stackOf, isTabMember,
          combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed, moveTab, hostOf, placeInView } from "./layout.js";
 import { ContextMenu } from "./ContextMenu.jsx";
+import { LAYOUT_EVENT, LOCK_EVENT } from "./kit.jsx";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
 // holding the detached tray and the layout controls. What a window CONTAINS is the caller's
@@ -243,6 +244,18 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   const [chipMenu, setChipMenu] = useState(null);   // {x, y, items}
   const commitRename = () => { if (renaming) setState(s => renameNamed(s, renaming.from, renaming.text)); setRenaming(null); };
   const hiddenPresets = state.hidden ?? [];
+  // Alt+1…9 picks the n-th chip as drawn below — built-in presets, then saved layouts — and
+  // Ctrl+Shift+L toggles Lock layout (DesktopApp's shortcuts; kit.jsx's events).
+  const chipsRef = useRef([]);
+  const shownPresetCount = PRESETS.filter(p => !hiddenPresets.includes(p.id)).length;
+  chipsRef.current = [...PRESETS.filter(p => !hiddenPresets.includes(p.id)).map(p => () => applyPreset(p.id)),
+                      ...Object.keys(state.named).map(name => () => applyNamed(name))];
+  useEffect(() => {
+    const onLayout = (e) => chipsRef.current[e.detail?.index]?.();
+    const onLock = () => setState(s => ({ ...s, locked: !s.locked }));   // the Lock layout chip's setFlag
+    window.addEventListener(LAYOUT_EVENT, onLayout); window.addEventListener(LOCK_EVENT, onLock);
+    return () => { window.removeEventListener(LAYOUT_EVENT, onLayout); window.removeEventListener(LOCK_EVENT, onLock); };
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
   const restoreItems = hiddenPresets.length ? [{ divider: true }, { heading: t("Hidden layouts") },
     ...hiddenPresets.map(id => ({ label: t("Show {name}", { name: t(PRESETS.find(p => p.id === id)?.title ?? id) }), onSelect: () => setState(s => setPresetHidden(s, id, false)) }))] : [];
   const openChipMenu = (e, items) => { e.preventDefault(); setChipMenu({ x: e.clientX, y: e.clientY, items: [...items, ...restoreItems] }); };
@@ -314,14 +327,14 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
           : <span style={{ fontSize: 12, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>
-        {PRESETS.filter(p => !hiddenPresets.includes(p.id)).map(p => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}
-          title={t("Right-click for options")} onContextMenu={(e) => openChipMenu(e, presetMenu(p))}>{t(p.title)}</Chip>)}
-        {Object.keys(state.named).map(name => renaming?.from === name
+        {PRESETS.filter(p => !hiddenPresets.includes(p.id)).map((p, i) => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}
+          title={`${t("Right-click for options")}${i < 9 ? ` · Alt+${i + 1}` : ""}`} onContextMenu={(e) => openChipMenu(e, presetMenu(p))}>{t(p.title)}</Chip>)}
+        {Object.keys(state.named).map((name, ni) => renaming?.from === name
           ? <input key={name} autoFocus value={renaming.text} aria-label={t("Layout name")} onChange={(e) => setRenaming(r => ({ ...r, text: e.target.value }))}
               onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenaming(null); }} onBlur={commitRename}
               style={{ height: 22, width: 140, boxSizing: "border-box", padding: "0 8px", borderRadius: 11, fontSize: 11.5,
                        background: C.bg, border: `1px solid ${C.accent}`, color: C.text, outline: "none" }} />
-          : <Chip key={name} on={state.preset === `named:${name}`} onClick={() => applyNamed(name)} title={t("Double-click to rename · right-click for options")}
+          : <Chip key={name} on={state.preset === `named:${name}`} onClick={() => applyNamed(name)} title={`${t("Double-click to rename · right-click for options")}${shownPresetCount + ni < 9 ? ` · Alt+${shownPresetCount + ni + 1}` : ""}`}
               onDoubleClick={() => setRenaming({ from: name, text: name })} onContextMenu={(e) => openChipMenu(e, namedMenu(name))}>{name}</Chip>)}
         {chipMenu && <ContextMenu x={chipMenu.x} y={chipMenu.y} items={chipMenu.items} onClose={() => setChipMenu(null)} />}
         {tabMenu && <ContextMenu x={tabMenu.x} y={tabMenu.y} onClose={() => setTabMenu(null)} items={[

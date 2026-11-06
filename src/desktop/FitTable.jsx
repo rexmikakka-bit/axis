@@ -1,9 +1,9 @@
-import { createContext, Fragment, useContext, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES, tidByName } from "../calc.js";
-import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser, gestureTarget, DOUBLE_TAP_MS } from "../lib/core.js";
 import { metaOf } from "../lib/meta.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -99,20 +99,48 @@ function infoOf(e, perCycle) {
 export const FitTableConfig = createContext({});
 
 /**
- * The state dot, with pyfa's mouse bindings (Owen, 2026-11-04):
- *   click        running <-> idle: active <-> online, or online <-> offline for a module that
- *                cannot be activated
- *   right-click  overheat (or cool back down to active)
- *   ctrl-click   offline (or back online)
+ * The state dot. pyfa's mouse bindings AND the phone's gestures, so it works for whichever one you
+ * come from (Owen, 2026-11-06):
+ *   click            running <-> idle: active <-> online, or online <-> offline for a module that
+ *                    cannot be activated
+ *   right-click      overheat, or cool back down to active         (pyfa)
+ *   double-click     the same                                       (the phone's double-tap)
+ *   ctrl-click       offline, or back online                        (pyfa)
+ *   hold             the same                                       (the phone's hold)
  * Each only offers a state the module supports (validStatesFor), and goes through FitTab's own
  * setRowState, so a grouped row changes every module in its group as the phone's dot does.
+ *
+ * A double-click arrives as two clicks first, and the first has already run or stopped the module.
+ * So the pair is resolved from the state BEFORE the first click (kept per row, outside React, as the
+ * phone keeps its gesture memory: a state change can remount the row): active is overheated, and
+ * overheated cools to active, rather than whatever the first click left. The double-click never
+ * reaches the row, where it would unfit the module.
  */
+const HOLD_MS = 450;
+const lastDotClick = new Map();   // row id -> { at: event timeStamp, before: state before that click }
 function StateToggle({ row, states, onSet }) {
   const has = (st) => states.includes(st);
   const cur = row.state ?? "online";
+  const hold = useRef({ timer: null, fired: false });
+  useEffect(() => () => clearTimeout(hold.current.timer), []);
+  const set = (next, from) => { if (next && next !== from) onSet(next); };
+  const down = (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();   // not a row press: no row drag, no selection change
+    hold.current.fired = false; clearTimeout(hold.current.timer);
+    hold.current.timer = setTimeout(() => { hold.current.fired = true; lastDotClick.delete(row.id); set(gestureTarget(states, cur, "hold"), cur); }, HOLD_MS);
+  };
+  const cancelHold = () => clearTimeout(hold.current.timer);
   const click = (e) => {
-    e.stopPropagation();
-    if (e.ctrlKey || e.metaKey) { if (has("offline")) onSet(cur === "offline" ? "online" : "offline"); return; }
+    e.stopPropagation(); cancelHold();
+    if (hold.current.fired) { hold.current.fired = false; return; }   // the hold already acted
+    if (e.ctrlKey || e.metaKey) { lastDotClick.delete(row.id); if (has("offline")) onSet(cur === "offline" ? "online" : "offline"); return; }
+    const prev = lastDotClick.get(row.id);
+    if (prev && e.timeStamp - prev.at < DOUBLE_TAP_MS) {
+      lastDotClick.delete(row.id);
+      return set(gestureTarget(states, prev.before, "double"), cur);
+    }
+    lastDotClick.set(row.id, { at: e.timeStamp, before: cur });
     if (has("active")) onSet(cur === "active" || cur === "overheated" ? "online" : "active");
     else if (has("offline")) onSet(cur === "offline" ? "online" : "offline");
   };
@@ -124,8 +152,9 @@ function StateToggle({ row, states, onSet }) {
   // halo, so a running module reads as a lamp that is on (Owen asked for that look back).
   const color = STATE_COLORS[cur] ?? C.textMid, glow = STATE_GLOW[cur] ?? 0;
   return (
-    <button type="button" onClick={click} onContextMenu={context}
-      title={`${STATE_LABELS[cur]?.() ?? cur} — ${t("click: on/off · right-click: overheat · ctrl-click: offline")}`}
+    <button type="button" onClick={click} onContextMenu={context} onDoubleClick={e => e.stopPropagation()}
+      onPointerDown={down} onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
+      title={`${STATE_LABELS[cur]?.() ?? cur} — ${t("click: on/off · double-click or right-click: overheat · hold or ctrl-click: offline")}`}
       aria-label={STATE_LABELS[cur]?.() ?? cur}
       style={{ width: 16, height: 16, padding: 0, border: "none", background: "transparent", cursor: "pointer", display: "grid", placeItems: "center" }}>
       <span style={{ width: 7, height: 7, borderRadius: 99, background: color, boxShadow: glow ? `0 0 ${glow}px ${color}` : "none",
