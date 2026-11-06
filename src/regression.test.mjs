@@ -1783,6 +1783,28 @@ function check(group, label, actual, expected, tol = 0.005) {
         applyRemoteRepDiminishing([{ amount: 768, cycleS: 6 }]), 128.0, 0.0005);
   check('rrcurve', 'no sources', applyRemoteRepDiminishing([]), 0, 0);
 
+  // (b2) Issue #105: a projected logi WITH logistic drones. The drone record carried only rawPS, so its
+  //      undefined amount made the layer's diminishing-returns total NaN, and the Stats tab showed the
+  //      whole layer — remote boosters too — as 0. The reporter's Basilisk: 3x Large RSB II, 2x Gistum
+  //      A-Type Medium RSB, 5x Light Shield Maintenance Bot II, at 29 km (every source in range; the
+  //      drones ignore range). This far below the curve's knee, applied ~= the plain sum.
+  {
+    const { buildProjectedEffects } = await import('./lib/projection.js');
+    const basi = { name: 'Basilisk', typeID: tid('Basilisk') };
+    const basiSlots = { high: [...Array.from({ length: 3 }, () => M('Large Remote Shield Booster II', 'active')),
+                               M('Gistum A-Type Medium Remote Shield Booster', 'active'), M('Gistum A-Type Medium Remote Shield Booster', 'active')],
+                        mid: [], low: [], rigs: [] };
+    const bots = [{ name: 'Light Shield Maintenance Bot II', typeID: tid('Light Shield Maintenance Bot II'), qty: 5, active: true }];
+    const fitsDB = { Basilisk: [{ name: 'Reps', slots: basiSlots, drones: bots }] };
+    const proj = (db) => buildProjectedEffects({ projFits: [{ ship: 'Basilisk', fitName: 'Reps', rangeKm: 29 }], fitsDB: db, sourceSkills: () => null,
+      shipName: 'Cenotaph', slots: EMPTY, skills: null, externalBursts: [] }).reps.shield;
+    const plain = computeProjectedReps(basi, basiSlots, null, { drones: bots }).reps.filter(r => r.kind === 'shield').reduce((s, r) => s + r.rawPS, 0);
+    const withBots = proj(fitsDB);
+    check('rrcurve', 'logi with logistic drones: shield reps arrive (not NaN)', Number.isFinite(withBots) ? 1 : 0, 1, 0);
+    check('rrcurve', 'and come to the sum of every source, boosters and bots', withBots, plain, 0.005);
+    check('rrcurve', 'the bots count, one source per drone', withBots > proj({ Basilisk: [{ ...fitsDB.Basilisk[0], drones: [] }] }) ? 1 : 0, 1, 0);
+  }
+
   // (c) eos: Loki + Gistum A-Type Medium Remote Shield Booster + Shield Command Burst II (Active
   //     Shielding) = 66.6667 HP/s without subsystems, 67.8643 with them (burst -15% -> -16.5%).
   const loki = { typeID: tid('Loki'), name: 'Loki' };
