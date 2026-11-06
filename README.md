@@ -3,7 +3,7 @@
 Axis is a free ship-fitting calculator for EVE Online, available on iOS and Android. Build and save fits, compare equipment, and check performance from your phone. Fitting calculations work offline, with no ads or account required.
 
 - [Download on the App Store](https://apps.apple.com/us/app/axis-mobile-fitting-tool/id6798416488)
-- [Download the Android APK](https://github.com/rexmikakka-bit/visviva/releases)
+- [Download the Android APK](https://github.com/rexmikakka-bit/axis/releases)
 
 Android installation may require permission to install apps from outside the Play Store.
 
@@ -13,7 +13,7 @@ Axis is built with substantial help from AI coding tools, including Claude and O
 
 ## Guide
 
-Short how-tos for the parts of Axis that aren't obvious from a phone screen. If you know pyfa, start here. The guide is also on the web at [rexmikakka-bit.github.io/visviva](https://rexmikakka-bit.github.io/visviva/).
+Short how-tos for the parts of Axis that aren't obvious from a phone screen. If you know pyfa, start here. The guide is also on the web at [rexmikakka-bit.github.io/axis](https://rexmikakka-bit.github.io/axis/).
 
 - [Importing a fit](docs/importing-fits.md): paste an EFT fit, or pull one from your character.
 - [Importing from pyfa](docs/pyfa-import.md): bring your whole pyfa library across from its XML backup.
