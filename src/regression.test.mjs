@@ -8977,9 +8977,9 @@ Nanofiber Internal Structure II
     [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, {});
   check('sync', 'skill at 0: full 200% penalty', omen(0).capRechargeMs, 1271250);
   check('sync', 'skill at V: the faction penalty is NOT reduced', omen(5).capRechargeMs, 1271250);
-  // The CPU drawback's SIZE is a placeholder (CPU_PENALTY, -10%); these pin the skill's scaling of it.
+  // The CPU drawback: 10% on every Synchronizer, 50% less at skill V (Owen, 2026-11-07).
   const bareCpu = omen(0, null).cpuTotal;
-  check('sync', 'CPU drawback, skill at 0: full placeholder 10%', omen(0).cpuTotal / bareCpu, 0.9, 1e-4);   // cpuTotal is published to 0.01 tf
+  check('sync', 'CPU drawback, skill at 0: the full 10%', omen(0).cpuTotal / bareCpu, 0.9, 1e-4);   // cpuTotal is published to 0.01 tf
   check('sync', 'CPU drawback, skill at V: halved to 5%', omen(5).cpuTotal / bareCpu, 0.95, 1e-4);
   check('sync', 'a navy rig carries it too', omen(0, 'Medium Imperial Navy Synchronizer').cpuTotal / bareCpu, 0.9, 1e-4);
   check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.group ?? '', 'Rigging');

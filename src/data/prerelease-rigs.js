@@ -39,9 +39,9 @@
 // penalty. Same +1% rule, same 250 calibration, same three sizes.
 //
 // CPU drawback (later word, Owen 2026-11-07): every Synchronizer also carries a CPU drawback, and
-// THAT is the only thing Synchronization Rigging reduces — not the faction penalty above. Its size is
-// not known yet, so CPU_PENALTY is a PLACEHOLDER (the usual 10% of a rig drawback), modelled as a cut
-// to the ship's CPU output, and the trait text says so. Taken to apply to all nine, navy included.
+// THAT is the only thing Synchronization Rigging reduces — not the faction penalty above. Confirmed the
+// same day: 10% on all nine Synchronizers, navy included, and 50% less at skill level V. Modelled as a
+// cut to the ship's CPU output.
 //
 // It retires itself: everything is skipped once the bundle has a type named "Medium Dark Blood
 // Synchronizer". When CCP ships them, delete this file, its call sites and the pre-release skill
@@ -61,7 +61,7 @@ export const PRERELEASE_SKILL_KEY = 'synchronizationRigging';
 const A_DRAWBACK = 990901;
 const A_BONUS = [990902, 990903, 990904, 990905];
 const A_CPU = 990906;   // the CPU drawback, the one the skill reduces
-// PLACEHOLDER until CCP gives the figure: % change to the ship's CPU output (negative is a cut).
+// % change to the ship's CPU output (negative is a cut): 10% on every Synchronizer, before the skill.
 const CPU_PENALTY = -10;
 const NEW_ATTRS = {
   [A_CPU]: { n: 'synchronizerCpuDrawback', s: 1, h: 1, d: 0 },
@@ -284,8 +284,8 @@ const A_SKILL_BONUS = 1139;      // rigDrawbackBonus, the attribute every riggin
 
 export const PRERELEASE_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies on 10 November. Its bonuses are from the expansion notes, not the game data yet, so a figure may still change when it goes live. Only one Synchronizer fits a ship.';
 const SKILL_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies (25 million ISK in the empire schools). 10% less Synchronizer rig CPU penalty per level, 50% at V; it does not reduce a rig\'s other penalty. No character has it yet, so Axis applies the level you set here to every pilot.';
-// The trait line for the CPU drawback, at the placeholder's size.
-const CPU_LINE = [`${Math.abs(CPU_PENALTY)}%`, 'penalty to ship CPU output (placeholder: CCP has not given the figure yet)'];
+// The trait line for the CPU drawback.
+const CPU_LINE = [`${Math.abs(CPU_PENALTY)}%`, 'penalty to ship CPU output'];
 
 export const PRERELEASE_RIG_TYPE_IDS = new Set();
 // typeID -> trait entry, for core.js to merge into shipTraits (the info sheet's Traits tab).
@@ -335,7 +335,7 @@ export function applyPrereleaseRigs(types, effects, attrs) {
           ],
         },
       };
-      PRERELEASE_RIG_DESCRIPTIONS[id] = `${PRERELEASE_NOTICE} Its CPU penalty is reduced by the ${PRERELEASE_SKILL_NAME} skill, also pre-release: set its level below or in Settings > Skills. The CPU penalty's size is a placeholder until CCP gives it.`;
+      PRERELEASE_RIG_DESCRIPTIONS[id] = `${PRERELEASE_NOTICE} Its CPU penalty is reduced by the ${PRERELEASE_SKILL_NAME} skill, also pre-release: set its level below or in Settings > Skills.`;
     });
   });
 
