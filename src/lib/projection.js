@@ -1,6 +1,10 @@
 import { computeCommandBursts, computeProjectedReps, projectionResistances, assistanceFactors,
          applyRemoteRepDiminishing, calcRangeFactor, stackingPenalty, tidByName } from "../calc.js";
 import { isLink, linkBursts } from './command-links.js';
+import { projectedSource as resolveSource } from './projected-modules.js';
+
+/** A projFits entry's source, {ship, fit}: a saved fit, or a generic module's synthetic Capsule fit. */
+export const projectedSource = (entry, fitsDB) => resolveSource(entry, fitsDB, tidByName);
 
 // What OTHER fits do to a fit: the command links it sits under and the modules projected onto it.
 //
@@ -14,7 +18,7 @@ export const NO_BURSTS = [];
 // single tap recalculate the whole fit twice. `sigList`/`webList` are the per-source values before
 // stacking, for a caller that has to stack its OWN painters and webs into the same pool.
 export const NO_PROJECTION = {reps:{shield:0,armor:0,hull:0},webMult:1,neutGJs:0,capGJs:0,capEntries:[],
-  debuffs:null,boosts:{lock:[],scan:[]},ecm:[],ecmResist:1,sigList:[],webList:[]};
+  debuffs:null,boosts:{lock:[],scan:[],trk:[],topt:[],tfall:[]},ecm:[],ecmResist:1,ewarResist:{web:1,neut:1,painter:1,damp:1,disrupt:1},sigList:[],webList:[]};
 
 /** Every active command fit in `cmdFitsList`, resolved against `fitsDB`, as one burst list. */
 export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
@@ -47,14 +51,15 @@ export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
  * unlinked reps on the card while the Stats tab beside it applied the linked ones.
  */
 export function projectedFitEffects(ship, fit, fitsDB, sourceSkills) {
-  return computeProjectedReps({name:ship,typeID:tidByName(ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits,fitsDB,sourceSkills)});
+  // A generic projected module (lib/projected-modules.js) is flown at all V, as pyfa projects one.
+  return computeProjectedReps({name:ship,typeID:tidByName(ship)},fit.slots,fit.generic?undefined:sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits,fitsDB,sourceSkills)});
 }
 
 /**
  * The combined effect of `projFits` on the ship `shipName` fitted with `slots`, which is flown on
  * `skills` and sits under `externalBursts`. Returns NO_PROJECTION when nothing is projected.
  */
-export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName, slots, skills, externalBursts}) {
+export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName, slots, skills, externalBursts, implants, boosters}) {
   if(!projFits?.length)return NO_PROJECTION;
   // Collected, not summed: incoming remote reps go through a diminishing-returns curve that
   // needs every source's amount AND cycle time together (applyRemoteRepDiminishing).
@@ -62,7 +67,9 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   const webMults=[]; let neutGJs=0, capGJs=0;
   const capEntries=[];   // projected Remote Capacitor Transmitters, kept for the Projected list
   const col={sig:[],lock:[],scan:[],trk:[],topt:[],tfall:[],mrng:[],edly:[],avel:[],acld:[]};
-  const boosts={lock:[],scan:[]};   // projected Remote Sensor Boosters -> attribute pool, not the debuff stack
+  // Projected Remote Sensor Boosters and Remote Tracking Computers -> the attribute pool, not the
+  // debuff stack (calcFitStats). One entry per projected module.
+  const boosts={lock:[],scan:[],trk:[],topt:[],tfall:[]};
   // ECM is kept as raw per-type strengths, range-factored but NOT yet reduced to one number —
   // which of the four attributes matters depends on the TARGET's sensor type, which calcFitStats
   // (not this function) knows. See calcFitStats's jamChance for the combination itself.
@@ -71,7 +78,7 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   // rather than a hull attribute, so externalBursts has to go in or every boosted fit reads as
   // having no resistance and projected damps/disruptors hit at full strength. Applied PER SOURCE
   // MODULE, before stacking — stack(b*r) != stack(b)*r, and eos does the former.
-  const R=shipName?projectionResistances({name:shipName,typeID:tidByName(shipName)},slots,skills,{externalBursts}):null;
+  const R=shipName?projectionResistances({name:shipName,typeID:tidByName(shipName)},slots,skills,{externalBursts,implants,boosters}):null;
   const rz=k=>(R&&Number.isFinite(R[k])?R[k]:1);
   // disallowAssistance (in practice: an ACTIVE HIC bubble) refuses ALL incoming remote
   // assistance - reps and remote sensor boosters - while still taking EWAR normally. Short of
@@ -80,14 +87,15 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   const AF=assistanceFactors(R);
   for(const pf of projFits){
     if(pf.active===false)continue;   // see buildExternalBursts — opt-out, so old saves stay active
-    const fit=fitsDB?.[pf.ship]?.find(f=>f.name===pf.fitName);
-    if(!fit)continue;
+    const src=projectedSource(pf,fitsDB);
+    if(!src)continue;
+    const {ship:srcShip,fit}=src;
     // A PROJECTED fit is another pilot's ship, so the local skill sheet has no business scaling its
     // logi reps, webs or neuts — sourceSkills resolves it from that fit's own pilot.
     // The projected fit's OWN command links (e.g. a Guardian sitting under its own Sleipnir's
     // Rapid Repair burst) boost ITS reps before they ever reach the target — read from that
     // fit's saved cmdFits, not the locally-edited fit's, or a boosted logi projects as if unboosted.
-    const eff=projectedFitEffects(pf.ship,fit,fitsDB,sourceSkills);
+    const eff=projectedFitEffects(srcShip,fit,fitsDB,sourceSkills);
     const rangeM=(pf.rangeKm??30)*1000;
     const rf=(o,fo)=>calcRangeFactor(o,fo,rangeM,true);
     // One entry per rep SOURCE: a flight of logistic drones is `sources` of them (computeProjectedReps).
@@ -104,6 +112,9 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
     // ship's own signal amps/Sensor Optimization burst in one penalized group. Only the attribute
     // pool can do that, so these are handed to calcFitStats rather than stacked here.
     if(AF.assist>0)for(const b of (eff.sensorBoosts||[])){if(b.lockBonus)boosts.lock.push(b.lockBonus*AF.assist*rf(b.optimal,b.falloff));if(b.scanResBonus)boosts.scan.push(b.scanResBonus*AF.assist*rf(b.optimal,b.falloff));}
+    // Remote Tracking Computers: assistance too, so refused by a HIC bubble and scaled by impedance.
+    if(AF.assist>0)for(const b of (eff.trackBoosts||[])){const f=AF.assist*rf(b.optimal,b.falloff);
+      if(b.tracking)boosts.trk.push(b.tracking*f);if(b.optimalBonus)boosts.topt.push(b.optimalBonus*f);if(b.falloffBonus)boosts.tfall.push(b.falloffBonus*f);}
     for(const td of (eff.trackDisr||[])){const f=rz('disrupt')*rf(td.optimal,td.falloff);col.trk.push(td.tracking*f);col.topt.push(td.optimalBonus*f);col.tfall.push(td.falloffBonus*f);}
     for(const g of (eff.guideDisr||[])){const f=rz('disrupt')*rf(g.optimal,g.falloff);col.mrng.push(g.missileRange*f);col.edly.push(g.explosionDelay*f);col.avel.push(g.aoeVel*f);col.acld.push(g.aoeCloud*f);}
     // ECM jammers carry remoteResistanceID 2253 = ECMResistance, so they are resisted like any other
@@ -120,5 +131,7 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   // does; the card applies its OWN range factor (it has a per-card range slider), so it cannot reuse
   // ecmEntries directly.
   return {reps,webMult,neutGJs,capGJs,capEntries,debuffs:hasDebuff?debuffs:null,boosts,ecm:ecmEntries,ecmResist:rz('ecm'),assist:AF,
+          // The same resistances, for the Projected cards, which redo the stacking for their own range slider.
+          ewarResist:{web:rz('web'),neut:rz('neut'),painter:rz('painter'),damp:rz('damp'),disrupt:rz('disrupt')},
           sigList:col.sig,webList:webMults};
 }

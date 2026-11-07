@@ -37,8 +37,12 @@ const SKILLS_KEY = 'axis_esi_skills';
 const CHANGE_EVENT = 'axis-esi-change';
 function notifyChange() { try { window.dispatchEvent(new Event(CHANGE_EVENT)); } catch {} }
 export function onCharactersChanged(cb) {
+  // A login finished in ANOTHER window of the same app (the desktop's main window, while Settings is
+  // popped out into its own) reaches this one only as a storage event: CHANGE_EVENT is per window.
+  const onStorage = (e) => { if (e.key === CHARS_KEY || e.key === ACTIVE_KEY) cb(); };
   window.addEventListener(CHANGE_EVENT, cb);
-  return () => window.removeEventListener(CHANGE_EVENT, cb);
+  window.addEventListener('storage', onStorage);
+  return () => { window.removeEventListener(CHANGE_EVENT, cb); window.removeEventListener('storage', onStorage); };
 }
 
 // The native login leg finishes in a deep-link listener (App.jsx), not in a component, so a

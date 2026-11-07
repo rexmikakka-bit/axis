@@ -6,7 +6,7 @@ import { C, DISPLAY } from "../theme.js";
 import { eveIcon, eveHeroRender, eveRender, eveRenderHi, prefetchRenderHi } from "../lib/icons.js";
 import shipSmallIcon from "../assets/ship_small.png";
 import { shipTraits, shipsByClass, raceIcons, generateEmptySlots, lookupShip, haptic } from "../lib/core.js";
-import { isT3Cruiser, t3cSlotLayout, effectiveWeaponMultipliers } from "../calc.js";
+import { isT3Cruiser, t3cSlotLayout, effectiveWeaponMultipliers, TYPES } from "../calc.js";
 import { TAG_PALETTE, MAX_TAG_LEN, normalizeTag, tagKey, tagsOf, hasTag, toggleTag,
          allTags, fitsWithTag, colorForTag, setTagColor, renameTag, removeTagEverywhere } from "../lib/fit-tags.js";
 import { nameMatchesQuery, searchScore } from "../lib/jargon.js";
@@ -293,7 +293,9 @@ function ShipHero({typeID, height, full, children, split = false}) {
   // otherwise fade to transparent in a visible band down both sides.
   // The pair fades as one — the opacity lives on the wrapper so the sharp copy cannot arrive ahead of
   // its own backdrop.
-  const FEATHER = 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.55) 30%, #000 70%), linear-gradient(to bottom, #000 70%, transparent 100%)';
+  // The fade is kept to the square's left edge: CCP centres the hull in the square, and a fade still
+  // part-transparent at 70% let the blurred copy wash over the ship itself.
+  const FEATHER = 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.7) 12%, #000 28%), linear-gradient(to bottom, #000 70%, transparent 100%)';
   const splitImg = (src) => (
     <div style={{position:'absolute',inset:0,transition:'opacity .35s ease'}}>
       <img src={src} alt="" aria-hidden="true"
@@ -452,7 +454,20 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
     // One decimal, because most hulls do not land on a whole one: a Rifter's -37.5% cycle makes its
     // three guns worth 4.8, and rounding that to 5 would state a coincidence as a fact.
     eff: v=>`${rnd(v,1)}`,
+    // A resistance attribute is the fraction of the EWAR that gets through (0.75 = webs at 75%
+    // strength); the row states what it stops, the way the game and pyfa word it.
+    res: v=>`${rnd((1-v)*100,1)}%`,
   };
+  // Webifier resistance: the Cenotaph and Tholos hulls, the Serpentis Synchronizer rigs, the Imperial
+  // Electronics Booster. Every ship carries the attribute at 1, so the row only appears where
+  // something moved it — or where the hull starts below 1, as titans and supercarriers do.
+  const webRes = (() => {
+    const base = TYPES[ship?.typeID]?.a?.[2115] ?? 1;
+    const cur = cs?.fittedShip?.attrs?.get?.('stasisWebifierResistance');
+    const r = R(t('Webifier Resistance'), base, cur, F.res, 'stasisWebifierResistance');
+    // `inv`: the printed percentage runs opposite to the attribute, so the arrow flips with it.
+    return Math.abs((r.cur ?? r.base) - 1) > 1e-9 || Math.abs(r.base - 1) > 1e-9 ? {...r, inv:true} : null;
+  })();
   // What the hull's OWN bonuses make a hardpoint worth, beside how many of them there are. Damage
   // and rate of fire both count — see effectiveWeaponMultipliers, which is also where the reason
   // this reads hull and subsystem bonuses only lives.
@@ -524,6 +539,7 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
       R(t('Warp Speed'), ship?.warpSpeed, cs?.warpSpeed, F.au, 'warpSpeedMultiplier'),
       R(t('Signature Radius'), ship?.sigRadius, cs?.sigRadius, F.m, 'signatureRadius'),
       R(t('Mass'), ship?.mass, cs?.mass, F.mkg, 'mass'),
+      ...(webRes ? [webRes] : []),
     ],
     structure: [
       R(t('Shield HP'), ship?.shieldHP, cs?.shieldHP, F.hp, 'shieldCapacity'),
@@ -629,7 +645,7 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
             </div>
             {/* Desktop: the fit's headline numbers in the banner's free left half, faded out as it
                 collapses like the eyebrow above. Only for the hull being fitted (cs present). */}
-            {embedded&&cs&&<div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',marginTop:8,opacity:1-collapse,
+            {embedded&&cs&&<div style={{display:'flex',flexWrap:'wrap',gap:'4px 13px',marginTop:8,opacity:1-collapse,
                 height:(1-collapse)*40,overflow:'hidden',textShadow:'0 1px 3px rgba(0,0,0,.8)'}}>
               {[[t('EHP'),cs.totalEHP!=null?`${(cs.totalEHP/1000).toFixed(1)}k`:null],
                 [t('DPS'),cs.totalDps?.total!=null?Math.round(cs.totalDps.total):null],
@@ -713,7 +729,7 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
                     // directionOf, the same function the module info panel and the Variations tab
                     // ask, so the colour cannot come to mean one thing on a hull row and another on
                     // a module row one tap away. A row with no honest direction stays plain (see R).
-                    const dir = changed ? Math.sign(r.cur - r.base) : 0;
+                    const dir = changed ? Math.sign(r.cur - r.base) * (r.inv ? -1 : 1) : 0;
                     const better = changed && r.attr ? directionOf(r.attr, r.cur, r.base, ship?.typeID) : null;
                     const valColor = better == null ? C.text : (better ? C.rig : C.danger);
                     // Only a CHANGED row has anything to explain, so the highlight band doubles as
@@ -752,7 +768,7 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
                     {/* The row's own formatter, so the breakdown states mass in the millions of kg
                         the row above it uses rather than the info panel's default rendering. */}
                     {isOpen&&<ModifierBreakdown attr={r.attr} ex={shipAttrExplain(r.attr)}
-                                                bleed={16} fmt={r.fmt}/>}
+                                                bleed={16} fmt={r.fmt} desk={embedded}/>}
                     </div>);
                   })}
                 </div>);

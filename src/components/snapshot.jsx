@@ -3,7 +3,8 @@ import { C } from "../theme.js";
 import { eveRender } from "../lib/icons.js";
 import { computeCommandBursts, computeProjectedReps, calcRangeFactor, tidByName, TYPES } from "../calc.js";
 import { WARFARE_BUFF_UNIT, loadedChargeCount } from "../lib/core.js";
-import { projectedFitEffects } from "../lib/projection.js";
+import { projectedFitEffects, projectedSource } from "../lib/projection.js";
+import { isProjectedModule } from "../lib/projected-modules.js";
 import { abyssalGrade } from "../lib/eft-export.js";
 import { getCachedPrices, fetchPrices, priceAsOf } from "../prices.js";
 import { fmtPriceAge } from "../lib/fmt.js";
@@ -199,10 +200,11 @@ function buildProjected(cmdFits, projFits, fitsDB, sourceSkills, assist = { rep:
   const remoteReps = { shield: 0, armor: 0, hull: 0 };
   for (const pf of (projFits ?? [])) {
     if (pf.active === false) continue;   // see the cmdFits loop above
-    const fit = fitsDB?.[pf.ship]?.find((f) => f.name === pf.fitName);
-    if (!fit) continue;
+    // A saved fit, or a generic projected module's synthetic one (lib/projected-modules.js).
+    const src = projectedSource(pf, fitsDB);
+    if (!src) continue;
     let eff;
-    try { eff = projectedFitEffects(pf.ship, fit, fitsDB, sourceSkills); } catch { continue; }
+    try { eff = projectedFitEffects(src.ship, src.fit, fitsDB, sourceSkills); } catch { continue; }
     const rangeM = (pf.rangeKm ?? 30) * 1000;
     const rf = (o, fo) => calcRangeFactor(o, fo, rangeM, true);
     const fx = [];
@@ -214,10 +216,12 @@ function buildProjected(cmdFits, projFits, fitsDB, sourceSkills, assist = { rep:
     for (const n of (eff.neuts || [])) { const f = rf(n.optimal, n.falloff); const v = n.gjPerSec * f; if (v > 0.1) add("Energy Neut", t("\u2212{v} GJ/s", { v: v.toFixed(0) })); }
     for (const p of (eff.painters || [])) { const f = rf(p.optimal, p.falloff); const v = p.sigBonus * f; if (v > 0.1) add("Target Painter", t("+{pct}% sig", { pct: v.toFixed(0) })); }
     for (const d of (eff.damps || [])) { const f = rf(d.optimal, d.falloff); if (d.lockBonus < 0) add("Sensor Damp", t("{pct}% lock", { pct: (d.lockBonus * f).toFixed(0) })); if (d.scanResBonus < 0) add("Sensor Damp", t("{pct}% scan", { pct: (d.scanResBonus * f).toFixed(0) })); }
-    for (const td of (eff.trackDisr || [])) { const f = rf(td.optimal, td.falloff); if (td.tracking < 0) add("Tracking Disr", t("{pct}% track", { pct: (td.tracking * f).toFixed(0) })); }
-    for (const g of (eff.guideDisr || [])) { const f = rf(g.optimal, g.falloff); if (g.missileRange < 0) add("Guidance Disr", t("{pct}% mis. rng", { pct: (g.missileRange * f).toFixed(0) })); }
+    for (const td of (eff.trackDisr || [])) { const f = rf(td.optimal, td.falloff); if (td.tracking < 0) add("Tracking Disr", t("{pct}% track", { pct: (td.tracking * f).toFixed(0) })); if (td.optimalBonus < 0) add("Tracking Disr", t("{pct}% optimal", { pct: (td.optimalBonus * f).toFixed(0) })); }
+    for (const g of (eff.guideDisr || [])) { const f = rf(g.optimal, g.falloff); if (g.missileRange < 0) add("Guidance Disr", t("{pct}% mis. rng", { pct: (g.missileRange * f).toFixed(0) })); if (g.aoeVel < 0) add("Guidance Disr", t("{pct}% expl. vel", { pct: (g.aoeVel * f).toFixed(0) })); }
     for (const r of (eff.reps || [])) { const f = rf(r.optimal, r.falloff); const v = r.rawPS * f * assist.rep; if (v > 0.1) { remoteReps[r.kind] = (remoteReps[r.kind] ?? 0) + v; add(`Remote ${r.kind === "shield" ? "Shield" : r.kind === "armor" ? "Armor" : "Hull"} Rep`, t("+{v} hp/s", { v: v.toFixed(0) }), false); } }
-    if (fx.length) incoming.push({ fitName: pf.fitName || pf.ship, hull: pf.ship, rangeKm: pf.rangeKm ?? 30, effects: fx });
+    if (fx.length) incoming.push(isProjectedModule(pf)
+      ? { fitName: src.fit.name, hull: t("generic"), rangeKm: pf.rangeKm ?? 30, effects: fx }
+      : { fitName: pf.fitName || pf.ship, hull: pf.ship, rangeKm: pf.rangeKm ?? 30, effects: fx });
   }
   return { links, incoming, remoteReps };
 }
@@ -675,7 +679,7 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
               {clip > 0
                 ? <span>{boldNum(t("w/ ancil. {v}"), { v: fmtK(ehp + clip) })}</span>
                 : <span>{boldNum(t("Sust {v}"), { v: fmt(sust) })}</span>}</>}
-            bars={ehp > 0 ? [["shield", layerEhp.shield], ["armor", layerEhp.armor], ["hull", layerEhp.hull]].map(([k, v]) => ({ w: ((v ?? 0) / ehp) * 100, c: layerColor[k] })) : []} />
+            bars={ehp > 0 ? [["hull", layerEhp.hull], ["armor", layerEhp.armor], ["shield", layerEhp.shield]].map(([k, v]) => ({ w: ((v ?? 0) / ehp) * 100, c: layerColor[k] })) : []} />
         </div>
 
         <div>

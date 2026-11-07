@@ -3,7 +3,8 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName, calcRangeFactor, stackingPenalty, jamChanceFrom, computeCommandBursts } from "../calc.js";
 import { WARFARE_BUFF_UNIT } from "../lib/core.js";
-import { projectedFitEffects } from "../lib/projection.js";
+import { projectedFitEffects, projectedSource } from "../lib/projection.js";
+import { PROJECTED_MODULES, MAX_QTY, isProjectedModule, makeProjectedModule, projectedModuleLabel, scriptLabel, scriptsFor, clampQty } from "../lib/projected-modules.js";
 import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, boosterSideEffectState, BoosterIcon, buildBoosterFromName,
          hasCommandBursts, boosterBonuses, boosterSlotOf } from "../components/effects.jsx";
 import { Empty, TYPE } from "./kit.jsx";
@@ -147,22 +148,30 @@ export function BoostersPanel({ s }) {
  * the same effect, the target's assistance factors on reps and cap, and the target's ECM resistance
  * on jam chance. Keep the two in step.
  */
-export function projectedLines(eff, rangeKm, assist, jamTarget) {
+export function projectedLines(eff, rangeKm, assist, jamTarget, ewarResist) {
   const rf = (o, fo) => calcRangeFactor(o, fo, rangeKm * 1000, true);
   const af = assist ?? { rep: 1, cap: 1, assist: 1 };
+  const rz = (k) => ewarResist?.[k] ?? 1;   // this fit's EWAR resistance, per source module
   const reps = { shield: 0, armor: 0, hull: 0 };
   for (const r of eff.reps ?? []) reps[r.kind] += r.rawPS * af.rep * rf(r.optimal, r.falloff);
-  const webMs = (eff.webs ?? []).map(w => 1 + (w.speedFactor * rf(w.optimal, w.falloff)) / 100);
+  const webMs = (eff.webs ?? []).map(w => 1 + (w.speedFactor * rz("web") * rf(w.optimal, w.falloff)) / 100);
   const webMult = webMs.length ? stackingPenalty(webMs) : 1;
-  const neut = (eff.neuts ?? []).reduce((a, n) => a + n.gjPerSec * rf(n.optimal, n.falloff), 0);
+  const neut = (eff.neuts ?? []).reduce((a, n) => a + n.gjPerSec * rz("neut") * rf(n.optimal, n.falloff), 0);
   const cap = (eff.caps ?? []).reduce((a, c) => a + c.gjPerSec * af.cap * rf(c.optimal, c.falloff), 0);
   const stk = (arr) => arr.length ? (stackingPenalty(arr.map(p => 1 + p / 100)) - 1) * 100 : 0;
-  const paint = stk((eff.painters ?? []).map(p => p.sigBonus * rf(p.optimal, p.falloff)));
-  const damp = stk((eff.damps ?? []).map(d => d.lockBonus * rf(d.optimal, d.falloff)));
-  const tdTrack = stk((eff.trackDisr ?? []).map(td => td.tracking * rf(td.optimal, td.falloff)));
-  const tdOpt = stk((eff.trackDisr ?? []).map(td => (td.optimalBonus || 0) * rf(td.optimal, td.falloff)));
-  const tdFall = stk((eff.trackDisr ?? []).map(td => (td.falloffBonus || 0) * rf(td.optimal, td.falloff)));
-  const gd = stk((eff.guideDisr ?? []).map(g => g.missileRange * rf(g.optimal, g.falloff)));
+  const paint = stk((eff.painters ?? []).map(p => p.sigBonus * rz("painter") * rf(p.optimal, p.falloff)));
+  const damp = stk((eff.damps ?? []).map(d => d.lockBonus * rz("damp") * rf(d.optimal, d.falloff)));
+  const tdTrack = stk((eff.trackDisr ?? []).map(td => td.tracking * rz("disrupt") * rf(td.optimal, td.falloff)));
+  const tdOpt = stk((eff.trackDisr ?? []).map(td => (td.optimalBonus || 0) * rz("disrupt") * rf(td.optimal, td.falloff)));
+  const tdFall = stk((eff.trackDisr ?? []).map(td => (td.falloffBonus || 0) * rz("disrupt") * rf(td.optimal, td.falloff)));
+  // Remote tracking computers: a boost, so the target's assistance impedance scales it.
+  const rtcF = (b) => af.assist * rf(b.optimal, b.falloff);
+  const rtcTrack = stk((eff.trackBoosts ?? []).map(b => (b.tracking || 0) * rtcF(b)));
+  const rtcRange = Math.max(stk((eff.trackBoosts ?? []).map(b => (b.optimalBonus || 0) * rtcF(b))),
+                            stk((eff.trackBoosts ?? []).map(b => (b.falloffBonus || 0) * rtcF(b))));
+  const gd = stk((eff.guideDisr ?? []).map(g => g.missileRange * rz("disrupt") * rf(g.optimal, g.falloff)));
+  // A precision script moves a guidance disruptor onto explosion velocity instead.
+  const gdAoe = stk((eff.guideDisr ?? []).map(g => (g.aoeVel || 0) * rz("disrupt") * rf(g.optimal, g.falloff)));
   const ecmMax = Math.max(0, ...(eff.ecm ?? []).map(e => Math.max(0, ...Object.values(e.byType)) * rf(e.optimal, e.falloff)));
   const jam = jamChanceFrom((eff.ecm ?? []).map(e => ({ byType: Object.fromEntries(Object.entries(e.byType).map(([k, v]) => [k, (v || 0) * (jamTarget?.resist ?? 1) * rf(e.optimal, e.falloff)])) })),
     jamTarget?.strength ?? 0, jamTarget?.type ?? "");
@@ -177,7 +186,10 @@ export function projectedLines(eff, rangeKm, assist, jamTarget) {
   if (Math.abs(damp) > 0.5) out.push([t("Damped"), `${Math.round(damp)}% ${t("lock range")}`, C.accent]);
   if (Math.abs(tdTrack) > 0.5) out.push([t("Tracking disrupted"), `${Math.round(tdTrack)}% ${t("tracking")}`, C.accent]);
   if (Math.abs(tdOpt) > 0.5 || Math.abs(tdFall) > 0.5) out.push([t("Turret range disrupted"), `${Math.round(Math.abs(tdOpt) >= Math.abs(tdFall) ? tdOpt : tdFall)}%`, C.accent]);
+  if (rtcTrack > 0.5) out.push([t("Tracking boosted"), `+${Math.round(rtcTrack)}% ${t("tracking")}`, C.success]);
+  if (rtcRange > 0.5) out.push([t("Turret range boosted"), `+${Math.round(rtcRange)}%`, C.success]);
   if (Math.abs(gd) > 0.5) out.push([t("Guidance disrupted"), `${Math.round(gd)}% ${t("missile range")}`, C.accent]);
+  if (Math.abs(gdAoe) > 0.5) out.push([t("Guidance disrupted"), `${Math.round(gdAoe)}% ${t("explosion velocity")}`, C.accent]);
   if (ecmMax > 0.5) out.push([t("ECM strength"), String(Math.round(ecmMax)), C.accent]);
   if (jam > 0.05) out.push([t("Jam chance"), `${jam.toFixed(1)}%`, C.danger]);
   return out;
@@ -185,6 +197,7 @@ export function projectedLines(eff, rangeKm, assist, jamTarget) {
 
 export function ProjectedPanel({ s, jamTarget }) {
   const [picker, setPicker] = useState(false);
+  const [modMenu, setModMenu] = useState(null);   // the Default effect menu, {x, y}
   // A fit dragged from the ship browser projects onto this one, as if picked from the list. Not the
   // fit being edited: a fit projecting onto itself is not an engagement.
   const fitOf = (ship, name) => s.fitsDB?.[ship]?.find(f => f.name === name);
@@ -193,35 +206,66 @@ export function ProjectedPanel({ s, jamTarget }) {
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = s.projFits ?? [];
   const update = (i, patch) => s.setProjFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, ...patch } : p));
-  const add = (ship, fit) => {
-    // The phone's default range: the shortest optimal of anything on the fit that projects.
+  // The phone's default range: the shortest optimal of anything on the source that projects.
+  const defaultRange = (ship, fit, fallback) => {
     const eff = projectedFitEffects(ship, fit, s.fitsDB, s.sourceSkills);
-    const optims = [...eff.reps, ...eff.webs, ...eff.neuts, ...(eff.painters || []), ...(eff.damps || []), ...(eff.trackDisr || []), ...(eff.guideDisr || [])].map(m => m.optimal).filter(v => v > 0);
-    const rangeKm = optims.length ? Math.round(Math.min(...optims) / 1000) : 30;
-    s.setProjFits(prev => [...(prev ?? []), { ship, fitName: fit.name, rangeKm }]);
+    const optims = [...eff.reps, ...eff.webs, ...eff.neuts, ...(eff.painters || []), ...(eff.damps || []), ...(eff.trackDisr || []), ...(eff.trackBoosts || []), ...(eff.guideDisr || [])].map(m => m.optimal).filter(v => v > 0);
+    return optims.length ? Math.floor(Math.min(...optims) / 1000) : fallback;
   };
+  const add = (ship, fit) => s.setProjFits(prev => [...(prev ?? []), { ship, fitName: fit.name, rangeKm: defaultRange(ship, fit, 30) }]);
+  // A generic projected module (lib/projected-modules.js), at its optimal range.
+  const addModule = (module) => {
+    const e = makeProjectedModule(module), src = projectedSource(e, s.fitsDB);
+    s.setProjFits(prev => [...(prev ?? []), { ...e, rangeKm: src ? defaultRange(src.ship, src.fit, 10) : 10 }]);
+  };
+  const moduleMenu = () => PROJECTED_MODULES.map(d => ({ label: d.module, onSelect: () => addModule(d.module) }));
   return (
     <Shell drop={drop} dropLabel={t("Project onto this fit")}>
-      <Header onAdd={() => setPicker(true)} addLabel={t("Fit")}>{t("Other fits projecting onto this one. Effects scale with range; each fit uses its own modules' states.")}</Header>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
+        <span style={{ fontSize: TYPE.small, color: C.textMid, flex: 1 }}>{t("Other fits, or stock modules, projecting onto this one. Effects scale with range.")}</span>
+        <button type="button" style={btn()} title={t("A stock module projected onto this fit, flown with every skill at V")}
+          onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setModMenu({ x: r.left, y: r.bottom + 4 }); }}>+ {t("Default effect")} ▾</button>
+        <button type="button" style={btn()} onClick={() => setPicker(true)}>+ {t("Fit")}</button>
+      </div>
       <Body>
-        {!list.length && <None>{t("No projected fits applied")}</None>}
+        {!list.length && <None>{t("No projected fits or effects applied")}</None>}
         {list.map((f, i) => {
-          const src = s.fitsDB?.[f.ship]?.find(x => x.name === f.fitName);
+          const generic = isProjectedModule(f);
+          const src = projectedSource(f, s.fitsDB);
           const on = f.active !== false;
           const range = f.rangeKm ?? 30;
-          const lines = src ? projectedLines(projectedFitEffects(f.ship, src, s.fitsDB, s.sourceSkills), range, s.projectedEffects?.assist, jamTarget) : [];
+          const lines = src ? projectedLines(projectedFitEffects(src.ship, src.fit, s.fitsDB, s.sourceSkills), range, s.projectedEffects?.assist, jamTarget, s.projectedEffects?.ewarResist) : [];
+          const qty = clampQty(f.qty), scripts = generic ? scriptsFor(f.module) : null;
           return (
             <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
               <div style={{ ...rowStyle(), borderBottom: "none" }}>
                 <Check on={on} onClick={() => update(i, { active: !on })} title={on ? t("Applied to this fit") : t("Ignored")} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ fontSize: TYPE.label, color: C.text }}>{f.ship}</span>
-                  <span style={{ fontSize: TYPE.label, color: C.textMid }}> · {f.fitName}</span>
-                  {!src && <span style={{ fontSize: TYPE.small, color: C.warning }}> · {t("fit not found")}</span>}
-                </div>
-                {src && <button type="button" style={smallBtn()} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
+                {generic ? <>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={projectedModuleLabel(f)}>
+                    {projectedModuleLabel(f)} <span style={{ color: C.textMid }}>· {t("default")}</span>
+                  </div>
+                </> : <>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: TYPE.label, color: C.text }}>{f.ship}</span>
+                    <span style={{ fontSize: TYPE.label, color: C.textMid }}> · {f.fitName}</span>
+                    {!src && <span style={{ fontSize: TYPE.small, color: C.warning }}> · {t("fit not found")}</span>}
+                  </div>
+                  {src && <button type="button" style={smallBtn()} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
+                </>}
                 <Remove onClick={() => s.setProjFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
               </div>
+              {/* A default effect's count, as a plain stepper, and its script — on their own line, so
+                  the module's name keeps the header however narrow the window. */}
+              {generic && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px 4px 38px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t("Count")}</span>
+                <button type="button" style={{ ...smallBtn(), width: 24, padding: 0 }} disabled={qty <= 1} onClick={() => update(i, { qty: qty - 1 })} aria-label={t("One fewer")}>−</button>
+                <span style={{ minWidth: 18, textAlign: "center", fontSize: TYPE.label, color: C.text, fontVariantNumeric: "tabular-nums" }}>{qty}</span>
+                <button type="button" style={{ ...smallBtn(), width: 24, padding: 0 }} disabled={qty >= MAX_QTY} onClick={() => update(i, { qty: qty + 1 })} aria-label={t("One more")}>+</button>
+                {scripts && <select value={f.script ?? ""} onChange={e => update(i, { script: e.target.value || null })} aria-label={t("Script")}
+                  style={{ height: 24, fontSize: 12.5, background: C.bg, color: C.text, border: `1px solid ${C.borderStrong}`, borderRadius: 5, padding: "0 4px", marginLeft: 6, minWidth: 0, flex: "1 1 140px" }}>
+                  {scripts.map(sc => <option key={sc ?? "none"} value={sc ?? ""}>{sc ? scriptLabel(sc) : t("No script")}</option>)}
+                </select>}
+              </div>}
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px 4px 38px" }}>
                 <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t("Range")}</span>
                 <input type="range" min={0} max={150} step={1} value={range} onChange={e => update(i, { rangeKm: Math.max(0, +e.target.value) })}
@@ -233,7 +277,7 @@ export function ProjectedPanel({ s, jamTarget }) {
               </div>
               <div style={{ padding: "0 12px 6px 38px" }}>
                 {lines.length ? lines.map(([label, value, color]) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 10, minHeight: 22, alignItems: "center" }}>
+                  <div key={label + value} style={{ display: "flex", justifyContent: "space-between", gap: 10, minHeight: 22, alignItems: "center" }}>
                     <span style={{ fontSize: TYPE.small, color: C.textMid }}>{label}</span>
                     <span style={{ fontSize: TYPE.label, color, fontVariantNumeric: "tabular-nums" }}>{value}</span>
                   </div>
@@ -245,6 +289,7 @@ export function ProjectedPanel({ s, jamTarget }) {
       </Body>
       {picker && <FitPickerSheet title={t("Project a Fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={(ship, fit) => add(ship, fit)} onClose={() => setPicker(false)} />}
+      {modMenu && <ContextMenu x={modMenu.x} y={modMenu.y} items={moduleMenu()} onClose={() => setModMenu(null)} />}
     </Shell>
   );
 }

@@ -1672,6 +1672,10 @@ export function projectionResistances(ship, slots, skills = SKILL_DEFAULTS, opts
         modItems.push({ slot: s, fitItem: m });
       }
     }
+    // Implants and boosters resist too: the Imperial Electronics Booster is a webifier resistance.
+    // Left out, a boosted pilot took every incoming web at full strength.
+    for (const imp of (opts.implants ?? [])) { if (!imp?.name || imp.name === '[Empty]' || imp.active === false) continue; const tid = typeIDByName(imp.name) ?? tidByName(imp.name) ?? imp.typeID; if (tid && TYPES[tid]) fit.addImplant(tid); }
+    for (const bst of (opts.boosters ?? [])) { if (!bst?.name || bst.active === false) continue; const tid = bst.typeID ?? typeIDByName(bst.name) ?? tidByName(bst.name); if (tid && TYPES[tid]) fit.addBooster(tid); }
     applyTacticalMode(fit, ship, slots);
     fit.calculate();
     // EWAR resistance is overwhelmingly a COMMAND BURST effect, not a hull attribute: buff 19
@@ -1849,6 +1853,7 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
   const sensorBoosts = []; // projected Remote Sensor Booster: {lockBonus, scanResBonus, optimal, falloff}
   const trackDisr = [];  // {tracking, optimal:rangeBonus, falloff:falloffBonus, opt, fall}
   const guideDisr = [];  // {missileRange, explosionDelay, aoeVel, aoeCloud, opt, fall}
+  const trackBoosts = []; // projected Remote Tracking Computers: {tracking, optimalBonus, falloffBonus, optimal, falloff}
   const ecm = [];        // {strength, optimal, falloff}
   for (const { slot, fitItem } of modItems) {
     if (!fitItem || !isActive(slot.state)) continue;
@@ -1934,13 +1939,22 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
       const lr = fitItem.get('maxTargetRangeBonus') ?? 0;
       const sr = fitItem.get('scanResolutionBonus') ?? 0;
       if (lr > 0 || sr > 0) sensorBoosts.push({ name: slot.name, lockBonus: lr, scanResBonus: sr, optimal, falloff });
+    } else if (gn === 'Remote Tracking Computer') {
+      // ASSISTANCE, like a remote sensor booster: bonuses to the target's turrets, its script
+      // (tracking or range) already applied by the engine. Turrets only — CCP took missiles off them.
+      const trk = fitItem.get('trackingSpeedBonus') ?? 0, opt = fitItem.get('maxRangeBonus') ?? 0, fal = fitItem.get('falloffBonus') ?? 0;
+      if (trk || opt || fal) trackBoosts.push({ name: slot.name, tracking: trk, optimalBonus: opt, falloffBonus: fal, optimal, falloff });
     } else if (gn === 'Weapon Disruptor') {
       const trk = fitItem.get('trackingSpeedBonus') ?? 0;
       const mv  = fitItem.get('missileVelocityBonus') ?? 0;
       if (trk < 0 || (fitItem.get('maxRangeBonus') ?? 0) < 0 && mv === 0) {
         trackDisr.push({ name: slot.name, tracking: trk, optimalBonus: fitItem.get('maxRangeBonus') ?? 0, falloffBonus: fitItem.get('falloffBonus') ?? 0, optimal, falloff });
       }
-      if (mv < 0 || (fitItem.get('explosionDelayBonus') ?? 0) !== 0) {
+      // A Missile Precision script moves the whole effect onto explosion velocity and radius, with
+      // range and flight time at 0 — gating on those two alone dropped a precision-scripted
+      // disruptor entirely.
+      if (mv < 0 || (fitItem.get('explosionDelayBonus') ?? 0) !== 0
+          || (fitItem.get('aoeVelocityBonus') ?? 0) !== 0 || (fitItem.get('aoeCloudSizeBonus') ?? 0) !== 0) {
         guideDisr.push({ name: slot.name, missileRange: mv, explosionDelay: fitItem.get('explosionDelayBonus') ?? 0, aoeVel: fitItem.get('aoeVelocityBonus') ?? 0, aoeCloud: fitItem.get('aoeCloudSizeBonus') ?? 0, optimal, falloff });
       }
     } else if (gn === 'ECM') {
@@ -1985,7 +1999,7 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
       if (amt[kind] > 0) reps.push({ kind, name, rawPS: (amt[kind] / dur) * qty, amount: amt[kind], cycleS: dur, sources: qty, optimal: droneReach, falloff: 0 });
     }
   }
-  return { reps, caps, webs, neuts, painters, scrams, damps, sensorBoosts, trackDisr, guideDisr, ecm };
+  return { reps, caps, webs, neuts, painters, scrams, damps, sensorBoosts, trackDisr, guideDisr, ecm, trackBoosts };
 }
 
 /**
@@ -2438,6 +2452,21 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       }
     }
     // Guidance disruption (missile range + application) is applied directly in the missile range calc.
+  }
+  // Projected Remote Tracking Computers: BONUSES, so each one goes into the turret's attribute pool
+  // stacking-penalised (direct=false) — competing with the target's own tracking computers and
+  // enhancers in one group, as eos stacks them — rather than multiplied onto the finished figure.
+  // Same reasoning and same shape as the projected Remote Sensor Boosters above.
+  const pb = opts.projectedBoosts;
+  if (pb?.trk?.length || pb?.topt?.length || pb?.tfall?.length) {
+    const rtcSrc = tracing() ? { name: 'Remote Tracking Computer', kind: 'projected' } : null;
+    for (const { slot: s2, fitItem: m } of modItems) {
+      if (!m || !isOnline(s2.state)) continue;
+      if (!(TYPES[m.typeID]?.rs ?? []).includes('Gunnery')) continue;
+      for (const b of pb.trk ?? [])   if (b) m.attrs.applyMod(AID['trackingSpeed'], 6, b, false, null, rtcSrc);
+      for (const b of pb.topt ?? [])  if (b) m.attrs.applyMod(AID['maxRange'],      6, b, false, null, rtcSrc);
+      for (const b of pb.tfall ?? []) if (b) m.attrs.applyMod(AID['falloff'],       6, b, false, null, rtcSrc);
+    }
   }
 
   let abMwdSpeed = maxVelocity;
@@ -4407,10 +4436,11 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
   // `totalEHP` is already weighted by `opts.damageProfile` — the same profile the Stats tab weights
   // its own layer EHP with — so the two are directly summable.
   let ancilClipEHP = 0;
+  let ancilClipHP = 0;   // the same pool in raw hit points, for a raw-HP readout beside a raw total
   if (slotEngineStats) {
     for (const [, stats] of slotEngineStats) {
       if (stats.isAAR) { aarEhpS += stats.ehpS ?? 0; armorRepIsAAR = true; }
-      if ((stats.isAAR && stats.hasPaste) || (stats.isASB && stats.hasCharges)) ancilClipEHP += stats.totalEHP ?? 0;
+      if ((stats.isAAR && stats.hasPaste) || (stats.isASB && stats.hasCharges)) { ancilClipEHP += stats.totalEHP ?? 0; ancilClipHP += stats.totalHP ?? 0; }
     }
   }
   // Rep EHP/s is weighted by the SELECTED incoming damage profile — rate / Σ(profile_i × resonance_i)
@@ -4551,6 +4581,7 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
     shieldEHP, armorEHP, hullEHP,
     totalEHP: shieldEHP + armorEHP + hullEHP,
     ancilClipEHP,
+    ancilClipHP,
     resists: effectiveResists,
 
     // Tank

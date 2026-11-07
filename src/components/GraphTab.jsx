@@ -104,7 +104,7 @@ const lockTimeAt=(scanRes,sig)=>calcLockTime(scanRes,sig)??0;
 // the longest-ranged weapon on the fit, or 30 km if it has none. The speed and sig axes hold range
 // constant at this while they vary the tracking inputs, and the angular-velocity readout quotes it, so
 // the two cannot describe different engagements.
-function engagementDistanceM(cs){
+export function engagementDistanceM(cs){
   let d = 0;
   for (const w of (cs?.graphWeapons ?? [])) d = Math.max(d, w.kind==="missile" ? (w.lowerRange||0) : (w.optimal || 0));
   return d > 0 ? d : 30000;

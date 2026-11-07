@@ -250,7 +250,7 @@ export function EffectsWindow({ s, stats }) {
         cmdFits={s.cmdFits} setCmdFits={s.setCmdFits} sourceSkills={s.sourceSkills} openFitTabs={s.openFitTabs}
         environment={s.slots?.environment ?? null} setEnvironment={(n) => s.setSlots(prev => ({ ...prev, environment: n || undefined }))}
         jamTarget={{ strength: stats.snapshot?.sensorStrength ?? 0, type: stats.snapshot?.sensorType ?? "", resist: s.projectedEffects?.ecmResist ?? 1 }}
-        assistTarget={s.projectedEffects?.assist} onOpenFit={s.openFitInNewTab} />
+        assistTarget={s.projectedEffects?.assist} ewarResist={s.projectedEffects?.ewarResist} onOpenFit={s.openFitInNewTab} />
     </div>
   );
 }

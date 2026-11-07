@@ -4,6 +4,8 @@ import { useSheetDrag, sheetTransform, SheetGrabber } from "../lib/use-sheet-dra
 import { useDeskSheet, DESK_OVERLAY, deskPanel } from "../lib/sheet-frame.js";
 import { fitToEFT } from "../lib/eft-export.js";
 import { t } from "../lib/i18n.js";
+import { isLink, linkLabel, strengthLabel } from "../lib/command-links.js";
+import { isProjectedModule, projectedModuleLabel, scriptLabel } from "../lib/projected-modules.js";
 
 const REPO_URL = "https://github.com/rexmikakka-bit/axis";
 
@@ -23,8 +25,9 @@ const reportEFT = (ship, name, fit) =>
 // issue — they do not have the reporter's library, and "Guardian — Logi" is not a fit.
 function effectsContext(slots, projFits, cmdFits) {
   const entries = [
-    ...(cmdFits ?? []).map(c => ({ ...c, kind: "Command link" })),
-    ...(projFits ?? []).map(p => ({ ...p, kind: "Projected" })),
+    // `section`, not `kind`: a generic entry's own `kind` ("link", "module") is what says it has no fit.
+    ...(cmdFits ?? []).map(c => ({ ...c, section: "Command link" })),
+    ...(projFits ?? []).map(p => ({ ...p, section: "Projected" })),
   ];
   const nLink = (cmdFits ?? []).length, nProj = (projFits ?? []).length;
   // Only `summary` is translated. `kind` above is not: it labels a section of the REPORT, which is
@@ -71,7 +74,10 @@ export function FeedbackModal({activeFit, slots, implants, boosters, drones, fig
         // off and it still applied" is exactly the bug this section exists to make visible.
         const off = e.active === false ? " (toggled off)" : "";
         const range = e.rangeKm != null ? ` @ ${e.rangeKm} km` : "";
-        lines.push("", `${e.kind}: ${e.ship} — ${e.fitName}${range}${off}`);
+        // Generic links and projected modules have no fit behind them: the entry IS the whole story.
+        if (isLink(e)) { lines.push("", `${e.section}: generic ${linkLabel(e)} (${strengthLabel(e)})${off}`); continue; }
+        if (isProjectedModule(e)) { lines.push("", `${e.section}: generic ${projectedModuleLabel(e)}${e.script ? ` (${scriptLabel(e.script)})` : ""}${range}${off}`); continue; }
+        lines.push("", `${e.section}: ${e.ship} — ${e.fitName}${range}${off}`);
         const fit = fitsDB?.[e.ship]?.find(f => f.name === e.fitName);
         if (fit) lines.push("```", reportEFT(e.ship, e.fitName, fit), "```");
         else lines.push("(no longer in the fit library)");

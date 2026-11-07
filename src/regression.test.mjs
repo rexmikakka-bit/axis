@@ -1259,6 +1259,10 @@ function check(group, label, actual, expected, tol = 0.005) {
   // Shield resonances 1/0.8/0.6/0.5 -> 0.725 under a uniform profile -> 1314 x 1.37931 = 1812.
   check('clip', 'ASB on cap boosters, clip EHP', clipOf(car, mids([ASB('Navy Cap Booster 50')])), 1812, 1e-5);
   check('clip', 'ASB running on capacitor contributes no clip', clipOf(car, mids([ASB(null)])), 0, 0);
+  // The same pools in raw HP, for the desktop Defense window when it reads raw HP (its total is raw).
+  check('clip', 'ASB clip in raw HP: 9 x 146', calcFitStats(car, mids([ASB('Navy Cap Booster 50')]), [], null, {}).ancilClipHP, 1314, 1e-5);
+  check('clip', 'AAR clip in raw HP: 8 x 853.875', paste.ancilClipHP, 6831, 1e-4);
+  check('clip', 'no pool, no raw HP either', calcFitStats(myrm, lows([AAR('active')]), [], null, {}).ancilClipHP, 0, 0);
   // The pool is weighted by the SELECTED incoming profile, which is the whole reason it may be added
   // to the Stats tab's own profile-weighted EHP. Under pure EM a Caracal's shield has 0% resist, so
   // the clip must fall back to its raw 1314 HP — if this reads 1812 the weighting was ignored and
@@ -9336,6 +9340,153 @@ Nanofiber Internal Structure II
   check('insp', 'open-fit shortcuts carry the fit record, missing ones dropped', tf.map(x => `${x.ship}:${x.fit.name}`).join(), 'Rifter:a,Tempest:b');
   check('insp', 'open-fit shortcuts honour the picker filter', TF.tabFits([{ ship: 'Rifter', name: 'a' }, { ship: 'Tempest', name: 'b' }], tdb, (sh) => sh === 'Tempest').length, 1, 0);
   check('insp', 'layouts: an unknown hidden id is dropped', L.readLayoutState({ getItem: () => JSON.stringify({ ...hid, hidden: ['focus', 'zzz'] }) }).hidden.join(), 'focus');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECTED REMOTE TRACKING COMPUTERS — never collected by computeProjectedReps, so a projected RTC
+// did nothing at all. Values from pyfa's eos (master c9671de, all V): a Rupture with 4x 425mm
+// AutoCannon II + Republic Fleet EMP M, Remote Tracking Computer II projected as a module. The
+// source is a Stabber, which has no RTC bonus, so its strength matches eos's bare projected module.
+// An RTC shares the turret's penalised pool with its own Tracking Computer: own TC + 1 RTC equals
+// 2 RTCs exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const mod = (n, state, ammo) => ({ id: n + Math.random(), name: n, typeID: tid(n), type: 'module', state, ammo });
+  const gunFit = (ownTc) => ({ high: [0, 1, 2, 3].map(() => mod('425mm AutoCannon II', 'active', 'Republic Fleet EMP M')),
+    mid: ownTc ? [mod('Tracking Computer II', 'active', 'Tracking Speed Script')] : [], low: [], rigs: [] });
+  const gun = (ownTc, n, script, rangeKm = 5) => {
+    const slots = gunFit(ownTc);
+    const fitsDB = { Stabber: [{ name: 'rtc', slots: { high: [], mid: Array.from({ length: n }, () => mod('Remote Tracking Computer II', 'active', script)), low: [], rigs: [] } }] };
+    const pe = buildProjectedEffects({ projFits: [{ ship: 'Stabber', fitName: 'rtc', rangeKm }], fitsDB, sourceSkills: () => null,
+                                       shipName: 'Rupture', slots, skills: null, externalBursts: [] });
+    const cs = calcFitStats({ name: 'Rupture', typeID: tid('Rupture') }, slots, [], null, { projectedBoosts: pe.boosts, projectedDebuffs: pe.debuffs });
+    const g = cs.fittedItems.get(slots.high[0].id);
+    return { trk: g.get('trackingSpeed'), opt: g.get('maxRange'), fal: g.get('falloff') };
+  };
+  check('rtc', 'bare tracking (eos)', gun(false, 0).trk, 58.08, 1e-9);
+  check('rtc', '1 RTC + tracking script (eos)', gun(false, 1, 'Tracking Speed Script').trk, 75.504, 1e-9);
+  check('rtc', '2 RTC, stacking penalised (eos)', gun(false, 2, 'Tracking Speed Script').trk, 95.19061050910597, 1e-9);
+  check('rtc', 'own TC + 1 RTC share one pool (eos)', gun(true, 1, 'Tracking Speed Script').trk, 95.19061050910597, 1e-9);
+  const rng = gun(false, 1, 'Optimal Range Script');
+  check('rtc', 'range script: optimal (eos)', rng.opt, 1725, 1e-9);
+  check('rtc', 'range script: falloff (eos)', rng.fal, 17608.5, 1e-9);
+  check('rtc', 'range script: tracking untouched', rng.trk, 58.08, 1e-9);
+  // Out past optimal + 2x falloff (72 + 2x36 km for a Stabber at all V): nothing reaches the guns.
+  check('rtc', 'out of range: no boost', gun(false, 1, 'Tracking Speed Script', 200).trk, 58.08, 1e-9);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBIFIER RESISTANCE — stasisWebifierResistance scales each incoming web's strength BEFORE the webs
+// stack (eos: remote resistance per source module). Its own sources multiply, unpenalised: a
+// Cenotaph (0.75) on an Imperial Electronics Booster III (0.88) is 0.66. Values from pyfa's eos
+// (master c9671de, all V), a Stabber's Stasis Webifier II projected at 5 km. The booster was
+// silently dropped before: projectionResistances never added boosters, so a boosted pilot took
+// every web at full strength.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const mod = (n) => ({ id: n + Math.random(), name: n, typeID: tid(n), type: 'module', state: 'active' });
+  const fitsDB = { Stabber: [{ name: 'web', slots: { high: [], mid: [mod('Stasis Webifier II'), mod('Stasis Webifier II')], low: [], rigs: [] } }],
+                   Vigil: [{ name: 'web1', slots: { high: [], mid: [mod('Stasis Webifier II')], low: [], rigs: [] } }] };
+  const webbed = (ship, webs, boosters = []) => {
+    const slots = { high: [], mid: [], low: [], rigs: [] };
+    const pe = buildProjectedEffects({ projFits: [{ ship: webs === 2 ? 'Stabber' : 'Vigil', fitName: webs === 2 ? 'web' : 'web1', rangeKm: 5 }], fitsDB,
+                                       sourceSkills: () => null, shipName: ship, slots, skills: null, externalBursts: [], boosters });
+    // maxVelocity is published rounded to the m/s, so check the exact product the fit applies.
+    const cs = calcFitStats({ name: ship, typeID: tid(ship) }, slots, [], null, { boosters });
+    return { v: cs.fittedShip.attrs.get('maxVelocity') * pe.webMult, pe };
+  };
+  const ieb = [{ name: 'Imperial Electronics Booster III' }];
+  check('webres', 'Cenotaph, 1 web (eos)', webbed('Cenotaph', 1).v, 116.875, 1e-6);
+  check('webres', 'Cenotaph, 2 webs stack after the resist (eos)', webbed('Cenotaph', 2).v, 71.16472100977911, 1e-6);
+  check('webres', 'Tholos, 1 web (eos)', webbed('Tholos', 1).v, 175.3125, 1e-6);
+  check('webres', 'Rupture + Imperial Electronics III, 1 web (eos)', webbed('Rupture', 1, ieb).v, 123.9, 1e-6);
+  check('webres', 'Cenotaph + Imperial Electronics III: sources multiply (eos)', webbed('Cenotaph', 1, ieb).v, 128.35, 1e-6);
+  // The Projected cards redo the stacking for their own range slider, from this map.
+  check('webres', 'ewarResist handed to the Projected cards', webbed('Cenotaph', 1, ieb).pe.ewarResist.web, 0.66, 1e-9);
+  // Pre-release Serpentis Synchronizer rig (not in eos yet): -10% on its own.
+  const rig = 'Medium Shadow Serpentis Synchronizer';
+  check('webres', 'Serpentis Synchronizer rig: 0.9', projectionResistances({ name: 'Rupture', typeID: tid('Rupture') },
+    { high: [], mid: [], low: [], rigs: [{ name: rig, typeID: tid(rig), state: 'online' }] }).web, 0.9, 1e-9);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// DEFAULT PROJECTED EFFECTS (lib/projected-modules.js) — a stock module projected at a count with no
+// source fit, resolved to a synthetic Capsule fit flown at all V. Target: a Rupture with 4x 425mm
+// AutoCannon II + Republic Fleet EMP M, the module at 5 km.
+//
+// Against pyfa's eos (master c9671de): eos projects a BARE module with no pilot skills at all (fit.py
+// keeps projectedModules out of the skill pass), where a real pilot at V adds Signature Focusing /
+// Weapon Destabilization's +25%. Webs carry no such skill and match eos outright; the painter and the
+// disruptor are eos's bare figure with that +25% on top (TP 30% -> 37.5%; TD optimal 34.38% ->
+// 42.975%), the same number a projected FIT with the module gives here and in pyfa.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const PM = await import('./lib/projected-modules.js');
+  const gun = () => ({ id: 'g' + Math.random(), name: '425mm AutoCannon II', typeID: tid('425mm AutoCannon II'), type: 'weapon', state: 'active', ammo: 'Republic Fleet EMP M' });
+  const hit = (entries) => {
+    const slots = { high: [gun(), gun(), gun(), gun()], mid: [], low: [], rigs: [] };
+    // A generic entry must not ask whose skills it flies with: it is always all V.
+    const pe = buildProjectedEffects({ projFits: entries, fitsDB: {}, sourceSkills: () => { throw new Error('generic entry asked for source skills'); },
+                                       shipName: 'Rupture', slots, skills: null, externalBursts: [] });
+    const cs = calcFitStats({ name: 'Rupture', typeID: tid('Rupture') }, slots, [], null, { projectedWebMult: pe.webMult, projectedDebuffs: pe.debuffs });
+    const g = cs.fittedItems.get(slots.high[0].id);
+    return { opt: g.get('maxRange'), trk: g.get('trackingSpeed'), vel: cs.fittedShip.attrs.get('maxVelocity') * pe.webMult, sig: cs.exact.sigRadius, pe };
+  };
+  const E = (module, script = null, qty = 1) => ({ ...PM.makeProjectedModule(module, 5), script, qty });
+  check('projmod', '2 webs (eos)', hit([E('Stasis Webifier II', null, 2)]).vel, 50.24544120957496, 1e-9);
+  check('projmod', 'Target Painter II (eos x Signature Focusing V)', hit([E('Target Painter II')]).sig, 125 * 1.375, 1e-9);
+  check('projmod', 'TD II, optimal script (eos x Weapon Destabilization V)', hit([E('Tracking Disruptor II', 'Optimal Range Disruption Script')]).opt, 1500 * (1 - 0.343800 * 1.25), 1e-6);
+  check('projmod', '2 TD II, optimal script: stacking penalised', hit([E('Tracking Disruptor II', 'Optimal Range Disruption Script', 2)]).opt,
+    1500 * (1 - 0.42975) * (1 - 0.42975 * Math.exp(-1 / 7.1289)), 1e-6);
+  check('projmod', 'optimal script leaves tracking alone', hit([E('Tracking Disruptor II', 'Optimal Range Disruption Script')]).trk, 58.08, 1e-9);
+  check('projmod', 'unscripted TD hits tracking too', hit([E('Tracking Disruptor II')]).trk < 58.08 * 0.8 ? 1 : 0, 1, 0);
+  // Same module, same path: a generic painter equals a painter on a bonus-free hull's saved fit.
+  const fitsDB = { Stabber: [{ name: 'tp', slots: { high: [], mid: [{ id: 't', name: 'Target Painter II', typeID: tid('Target Painter II'), type: 'passive', state: 'active' }], low: [], rigs: [] } }] };
+  const viaFit = buildProjectedEffects({ projFits: [{ ship: 'Stabber', fitName: 'tp', rangeKm: 5 }], fitsDB, sourceSkills: () => null, shipName: 'Rupture', slots: { high: [], mid: [], low: [], rigs: [] }, skills: null, externalBursts: [] });
+  check('projmod', 'generic painter == the same painter on a fit', hit([E('Target Painter II')]).pe.debuffs?.sig ?? 0, viaFit.debuffs.sig, 1e-12);
+  const neut = hit([E('Heavy Energy Neutralizer II', null, 3)]).pe.neutGJs;
+  check('projmod', '3 heavy neuts: 3x one (neuts do not stack-penalise)', neut, 3 * hit([E('Heavy Energy Neutralizer II')]).pe.neutGJs, 1e-12);
+  check('projmod', 'out past range: nothing', hit([{ ...E('Stasis Webifier II'), rangeKm: 50 }]).vel, 262.5, 1e-9);
+  check('projmod', 'toggled off: nothing', hit([{ ...E('Stasis Webifier II'), active: false }]).vel, 262.5, 1e-9);
+  check('projmod', 'qty clamps to 1..MAX', `${PM.clampQty(0)},${PM.clampQty(99)},${PM.clampQty('3')}`, `1,${PM.MAX_QTY},3`);
+  check('projmod', 'a script the module cannot load is dropped', PM.projectedModuleFit(E('Stasis Webifier II', 'Optimal Range Disruption Script'), tid).slots.mid[0].ammo ?? 'none', 'none');
+  check('projmod', 'neuts go in the high rack', PM.projectedModuleFit(E('Small Energy Neutralizer II', null, 2), tid).slots.high.length, 2, 0);
+  check('projmod', 'an unknown module resolves to nothing', PM.projectedSource({ kind: 'module', module: 'Not A Module' }, {}, tid) === null ? 1 : 0, 1, 0);
+  check('projmod', 'label', PM.projectedModuleLabel(E('Tracking Disruptor II', null, 2)), '2× Tracking Disruptor II');
+
+  // A Missile Precision script zeroes range and flight time and moves the whole effect onto
+  // explosion velocity and radius. computeProjectedReps gated on the first two, so a precision-
+  // scripted Guidance Disruptor projected NOTHING, from a fit or as a default effect. eos (bare
+  // module, so x1.25 for Weapon Destabilization V): -24% explosion velocity, +24% radius on a
+  // Caracal's Scourge Heavy Missiles (127.5 m/s, 105 m). explosionVelocity/Radius are published
+  // rounded to the metre, hence the tolerance.
+  const lch = () => ({ id: 'l' + Math.random(), name: 'Heavy Missile Launcher II', typeID: tid('Heavy Missile Launcher II'), type: 'weapon', state: 'active', ammo: 'Scourge Heavy Missile' });
+  const gdHit = (script) => {
+    const slots = { high: [lch(), lch(), lch(), lch(), lch()], mid: [], low: [], rigs: [] };
+    const pe = buildProjectedEffects({ projFits: [E('Guidance Disruptor II', script)], fitsDB: {}, sourceSkills: () => null, shipName: 'Caracal', slots, skills: null, externalBursts: [] });
+    return calcFitStats({ name: 'Caracal', typeID: tid('Caracal') }, slots, [], null, { projectedDebuffs: pe.debuffs }).slotEngineStats.get(slots.high[0]);
+  };
+  const prec = gdHit('Missile Precision Disruption Script');
+  check('projmod', 'GD precision script: explosion velocity (eos x1.25)', prec.explosionVelocity, 127.5 * (1 - 0.24 * 1.25), 0.006);
+  check('projmod', 'GD precision script: explosion radius (eos x1.25)', prec.explosionRadius, 105 * (1 + 0.24 * 1.25), 0.006);
+  check('projmod', 'GD range script: missile velocity (eos x1.25)', gdHit('Missile Range Disruption Script').velocity, 9675 * (1 - 0.18 * 1.25), 0.001);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBSYSTEM FROM THE MARKET (desktop drag/double-click): fit-ops.js subsystemSwapTarget picks the
+// fitted subsystem a market one replaces — by its subSystemSlot (125 core … 128 propulsion), never a
+// subsystem of another hull.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const { subsystemSwapTarget } = await import('./lib/fit-ops.js');
+  const legion = tid('Legion');
+  const subsOf = (hull) => Object.entries(TYPES).filter(([, x]) => (x.c ?? x.category) === 32 && Number(x.a?.fitsToShipType) === hull);
+  const bySlot = (hull, slot) => subsOf(hull).filter(([, x]) => x.a.subSystemSlot === slot).map(([id, x]) => ({ typeID: Number(id), name: x.n }));
+  const fitted = [125, 126, 127, 128].map((sl, i) => ({ id: `s${i}`, type: 'subsystem', ...bySlot(legion, sl)[0] }));
+  const otherDef = bySlot(legion, 126)[1];
+  check('subswap', 'a Legion has a subsystem per slot', fitted.every(s => s.typeID) ? 1 : 0, 1, 0);
+  check('subswap', 'a defensive replaces the defensive', subsystemSwapTarget(fitted, otherDef.typeID, 'Legion').slotId, 's1');
+  check('subswap', 'the one already fitted: nothing to do', subsystemSwapTarget(fitted, fitted[2].typeID, 'Legion').same ? 1 : 0, 1, 0);
+  const tengu = tid('Tengu');
+  check('subswap', "a Tengu's subsystem refuses a Legion", subsystemSwapTarget(fitted, bySlot(tengu, 126)[0].typeID, 'Legion').error, 'hull');
+  check('subswap', 'an empty slot is found by its index', subsystemSwapTarget([fitted[0], { id: 'e1', type: 'empty' }, fitted[2], fitted[3]], otherDef.typeID, 'Legion').slotId, 'e1');
+  check('subswap', 'no subsystem slots: refused', subsystemSwapTarget([], otherDef.typeID, 'Rupture').error ?? 'none', 'hull');
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

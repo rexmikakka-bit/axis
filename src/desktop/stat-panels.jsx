@@ -148,10 +148,14 @@ export function TargetingPanel({ s, cs }) {
  * One HP column, not two: click its header (or the total) to switch it between EHP and raw HP.
  * Remembered, like the Resources window's remaining/used switch.
  */
-const RAW_KEY = "axis_desk_defraw";
+const RAW_KEY = "axis_desk_defraw", MERGED_KEY = "axis_desk_clipmerged";
 export function DefensePanel({ s, cs, onPickProfile }) {
   const [raw, setRaw] = useState(() => { try { return localStorage.getItem(RAW_KEY) === "1"; } catch { return false; } });
   const flipRaw = () => setRaw(v => { try { localStorage.setItem(RAW_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
+  // The phone's tap on "+54.2k ancil.": fold the ancillary clip into the total ("w/ ancil."), or show
+  // it apart again. Remembered.
+  const [merged, setMerged] = useState(() => { try { return localStorage.getItem(MERGED_KEY) === "1"; } catch { return false; } });
+  const flipMerged = () => setMerged(v => { try { localStorage.setItem(MERGED_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
   if (!cs) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const p = s.dmgProfile?.p ?? [0.25, 0.25, 0.25, 0.25];
   const mult = (res) => 1 / Math.max(1e-4, p[0] * (1 - (res?.em ?? 0) / 100) + p[1] * (1 - (res?.th ?? 0) / 100) + p[2] * (1 - (res?.kin ?? 0) / 100) + p[3] * (1 - (res?.exp ?? 0) / 100));
@@ -159,8 +163,9 @@ export function DefensePanel({ s, cs, onPickProfile }) {
   const layers = [
     ["shield", t("Shield"), cs.shieldHP ?? 0], ["armor", t("Armor"), cs.armorHP ?? 0], ["hull", t("Hull"), cs.hullHP ?? 0],
   ].map(([k, label, hp]) => ({ k, label, hp, res: r[k] ?? {}, m: mult(r[k]), ehp: hp * mult(r[k]) }));
-  const total = layers.reduce((a, l) => a + (raw ? l.hp : l.ehp), 0);
-  const clip = cs.ancilClipEHP ?? 0;
+  // The clip in the same units as the total beside it: raw HP when the window shows raw HP.
+  const clip = (raw ? cs.ancilClipHP : cs.ancilClipEHP) ?? 0;
+  const total = layers.reduce((a, l) => a + (raw ? l.hp : l.ehp), 0) + (merged ? clip : 0);
   const pct = (v) => (v ?? 0).toFixed(1);
   const cols = "56px repeat(4, minmax(0,1fr)) 64px 48px";
   const flipTitle = raw ? t("Raw hit points. Click for EHP against {profile}", { profile: s.dmgProfile?.name ?? "Uniform" }) : t("Effective HP against {profile}. Click for raw hit points", { profile: s.dmgProfile?.name ?? "Uniform" });
@@ -188,7 +193,10 @@ export function DefensePanel({ s, cs, onPickProfile }) {
           <span style={{ fontSize: TYPE.label, color: C.textMid }}>{raw ? t("Total HP") : t("Total EHP")}</span>
           <span style={{ fontSize: 15, fontWeight: 600, color: C.text, fontVariantNumeric: "tabular-nums" }} title={Math.round(total).toLocaleString()}>{fmtN(total)}</span>
         </button>
-        {clip > 0 && <span style={{ fontSize: TYPE.label, color: C.high }} title={t("Ancillary booster clip — EHP you get once per reload")}>+{fmtN(clip)} {t("ancil.")}</span>}
+        {clip > 0 && <button type="button" onClick={flipMerged} aria-pressed={merged}
+          title={merged ? t("Includes the ancillary clip — click to show it separately") : t("Ancillary clip pool — click to add it into the total")}
+          style={{ ...flipBtn, fontSize: TYPE.label, color: C.high, fontVariantNumeric: "tabular-nums" }}>
+          {merged ? t("w/ ancil.") : `+${fmtN(clip)} ${t("ancil.")}`}</button>}
         <span style={{ flex: 1 }} />
         <button type="button" onClick={onPickProfile}
           style={{ height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12.5, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.text,

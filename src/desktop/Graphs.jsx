@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { calcFitStats, computeProjectedReps, tidByName, isT3Cruiser, t3cSlotLayout, TYPES } from "../calc.js";
+import { calcFitStats, computeProjectedReps, calcAngularSpeed, tidByName, isT3Cruiser, t3cSlotLayout, TYPES } from "../calc.js";
 import { lookupShip, getCompatibleCharges, NAVY_AMMO_PREFIXES } from "../lib/core.js";
 import { metaOf } from "../lib/meta.js";
 import { weaponRacks } from "../lib/ammo-compare.js";
 import { buildExternalBursts, buildProjectedEffects } from "../lib/projection.js";
 import { targetFitProfile } from "../lib/graph-target.js";
 import { GRAPH_CONFIG, generateCurve, TARGET_PROFILES, TARGET_FIT, profileTarget, interpCurveAt,
-         defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S, VectorCompass, ScrubField, IDEAL_SIG, COMPASS_DIRS } from "../components/GraphTab.jsx";
+         defaultEngRangeKm, engagementDistanceM, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S, VectorCompass, ScrubField, IDEAL_SIG, COMPASS_DIRS } from "../components/GraphTab.jsx";
 import { FitPickerSheet } from "../components/effects.jsx";
 import { tabFits } from "./tab-fits.js";
 import Menu from "./Menu.jsx";
@@ -65,7 +65,7 @@ function sourceData(s, ship, fit, extraOpts = {}) {
   }
   const skills = s.sourceSkills(fit);
   const eb = buildExternalBursts(fit.cmdFits, s.fitsDB, s.sourceSkills);
-  const pe = buildProjectedEffects({ projFits: fit.projFits, fitsDB: s.fitsDB, sourceSkills: s.sourceSkills, shipName: ship, slots: fit.slots, skills, externalBursts: eb });
+  const pe = buildProjectedEffects({ projFits: fit.projFits, fitsDB: s.fitsDB, sourceSkills: s.sourceSkills, shipName: ship, slots: fit.slots, skills, externalBursts: eb, implants: fit.implants, boosters: fit.boosters });
   const opts = { implants: fit.implants, boosters: fit.boosters, factorInReload: s.factorInReload, externalBursts: eb,
     projectedWebMult: pe.webMult, projectedNeutGJs: pe.neutGJs, projectedCapGJs: pe.capGJs, projectedDebuffs: pe.debuffs,
     projectedBoosts: pe.boosts, pilotSec: fit.slots?.pilotSec, systemSecurity: fit.slots?.systemSecurity,
@@ -303,23 +303,27 @@ export default function GraphsPanel({ s }) {
   const [meta, setMeta] = useState(saved.meta ?? "navy");
   const [ignoreResists, setIgnoreResists] = useState(!!saved.ignoreResists);
   const [showY0, setShowY0] = useState(saved.showY0 ?? true);
+  // Transversal in m/s, or (clicked) angular velocity in °/s — the phone's tap toggle. Remembered.
+  const [angular, setAngular] = useState(!!saved.angular);
   // Typed axis maximums, per graph and axis pair: a range scale that suits Damage vs distance means
   // nothing on Capacitor vs time. {"damage|dps|dist": {x: 60, y: null}}; null is Auto.
   const [scales, setScales] = useState(saved.scales ?? {});
   const [picker, setPicker] = useState(null);   // "source" | "target"
-  // Compact (plot only) or expanded (controls beside it). "auto" follows the window: under 640 px the
-  // controls fold away, so the graph can sit small in a general workspace and still read; a Controls
-  // button overrides either way, and the override is remembered.
+  // Compact (plot only) or expanded (controls under it). The controls sit BELOW the plot so the plot
+  // keeps the window's full width, which a distance or time axis needs far more than height. "auto"
+  // follows the window: under 460 px tall the controls fold away, so the graph can sit small in a
+  // general workspace and still read; a Controls button overrides either way, and the override is
+  // remembered.
   const [panelMode, setPanelMode] = useState(saved.panelMode ?? "auto");
   const rootRef = useRef(null);
-  const [rootW, setRootW] = useState(1000);
+  const [rootH, setRootH] = useState(800);
   useLayoutEffect(() => {
     const el = rootRef.current; if (!el) return;
-    const ro = new ResizeObserver(([e]) => setRootW(e.contentRect.width));
+    const ro = new ResizeObserver(([e]) => setRootH(e.contentRect.height));
     ro.observe(el); return () => ro.disconnect();
   }, []);
-  const showPanel = panelMode === "shown" || (panelMode === "auto" && rootW >= 640);
-  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales]);
+  const showPanel = panelMode === "shown" || (panelMode === "auto" && rootH >= 460);
+  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular]);
 
   // With no sources chosen, graph the fit being edited.
   const srcList = sources.length ? sources : (s.activeFit?.ship ? [{ ship: s.activeFit.ship, fitName: s.activeFit.fitName, auto: true }] : []);
@@ -384,6 +388,11 @@ export default function GraphsPanel({ s }) {
   const selfRef = firstCs?.maxVelocityAB ?? firstCs?.maxVelocity ?? srcData.find(Boolean)?.d.ship?.maxVelocity ?? 0;
   const tgtRef = tgtData.find(Boolean)?.vel ?? 0;
   const transversal = Math.abs(selfRef * inp.atkSpeed / 100 * Math.sin(inp.atkAngle * Math.PI / 180) - tgtRef * inp.tgtSpeed / 100 * Math.sin(inp.tgtAngle * Math.PI / 180));
+  // Angular velocity at the engagement distance: the Range field where it is shown, else the fit's
+  // weapon reach — the phone's angularDistM, so the two quote the same engagement.
+  const angDistM = showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
+  const angularDeg = calcAngularSpeed(selfRef * inp.atkSpeed / 100, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtRef * inp.tgtSpeed / 100, inp.tgtAngle, 0) * 180 / Math.PI;
+  const fmtAngular = v => !Number.isFinite(v) ? "--" : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
   const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
   // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
   const addCustom = () => { const td = tgtData.find(Boolean);
@@ -396,24 +405,72 @@ export default function GraphsPanel({ s }) {
   const yLabel = yAxes.find(a => a.key === y)?.label() ?? "";
 
   return (
-    <div ref={rootRef} style={{ height: "100%", display: "flex", minHeight: 0 }}>
-      {showPanel && <div style={{ width: rootW >= 1200 ? 290 : 250, flex: "none", overflowY: "auto", padding: "4px 12px 12px", borderRight: `1px solid ${C.border}` }}>
+    <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 200, display: "flex", flexDirection: "column", padding: "6px 8px 8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, padding: "0 4px" }}>
+          <button type="button" aria-pressed={showPanel} onClick={() => setPanelMode(showPanel ? "hidden" : "shown")}
+            title={showPanel ? t("Hide the controls (compact graph)") : t("Show the controls")}
+            style={{ ...addBtn(), height: 22, color: showPanel ? C.textMid : C.accent, borderColor: showPanel ? C.borderStrong : C.accent }}>
+            {showPanel ? "▾ " : "▴ "}{t("Controls")}
+          </button>
+          {!showPanel && <span style={{ fontSize: 12, color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {GRAPH_TYPES.find(g => g.key === cat)?.label()} · {yLabel}</span>}
+          {panelMode !== "auto" && <button type="button" onClick={() => setPanelMode("auto")} title={t("Fold the controls away automatically when the window is short")}
+            style={{ ...addBtn(), height: 22, padding: "0 6px", fontSize: 11.5 }}>{t("Auto")}</button>}
+          <span style={{ flex: 1 }} />
+          {busy && <span style={{ fontSize: 12.5, color: C.textMid }}>{t("Comparing ammo…")}</span>}
+        </div>
+        {!series.length && !busy
+          ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
+          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null} />}
+        {series.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "6px 4px 0", fontSize: 12 }}>
+            {series.map(sr => (
+              <span key={sr.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.textMid }}>
+                <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={sr.color} strokeWidth="2.5" strokeDasharray={sr.dash} /></svg>
+                {sr.short}{sr.rack ? ` · ${sr.rack}` : ""}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* The controls, as columns that wrap: one row on a wide window, two or more on a narrow one.
+          Capped at half the window and scrolled past that, so the plot always keeps its share. */}
+      {showPanel && <div style={{ flex: "none", maxHeight: "50%", overflowY: "auto", padding: "0 12px 12px", borderTop: `1px solid ${C.border}`,
+                                  display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", columnGap: 22, alignItems: "start" }}>
+        <div>
         <Label>{t("Graph")}</Label>
         <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle()} aria-label={t("Graph")}>
           {GRAPH_TYPES.map(g => <option key={g.key} value={g.key}>{g.label()}</option>)}
         </select>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 6 }}>
-          <select value={y} onChange={e => setY(e.target.value)} style={selectStyle()} aria-label={t("Y axis")}>{yAxes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
-          <select value={x} onChange={e => setX(e.target.value)} style={selectStyle()} aria-label={t("X axis")}>{xAxes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
+        {/* Each axis on one row: what it plots, then its maximum (empty is Auto). */}
+        {[["y", y, setY, yAxes, t("Y axis")], ["x", x, setX, xAxes, t("X axis")]].map(([axis, val, set, axes, aria]) => (
+          <div key={axis} style={{ display: "grid", gridTemplateColumns: "14px minmax(0,1fr) auto", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12.5 }}>
+            <span style={{ color: C.textMid }}>{axis.toUpperCase()}</span>
+            <select value={val} onChange={e => set(e.target.value)} style={selectStyle()} aria-label={aria}>{axes.map(a => <option key={a.key} value={a.key}>{a.label()}</option>)}</select>
+            <NumField value={scale[axis]} blank={t("Auto")} anchor={axisAnchor(axis)}
+              title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
+          </div>
+        ))}
+        <Label>{t("Display")}</Label>
+        {(cat === "damage" || cat === APP_PROFILE) && <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
+          <input type="checkbox" checked={ignoreResists} onChange={() => setIgnoreResists(v => !v)} style={{ accentColor: C.accent }} />{t("Ignore target resists")}
+        </label>}
+        <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
+          <input type="checkbox" checked={showY0} onChange={() => setShowY0(v => !v)} style={{ accentColor: C.accent }} />{t("Always show Y = 0")}
+        </label>
         </div>
 
+        <div>
         <Label>{t("Fits")}</Label>
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
           onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
         {!srcList.length && <div style={{ fontSize: 12.5, color: C.textMid }}>{t("Open a fit, or add one.")}</div>}
         <button type="button" style={{ ...addBtn(), marginTop: 4 }} onClick={() => setPicker("source")}>+ {t("Add fit")}</button>
+        </div>
 
-        {hasTargets && <>
+        {hasTargets && <div>
           <Label>{t("Targets")}</Label>
           {targets.map((tg, j) => {
             const P = tg.kind === "profile" ? TARGET_PROFILES[tg.profile] : null;
@@ -444,18 +501,22 @@ export default function GraphsPanel({ s }) {
               { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
             <button type="button" style={addBtn()} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
           </div>
-        </>}
+        </div>}
 
+        {(hasTargets || cat === "damage" || showRange || showWindow || cat === APP_PROFILE) && <div>
         {(hasTargets || cat === "damage") && <>
           <Label>{t("Engagement")}</Label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
             <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
             <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, fontSize: 12.5, color: C.textMid }}>
-            <span title={t("Drag a wheel to set heading and speed; double-click it to stop")}>{t("Transversal")}</span>
-            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>{Math.round(transversal)} m/s</span>
-          </div>
+          {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range). */}
+          <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+            <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
+            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
+              {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
+          </button>
         </>}
         {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
         {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
@@ -468,52 +529,8 @@ export default function GraphsPanel({ s }) {
             ))}
           </div>
         </>}
-        <Label>{t("Axis scale")}</Label>
-        {[["x", xLabel], ["y", yLabel]].map(([axis, lab]) => (
-          <div key={axis} style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 28, fontSize: 12.5, color: C.textMid }}>
-            <span style={{ width: 14, color: C.text }}>{axis.toUpperCase()}</span>
-            <span title={lab} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lab}</span>
-            <NumField value={scale[axis]} blank={t("Auto")} anchor={axisAnchor(axis)}
-              title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
-          </div>
-        ))}
-        <Label>{t("Display")}</Label>
-        {(cat === "damage" || cat === APP_PROFILE) && <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
-          <input type="checkbox" checked={ignoreResists} onChange={() => setIgnoreResists(v => !v)} style={{ accentColor: C.accent }} />{t("Ignore target resists")}
-        </label>}
-        <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
-          <input type="checkbox" checked={showY0} onChange={() => setShowY0(v => !v)} style={{ accentColor: C.accent }} />{t("Always show Y = 0")}
-        </label>
+        </div>}
       </div>}
-
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "6px 8px 8px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 24, padding: "0 4px" }}>
-          <button type="button" aria-pressed={showPanel} onClick={() => setPanelMode(showPanel ? "hidden" : "shown")}
-            title={showPanel ? t("Hide the controls (compact graph)") : t("Show the controls")}
-            style={{ ...addBtn(), height: 22, color: showPanel ? C.textMid : C.accent, borderColor: showPanel ? C.borderStrong : C.accent }}>
-            {showPanel ? "◧ " : "◨ "}{t("Controls")}
-          </button>
-          {!showPanel && <span style={{ fontSize: 12, color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {GRAPH_TYPES.find(g => g.key === cat)?.label()} · {yLabel}</span>}
-          {panelMode !== "auto" && <button type="button" onClick={() => setPanelMode("auto")} title={t("Fold the controls away automatically when the window is narrow")}
-            style={{ ...addBtn(), height: 22, padding: "0 6px", fontSize: 11.5 }}>{t("Auto")}</button>}
-          <span style={{ flex: 1 }} />
-          {busy && <span style={{ fontSize: 12.5, color: C.textMid }}>{t("Comparing ammo…")}</span>}
-        </div>
-        {!series.length && !busy
-          ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
-          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null} />}
-        {series.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "6px 4px 0", fontSize: 12 }}>
-            {series.map(sr => (
-              <span key={sr.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.textMid }}>
-                <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={sr.color} strokeWidth="2.5" strokeDasharray={sr.dash} /></svg>
-                {sr.short}{sr.rack ? ` · ${sr.rack}` : ""}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
 
       {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={(ship, fit) => {

@@ -4,11 +4,12 @@ import { t } from "../lib/i18n.js";
 import { tidByName, TYPES } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { getGlobalCss, lookupShip, haptic, parseEFT, readClipboardText, moduleByName } from "../lib/core.js";
+import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
 import { parsePastedModule, resolveItemLink, pastedSlot } from "../lib/abyssal-paste.js";
 import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame, BottomSheet } from "../components/ui.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
-import { deskCss } from "./kit.jsx";
+import { deskCss, Empty } from "./kit.jsx";
 import { useBackdrop, Backdrop } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
 import { ShoppingListSheet } from "../components/shopping-list.jsx";
@@ -225,6 +226,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "boosters": return <BoostersPanel s={s} />;
       case "environment": return <EnvironmentPanel s={s} />;
       case "notes": return <NotesWindow s={s} />;
+      // The open fit's hull, keyed on it so a tab switch to another ship starts that ship's sheet fresh.
+      case "shipinfo": return ship?.typeID ? <ShipInfoSheet key={ship.typeID} embedded ship={ship} cs={cs} onClose={() => {}} /> : <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
       // Settings is an ordinary window here, laid out for the desktop (Settings.jsx).
       case "settings": return <DeskSettings s={s} bd={bd} />;
       default: return null;
@@ -235,6 +238,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     if (isFloatId(id)) return inspectorTitle(windows?.[id]?.target, windows?.[id]?.tab, s);
     if (INSPECTOR_WINDOWS.has(id) && selection) return inspectorTitle(selection, id, s);
     if (id === "drones" && shipFighter.tubes > 0) return t("Fighters");
+    if (id === "shipinfo" && s.activeFit?.ship) return `${t("Ship info")} · ${s.activeFit.ship}`;
     return id === "fitting" && s.activeFit?.ship ? `${t("Fitting")} · ${s.activeFit.ship}` : t(WINDOWS.find(w => w.id === id)?.title ?? id);
   };
   // The Fitting window's title bar carries the fit's validity, so the Validation window can stay
@@ -366,7 +370,7 @@ function DesktopApp() {
   const insp = useInspectorState(s, { setLayoutState, post: sync.post, adderRef, remoteAdd });
   // Ship info is a floating window on the desktop (an inspector on the hull's type, which draws the
   // phone's Ship info sheet inside it), not the phone's full-screen sheet. One per hull.
-  const openShipInfo = () => { const tid = tidByName(s.activeFit?.ship); if (tid) insp.value.inspect(typeTarget(tid), "info"); };
+  const openShipInfo = () => { if (s.activeFit?.ship) openWindow(setLayoutState, "shipinfo"); };
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openWindowFor: (id) => openWindow(setLayoutState, id), openProfilePicker: () => setSheet("dmgprofile"),
