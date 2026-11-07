@@ -534,7 +534,7 @@ const _SECTION_IDS=_SECTIONS.map(s=>s.tabId);
 // card here cannot claim a different number from the one the fit is actually getting — a projected
 // or command fit is flown by the pilot it names, or by the app-wide sheet if it names none, and that
 // decision belongs in one place.
-export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,cmdFits,setCmdFits,sourceSkills=()=>SKILL_DEFAULTS,environment,setEnvironment,jamTarget,assistTarget,openFitTabs,onOpenFit}){
+export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,cmdFits,setCmdFits,sourceSkills=()=>SKILL_DEFAULTS,environment,setEnvironment,jamTarget,assistTarget,ewarResist,openFitTabs,onOpenFit}){
   const[section,setSection]=useState("boosters");
   const {panelRef:_panel,slideDir:_slideDir,swipeHandlers:_swipeHandlers,goTo:_goTo}=useTabSwipe(_SECTION_IDS,section,setSection);
   const[showBoosterPicker,setShowBoosterPicker]=useState(false);
@@ -647,25 +647,28 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
         const totals={shield:0,armor:0,hull:0};
         // What THIS fit accepts (HIC bubble, siege/triage/bastion impedance), as App.jsx applies it.
         const af=assistTarget??{rep:1,cap:1,assist:1};
+        // This fit's EWAR resistance (Cenotaph/Tholos hull, Serpentis Synchronizer rigs, Imperial
+        // Electronics Booster, Electronic Hardening burst), applied per source module as App.jsx does.
+        const rz=k=>ewarResist?.[k]??1;
         for(const r of eff.reps)totals[r.kind]+=r.rawPS*af.rep*rf(r.optimal,r.falloff);
-        const webMs=eff.webs.map(w=>1+(w.speedFactor*rf(w.optimal,w.falloff))/100);
+        const webMs=eff.webs.map(w=>1+(w.speedFactor*rz("web")*rf(w.optimal,w.falloff))/100);
         const webMult=webMs.length?stackingPenalty(webMs):1;
-        const neutGJs=eff.neuts.reduce((s,n)=>s+n.gjPerSec*rf(n.optimal,n.falloff),0);
+        const neutGJs=eff.neuts.reduce((s,n)=>s+n.gjPerSec*rz("neut")*rf(n.optimal,n.falloff),0);
         const capGJs=(eff.caps||[]).reduce((s,c)=>s+c.gjPerSec*af.cap*rf(c.optimal,c.falloff),0);
         const stk=(arr)=>arr.length?(stackingPenalty(arr.map(p=>1+p/100))-1)*100:0;
-        const painterSig=stk((eff.painters||[]).map(p=>p.sigBonus*rf(p.optimal,p.falloff)));
-        const dampLock=stk((eff.damps||[]).map(d=>d.lockBonus*rf(d.optimal,d.falloff)));
-        const tdTrack=stk((eff.trackDisr||[]).map(td=>td.tracking*rf(td.optimal,td.falloff)));
+        const painterSig=stk((eff.painters||[]).map(p=>p.sigBonus*rz("painter")*rf(p.optimal,p.falloff)));
+        const dampLock=stk((eff.damps||[]).map(d=>d.lockBonus*rz("damp")*rf(d.optimal,d.falloff)));
+        const tdTrack=stk((eff.trackDisr||[]).map(td=>td.tracking*rz("disrupt")*rf(td.optimal,td.falloff)));
         // A range script zeroes trackingSpeedBonus and moves the whole effect onto optimal and
         // falloff, so reading `tracking` alone made a range-scripted disruptor look inert.
-        const tdOpt=stk((eff.trackDisr||[]).map(td=>(td.optimalBonus||0)*rf(td.optimal,td.falloff)));
-        const tdFall=stk((eff.trackDisr||[]).map(td=>(td.falloffBonus||0)*rf(td.optimal,td.falloff)));
+        const tdOpt=stk((eff.trackDisr||[]).map(td=>(td.optimalBonus||0)*rz("disrupt")*rf(td.optimal,td.falloff)));
+        const tdFall=stk((eff.trackDisr||[]).map(td=>(td.falloffBonus||0)*rz("disrupt")*rf(td.optimal,td.falloff)));
         // Remote tracking computers: a boost, so the target's assistance impedance scales it.
         const rtcF=(b)=>af.assist*rf(b.optimal,b.falloff);
         const rtcTrack=stk((eff.trackBoosts||[]).map(b=>(b.tracking||0)*rtcF(b)));
         const rtcOpt=stk((eff.trackBoosts||[]).map(b=>(b.optimalBonus||0)*rtcF(b)));
         const rtcFall=stk((eff.trackBoosts||[]).map(b=>(b.falloffBonus||0)*rtcF(b)));
-        const gdRange=stk((eff.guideDisr||[]).map(g=>g.missileRange*rf(g.optimal,g.falloff)));
+        const gdRange=stk((eff.guideDisr||[]).map(g=>g.missileRange*rz("disrupt")*rf(g.optimal,g.falloff)));
         // Strength is the strongest of the jammer's four racial attrs, matching the MOD_STRENGTH badge
         // a locally fitted jammer gets. Jam CHANCE is target-relative and needs the edited fit's own
         // engine-computed sensor strength and type, handed down as jamTarget — so it is 0 when no fit

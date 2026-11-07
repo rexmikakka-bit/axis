@@ -65,7 +65,7 @@ function sourceData(s, ship, fit, extraOpts = {}) {
   }
   const skills = s.sourceSkills(fit);
   const eb = buildExternalBursts(fit.cmdFits, s.fitsDB, s.sourceSkills);
-  const pe = buildProjectedEffects({ projFits: fit.projFits, fitsDB: s.fitsDB, sourceSkills: s.sourceSkills, shipName: ship, slots: fit.slots, skills, externalBursts: eb });
+  const pe = buildProjectedEffects({ projFits: fit.projFits, fitsDB: s.fitsDB, sourceSkills: s.sourceSkills, shipName: ship, slots: fit.slots, skills, externalBursts: eb, implants: fit.implants, boosters: fit.boosters });
   const opts = { implants: fit.implants, boosters: fit.boosters, factorInReload: s.factorInReload, externalBursts: eb,
     projectedWebMult: pe.webMult, projectedNeutGJs: pe.neutGJs, projectedCapGJs: pe.capGJs, projectedDebuffs: pe.debuffs,
     projectedBoosts: pe.boosts, pilotSec: fit.slots?.pilotSec, systemSecurity: fit.slots?.systemSecurity,

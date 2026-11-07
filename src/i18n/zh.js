@@ -616,6 +616,7 @@ export default {
   "Sig": "信号",
   "Sig radius": "信号半径",
   "Signature Radius": "信号半径",
+  "Webifier Resistance": "停滞网抗性",
   "Signature radius": "信号半径",
   "Skills": "技能",
   "Slot {n}": "槽位 {n}",

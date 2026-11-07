@@ -14,7 +14,7 @@ export const NO_BURSTS = [];
 // single tap recalculate the whole fit twice. `sigList`/`webList` are the per-source values before
 // stacking, for a caller that has to stack its OWN painters and webs into the same pool.
 export const NO_PROJECTION = {reps:{shield:0,armor:0,hull:0},webMult:1,neutGJs:0,capGJs:0,capEntries:[],
-  debuffs:null,boosts:{lock:[],scan:[],trk:[],topt:[],tfall:[]},ecm:[],ecmResist:1,sigList:[],webList:[]};
+  debuffs:null,boosts:{lock:[],scan:[],trk:[],topt:[],tfall:[]},ecm:[],ecmResist:1,ewarResist:{web:1,neut:1,painter:1,damp:1,disrupt:1},sigList:[],webList:[]};
 
 /** Every active command fit in `cmdFitsList`, resolved against `fitsDB`, as one burst list. */
 export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
@@ -54,7 +54,7 @@ export function projectedFitEffects(ship, fit, fitsDB, sourceSkills) {
  * The combined effect of `projFits` on the ship `shipName` fitted with `slots`, which is flown on
  * `skills` and sits under `externalBursts`. Returns NO_PROJECTION when nothing is projected.
  */
-export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName, slots, skills, externalBursts}) {
+export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName, slots, skills, externalBursts, implants, boosters}) {
   if(!projFits?.length)return NO_PROJECTION;
   // Collected, not summed: incoming remote reps go through a diminishing-returns curve that
   // needs every source's amount AND cycle time together (applyRemoteRepDiminishing).
@@ -73,7 +73,7 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   // rather than a hull attribute, so externalBursts has to go in or every boosted fit reads as
   // having no resistance and projected damps/disruptors hit at full strength. Applied PER SOURCE
   // MODULE, before stacking — stack(b*r) != stack(b)*r, and eos does the former.
-  const R=shipName?projectionResistances({name:shipName,typeID:tidByName(shipName)},slots,skills,{externalBursts}):null;
+  const R=shipName?projectionResistances({name:shipName,typeID:tidByName(shipName)},slots,skills,{externalBursts,implants,boosters}):null;
   const rz=k=>(R&&Number.isFinite(R[k])?R[k]:1);
   // disallowAssistance (in practice: an ACTIVE HIC bubble) refuses ALL incoming remote
   // assistance - reps and remote sensor boosters - while still taking EWAR normally. Short of
@@ -125,5 +125,7 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   // does; the card applies its OWN range factor (it has a per-card range slider), so it cannot reuse
   // ecmEntries directly.
   return {reps,webMult,neutGJs,capGJs,capEntries,debuffs:hasDebuff?debuffs:null,boosts,ecm:ecmEntries,ecmResist:rz('ecm'),assist:AF,
+          // The same resistances, for the Projected cards, which redo the stacking for their own range slider.
+          ewarResist:{web:rz('web'),neut:rz('neut'),painter:rz('painter'),damp:rz('damp'),disrupt:rz('disrupt')},
           sigList:col.sig,webList:webMults};
 }

@@ -99,7 +99,7 @@ export function targetFitProfile(shipName, fit, skills, sel = {}, ctx = {}) {
     if (fitsDB) {
       externalBursts = buildExternalBursts(fit.cmdFits, fitsDB, sourceSkills);
       pe = buildProjectedEffects({ projFits: fit.projFits, fitsDB, sourceSkills, shipName,
-                                   slots: fit.slots, skills, externalBursts });
+                                   slots: fit.slots, skills, externalBursts, implants: fit.implants, boosters: fit.boosters });
     }
   } catch { pe = null; }
   const opts = { implants: fit.implants, boosters: fit.boosters, externalBursts,

@@ -648,6 +648,7 @@ export default {
   "Sig": "Sig",
   "Sig radius": "Rayon de sig.",
   "Signature Radius": "Rayon de signature",
+  "Webifier Resistance": "Résistance aux webifiers",
   "Signature radius": "Rayon de signature",
   "Skills": "Compétences",
   "Slot {n}": "Emplacement {n}",

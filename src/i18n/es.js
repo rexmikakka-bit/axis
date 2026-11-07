@@ -647,6 +647,7 @@ export default {
   "Sig": "Firma",
   "Sig radius": "Radio de firma",
   "Signature Radius": "Radio de firma",
+  "Webifier Resistance": "Resistencia a inhibidores de estasis",
   "Signature radius": "Radio de firma",
   "Skills": "Habilidades",
   "Slot {n}": "Ranura {n}",

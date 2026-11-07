@@ -147,27 +147,28 @@ export function BoostersPanel({ s }) {
  * the same effect, the target's assistance factors on reps and cap, and the target's ECM resistance
  * on jam chance. Keep the two in step.
  */
-export function projectedLines(eff, rangeKm, assist, jamTarget) {
+export function projectedLines(eff, rangeKm, assist, jamTarget, ewarResist) {
   const rf = (o, fo) => calcRangeFactor(o, fo, rangeKm * 1000, true);
   const af = assist ?? { rep: 1, cap: 1, assist: 1 };
+  const rz = (k) => ewarResist?.[k] ?? 1;   // this fit's EWAR resistance, per source module
   const reps = { shield: 0, armor: 0, hull: 0 };
   for (const r of eff.reps ?? []) reps[r.kind] += r.rawPS * af.rep * rf(r.optimal, r.falloff);
-  const webMs = (eff.webs ?? []).map(w => 1 + (w.speedFactor * rf(w.optimal, w.falloff)) / 100);
+  const webMs = (eff.webs ?? []).map(w => 1 + (w.speedFactor * rz("web") * rf(w.optimal, w.falloff)) / 100);
   const webMult = webMs.length ? stackingPenalty(webMs) : 1;
-  const neut = (eff.neuts ?? []).reduce((a, n) => a + n.gjPerSec * rf(n.optimal, n.falloff), 0);
+  const neut = (eff.neuts ?? []).reduce((a, n) => a + n.gjPerSec * rz("neut") * rf(n.optimal, n.falloff), 0);
   const cap = (eff.caps ?? []).reduce((a, c) => a + c.gjPerSec * af.cap * rf(c.optimal, c.falloff), 0);
   const stk = (arr) => arr.length ? (stackingPenalty(arr.map(p => 1 + p / 100)) - 1) * 100 : 0;
-  const paint = stk((eff.painters ?? []).map(p => p.sigBonus * rf(p.optimal, p.falloff)));
-  const damp = stk((eff.damps ?? []).map(d => d.lockBonus * rf(d.optimal, d.falloff)));
-  const tdTrack = stk((eff.trackDisr ?? []).map(td => td.tracking * rf(td.optimal, td.falloff)));
-  const tdOpt = stk((eff.trackDisr ?? []).map(td => (td.optimalBonus || 0) * rf(td.optimal, td.falloff)));
-  const tdFall = stk((eff.trackDisr ?? []).map(td => (td.falloffBonus || 0) * rf(td.optimal, td.falloff)));
+  const paint = stk((eff.painters ?? []).map(p => p.sigBonus * rz("painter") * rf(p.optimal, p.falloff)));
+  const damp = stk((eff.damps ?? []).map(d => d.lockBonus * rz("damp") * rf(d.optimal, d.falloff)));
+  const tdTrack = stk((eff.trackDisr ?? []).map(td => td.tracking * rz("disrupt") * rf(td.optimal, td.falloff)));
+  const tdOpt = stk((eff.trackDisr ?? []).map(td => (td.optimalBonus || 0) * rz("disrupt") * rf(td.optimal, td.falloff)));
+  const tdFall = stk((eff.trackDisr ?? []).map(td => (td.falloffBonus || 0) * rz("disrupt") * rf(td.optimal, td.falloff)));
   // Remote tracking computers: a boost, so the target's assistance impedance scales it.
   const rtcF = (b) => af.assist * rf(b.optimal, b.falloff);
   const rtcTrack = stk((eff.trackBoosts ?? []).map(b => (b.tracking || 0) * rtcF(b)));
   const rtcRange = Math.max(stk((eff.trackBoosts ?? []).map(b => (b.optimalBonus || 0) * rtcF(b))),
                             stk((eff.trackBoosts ?? []).map(b => (b.falloffBonus || 0) * rtcF(b))));
-  const gd = stk((eff.guideDisr ?? []).map(g => g.missileRange * rf(g.optimal, g.falloff)));
+  const gd = stk((eff.guideDisr ?? []).map(g => g.missileRange * rz("disrupt") * rf(g.optimal, g.falloff)));
   const ecmMax = Math.max(0, ...(eff.ecm ?? []).map(e => Math.max(0, ...Object.values(e.byType)) * rf(e.optimal, e.falloff)));
   const jam = jamChanceFrom((eff.ecm ?? []).map(e => ({ byType: Object.fromEntries(Object.entries(e.byType).map(([k, v]) => [k, (v || 0) * (jamTarget?.resist ?? 1) * rf(e.optimal, e.falloff)])) })),
     jamTarget?.strength ?? 0, jamTarget?.type ?? "");
@@ -216,7 +217,7 @@ export function ProjectedPanel({ s, jamTarget }) {
           const src = s.fitsDB?.[f.ship]?.find(x => x.name === f.fitName);
           const on = f.active !== false;
           const range = f.rangeKm ?? 30;
-          const lines = src ? projectedLines(projectedFitEffects(f.ship, src, s.fitsDB, s.sourceSkills), range, s.projectedEffects?.assist, jamTarget) : [];
+          const lines = src ? projectedLines(projectedFitEffects(f.ship, src, s.fitsDB, s.sourceSkills), range, s.projectedEffects?.assist, jamTarget, s.projectedEffects?.ewarResist) : [];
           return (
             <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
               <div style={{ ...rowStyle(), borderBottom: "none" }}>

@@ -646,6 +646,7 @@ export default {
   "Sig": "Sig",
   "Sig radius": "Sig-Radius",
   "Signature Radius": "Signaturradius",
+  "Webifier Resistance": "Stasisnetz-Widerstand",
   "Signature radius": "Signaturradius",
   "Skills": "Skills",
   "Slot {n}": "Slot {n}",

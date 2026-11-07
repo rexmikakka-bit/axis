@@ -212,8 +212,8 @@ export function useFitSession({ onFitOpened, notify } = {}) {
   // Both live in lib/projection.js so the damage graph can apply the same links and projections to
   // its TARGET fit.
   const externalBursts=useMemo(()=>buildExternalBursts(cmdFits,fitsDB,sourceSkills),[cmdFits,fitsDB,sourceSkills]);
-  const projectedEffects=useMemo(()=>buildProjectedEffects({projFits,fitsDB,sourceSkills,shipName:activeFit?.ship,slots,skills:fitSkills,externalBursts}),
-    [projFits,fitsDB,fitSkills,sourceSkills,activeFit,slots,externalBursts]);
+  const projectedEffects=useMemo(()=>buildProjectedEffects({projFits,fitsDB,sourceSkills,shipName:activeFit?.ship,slots,skills:fitSkills,externalBursts,implants,boosters}),
+    [projFits,fitsDB,fitSkills,sourceSkills,activeFit,slots,externalBursts,implants,boosters]);
   const projectedReps=projectedEffects.reps;
   const[factorInReload,setFactorInReload]=useState(()=>{try{return localStorage.getItem("pyfa-factor-reload")==="1";}catch{return false;}});
   const optimizeFitPrice=async()=>{

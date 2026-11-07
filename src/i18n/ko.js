@@ -617,6 +617,7 @@ export default {
   "Sig": "시그",
   "Sig radius": "시그 반경",
   "Signature Radius": "시그니처 반경",
+  "Webifier Resistance": "스테이시스 웹 저항",
   "Signature radius": "시그니처 반경",
   "Skills": "스킬",
   "Slot {n}": "슬롯 {n}",

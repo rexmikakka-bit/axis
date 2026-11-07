@@ -619,6 +619,7 @@ export default {
   "Sig": "Сиг.",
   "Sig radius": "Радиус сиг.",
   "Signature Radius": "Радиус сигнатуры",
+  "Webifier Resistance": "Сопротивление стазис-сетям",
   "Signature radius": "Радиус сигнатуры",
   "Skills": "Навыки",
   "Slot {n}": "Слот {n}",

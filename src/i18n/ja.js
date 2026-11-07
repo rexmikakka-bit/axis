@@ -618,6 +618,7 @@ export default {
   "Sig": "シグ",
   "Sig radius": "シグ半径",
   "Signature Radius": "シグネチャ半径",
+  "Webifier Resistance": "ステイシスウェビファイヤー耐性",
   "Signature radius": "シグネチャ半径",
   "Skills": "スキル",
   "Slot {n}": "スロット {n}",

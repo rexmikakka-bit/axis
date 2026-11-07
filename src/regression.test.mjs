@@ -9369,6 +9369,39 @@ Nanofiber Internal Structure II
   // Out past optimal + 2x falloff (72 + 2x36 km for a Stabber at all V): nothing reaches the guns.
   check('rtc', 'out of range: no boost', gun(false, 1, 'Tracking Speed Script', 200).trk, 58.08, 1e-9);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// WEBIFIER RESISTANCE — stasisWebifierResistance scales each incoming web's strength BEFORE the webs
+// stack (eos: remote resistance per source module). Its own sources multiply, unpenalised: a
+// Cenotaph (0.75) on an Imperial Electronics Booster III (0.88) is 0.66. Values from pyfa's eos
+// (master c9671de, all V), a Stabber's Stasis Webifier II projected at 5 km. The booster was
+// silently dropped before: projectionResistances never added boosters, so a boosted pilot took
+// every web at full strength.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const mod = (n) => ({ id: n + Math.random(), name: n, typeID: tid(n), type: 'module', state: 'active' });
+  const fitsDB = { Stabber: [{ name: 'web', slots: { high: [], mid: [mod('Stasis Webifier II'), mod('Stasis Webifier II')], low: [], rigs: [] } }],
+                   Vigil: [{ name: 'web1', slots: { high: [], mid: [mod('Stasis Webifier II')], low: [], rigs: [] } }] };
+  const webbed = (ship, webs, boosters = []) => {
+    const slots = { high: [], mid: [], low: [], rigs: [] };
+    const pe = buildProjectedEffects({ projFits: [{ ship: webs === 2 ? 'Stabber' : 'Vigil', fitName: webs === 2 ? 'web' : 'web1', rangeKm: 5 }], fitsDB,
+                                       sourceSkills: () => null, shipName: ship, slots, skills: null, externalBursts: [], boosters });
+    // maxVelocity is published rounded to the m/s, so check the exact product the fit applies.
+    const cs = calcFitStats({ name: ship, typeID: tid(ship) }, slots, [], null, { boosters });
+    return { v: cs.fittedShip.attrs.get('maxVelocity') * pe.webMult, pe };
+  };
+  const ieb = [{ name: 'Imperial Electronics Booster III' }];
+  check('webres', 'Cenotaph, 1 web (eos)', webbed('Cenotaph', 1).v, 116.875, 1e-6);
+  check('webres', 'Cenotaph, 2 webs stack after the resist (eos)', webbed('Cenotaph', 2).v, 71.16472100977911, 1e-6);
+  check('webres', 'Tholos, 1 web (eos)', webbed('Tholos', 1).v, 175.3125, 1e-6);
+  check('webres', 'Rupture + Imperial Electronics III, 1 web (eos)', webbed('Rupture', 1, ieb).v, 123.9, 1e-6);
+  check('webres', 'Cenotaph + Imperial Electronics III: sources multiply (eos)', webbed('Cenotaph', 1, ieb).v, 128.35, 1e-6);
+  // The Projected cards redo the stacking for their own range slider, from this map.
+  check('webres', 'ewarResist handed to the Projected cards', webbed('Cenotaph', 1, ieb).pe.ewarResist.web, 0.66, 1e-9);
+  // Pre-release Serpentis Synchronizer rig (not in eos yet): -10% on its own.
+  const rig = 'Medium Shadow Serpentis Synchronizer';
+  check('webres', 'Serpentis Synchronizer rig: 0.9', projectionResistances({ name: 'Rupture', typeID: tid('Rupture') },
+    { high: [], mid: [], low: [], rigs: [{ name: rig, typeID: tid(rig), state: 'online' }] }).web, 0.9, 1e-9);
+}
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {
   console.log(`ALL ${passed} REGRESSION CHECKS PASSED`);

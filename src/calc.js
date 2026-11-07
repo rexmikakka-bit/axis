@@ -1672,6 +1672,10 @@ export function projectionResistances(ship, slots, skills = SKILL_DEFAULTS, opts
         modItems.push({ slot: s, fitItem: m });
       }
     }
+    // Implants and boosters resist too: the Imperial Electronics Booster is a webifier resistance.
+    // Left out, a boosted pilot took every incoming web at full strength.
+    for (const imp of (opts.implants ?? [])) { if (!imp?.name || imp.name === '[Empty]' || imp.active === false) continue; const tid = typeIDByName(imp.name) ?? tidByName(imp.name) ?? imp.typeID; if (tid && TYPES[tid]) fit.addImplant(tid); }
+    for (const bst of (opts.boosters ?? [])) { if (!bst?.name || bst.active === false) continue; const tid = bst.typeID ?? typeIDByName(bst.name) ?? tidByName(bst.name); if (tid && TYPES[tid]) fit.addBooster(tid); }
     applyTacticalMode(fit, ship, slots);
     fit.calculate();
     // EWAR resistance is overwhelmingly a COMMAND BURST effect, not a hull attribute: buff 19
