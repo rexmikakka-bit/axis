@@ -9,7 +9,8 @@ import { abyssalsForSlot, abyssalMarketGroups, abyssalContainerGroups, abyssalSe
 import { derivedAttributes } from "../lib/compare.js";
 import { rolledAttributes } from "../lib/variation-items.js";
 import { abyssalGrade } from "../lib/eft-export.js";
-import { AbyssalBadge, fmtMutaVal, mutaLabel } from "../components/ui.jsx";
+import { AbyssalBadge, FitCost, fitCostParts, fmtMutaVal, mutaLabel } from "../components/ui.jsx";
+import { variantCostFits, fitCostRatioOf } from "../lib/core.js";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { dragProps } from "./items.js";
@@ -31,7 +32,7 @@ const PAGE = 60;
 const rollTarget = (r) => typeTarget(r.typeID, undefined, { name: r.label || r.name, mutaplasmid: r.mutaplasmid ?? null, mutations: r.mutations, abyssalItemId: r.itemId });
 const rackOf = (r) => (r.slot === "rig" ? "rigs" : r.slot);
 
-export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow }) {
+export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow, headroom }) {
   const insp = useInspect();
   const [records, setRecords] = useState(null);
   const [error, setError] = useState("");
@@ -133,6 +134,11 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow })
                   {r.favorite && <span title={t("Favorite")} style={{ color: C.accent, fontSize: 12 }}>★</span>}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "1px 10px", marginTop: 3, paddingLeft: 26, fontSize: 12, color: C.textMid, fontVariantNumeric: "tabular-nums" }}>
+                  {/* The rolled CPU and grid as the market rows show a module's: the phone's glyphs (FitCost
+                      reads the roll's own cpu/power), red where the fit cannot afford it, with "won't fit". */}
+                  <span className="desk-plain-figures" style={{ display: "inline-flex" }}><FitCost item={{ typeID: r.typeID, mutations: r.mutations }} headroom={headroom} size={12} /></span>
+                  {headroom && variantCostFits(fitCostParts({ typeID: r.typeID }, r.mutations), { cpu: 0, pg: 0, calib: 0 }, headroom, fitCostRatioOf(headroom, r.typeID)) === false
+                    && <span style={{ color: C.danger, whiteSpace: "nowrap" }}>{t("won't fit")}</span>}
                   {Object.entries(r.mutations).filter(([a]) => !["cpu", "power"].includes(a)).map(([a, v]) =>
                     <span key={a}>{mutaLabel(a)} <span style={{ color: C.text }}>{fmtMutaVal(a, v)}</span></span>)}
                   {Object.entries(derived ?? {}).map(([a, v]) => <span key={a}>{mutaLabel(a)} <span style={{ color: C.text }}>{fmtMutaVal(a, v)}</span></span>)}
