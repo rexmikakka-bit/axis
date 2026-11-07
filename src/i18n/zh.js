@@ -105,6 +105,7 @@ export default {
   "Backup JSON copied to clipboard.": "已将备份 JSON 复制到剪贴板。",
   "Backup contains {fitCount} across {shipCount}.": "备份包含 {shipCount} 上的 {fitCount}。",
   "Base": "基础",
+  "stock {val}": "原始 {val}",
   "Base Resistances": "基础抗性",
   "Boost: {n} HP/s": "回充：{n} HP/s",
   "Boosted on cap alone — EHP/second": "仅靠电容的回充量 — EHP/秒",

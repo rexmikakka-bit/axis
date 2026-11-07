@@ -108,6 +108,7 @@ export default {
   "Backup JSON copied to clipboard.": "JSON резервной копии скопирован в буфер обмена.",
   "Backup contains {fitCount} across {shipCount}.": "Резервная копия содержит {fitCount} на {shipCount}.",
   "Base": "База",
+  "stock {val}": "исходно {val}",
   "Base Resistances": "Базовые сопротивления",
   "Boost: {n} HP/s": "Подкачка: {n} HP/s",
   "Boosted on cap alone — EHP/second": "Подкачка только за счёт конденсатора — EHP/с",

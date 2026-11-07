@@ -106,6 +106,7 @@ export default {
   "Backup JSON copied to clipboard.": "백업 JSON을 클립보드에 복사했습니다.",
   "Backup contains {fitCount} across {shipCount}.": "백업에는 {shipCount}에 걸쳐 {fitCount}이(가) 들어 있습니다.",
   "Base": "기본",
+  "stock {val}": "기본 {val}",
   "Base Resistances": "기본 저항",
   "Boost: {n} HP/s": "부스트: {n} HP/s",
   "Boosted on cap alone — EHP/second": "캐패시터만으로 부스트한 양 — EHP/초",

@@ -675,7 +675,7 @@ function FitCard({ cardRef, fitName, shipName, shipTypeID, shipFaction, shipClas
               {clip > 0
                 ? <span>{boldNum(t("w/ ancil. {v}"), { v: fmtK(ehp + clip) })}</span>
                 : <span>{boldNum(t("Sust {v}"), { v: fmt(sust) })}</span>}</>}
-            bars={ehp > 0 ? [["shield", layerEhp.shield], ["armor", layerEhp.armor], ["hull", layerEhp.hull]].map(([k, v]) => ({ w: ((v ?? 0) / ehp) * 100, c: layerColor[k] })) : []} />
+            bars={ehp > 0 ? [["hull", layerEhp.hull], ["armor", layerEhp.armor], ["shield", layerEhp.shield]].map(([k, v]) => ({ w: ((v ?? 0) / ehp) * 100, c: layerColor[k] })) : []} />
         </div>
 
         <div>

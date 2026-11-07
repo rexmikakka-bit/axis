@@ -109,6 +109,7 @@ export default {
   "Backup JSON copied to clipboard.": "JSON de copia de seguridad copiado al portapapeles.",
   "Backup contains {fitCount} across {shipCount}.": "La copia de seguridad contiene {fitCount} repartidos en {shipCount}.",
   "Base": "Base",
+  "stock {val}": "original {val}",
   "Base Resistances": "Resistencias base",
   "Boost: {n} HP/s": "Recarga: {n} PV/s",
   "Boosted on cap alone — EHP/second": "Recargado solo con el capacitor — EHP/segundo",

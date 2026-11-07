@@ -1350,7 +1350,7 @@ export function ModifierBreakdown({attr, ex, bleed, fmt}) {
 // `hideName` is for the one host that already prints the name in a sheet header of its own
 // (ItemInfoSheet) — the icon, group and badges still earn their place, the name would just be the
 // same string twice at the same size, one line apart.
-function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, bleed=14, hideName,priceContent}) {
+function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, rolled, bleed=14, hideName,priceContent}) {
   const typeDescriptions = useTypeDescriptions();
   // Which rows are showing their modifier breakdown, and the traced twin of `item` that supplies it.
   // Both must be declared before the `!td` bail below — they are hooks.
@@ -1371,6 +1371,11 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
   // Overrides describe a fitted instance, so they are meaningless without one to describe.
   const ov = eng ? overrides : null;
   const grade = mutaplasmid ? abyssalGrade(mutaplasmid) : null;
+  // An abyssal roll, keyed by attribute name: each rolled row is judged against the STOCK item it
+  // was rolled from, so the roll itself reads green or red and says how far it moved. The engine's
+  // base already IS the rolled value, so without this the roll was invisible on a fitted module.
+  const roll = mutaplasmid ? (rolled ?? baseOverrides ?? null) : null;
+  const stockAttrs = td.attrs ?? td.a ?? {};
 
   // Base resonances (Shield/Armor/Hull), only when a layer carries its full set of four — a
   // resistance module bonusing a single resonance stays a plain row below rather than a bar chart
@@ -1433,6 +1438,21 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
     // "tap for detail" cue has to be taught.
     const tappable = changed && canExplain;
     const isOpen = openAttrs.has(k);
+    // The roll against stock: the rolled number (the Base column on a fitted module, the only column
+    // otherwise) takes the roll's colour, and a line under the row states the stock value and the
+    // change, in the row's own units and as a percentage.
+    const stock = roll && k in roll ? stockAttrs[k] : null;
+    const rolledVal = typeof stock === 'number' ? roll[k] : null;
+    const rollMoved = typeof rolledVal === 'number' && Math.abs(rolledVal - stock) > Math.abs(stock) * 1e-9 + 1e-12;
+    const rollBetter = rollMoved ? directionOf(k, rolledVal, stock, typeID) : null;
+    const rollColor = rollBetter == null ? null : (rollBetter ? C.rig : C.danger);
+    const rollDelta = !rollMoved ? null : (() => {
+      const d = rolledVal - stock, sign = (v) => v >= 0 ? '+' : '−';
+      // A resonance prints as a resist percentage, so its change is in percentage points.
+      const unit = RESIST_ATTRS.has(k) ? `${sign(-d)}${Math.abs(d * 100).toFixed(1)} pts` : `${sign(d)}${fmtInfoVal(k, Math.abs(d))}`;
+      const pct = stock !== 0 ? ` (${sign(d)}${Math.abs((d / stock) * 100).toFixed(1)}%)` : '';
+      return `${unit}${RESIST_ATTRS.has(k) ? '' : pct}`;
+    })();
     return (
       <>
       <div onClick={tappable ? () => toggleAttr(k) : undefined}
@@ -1451,12 +1471,16 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, blee
                                    transform:isOpen?'rotate(90deg)':'none'}}>▶</span>}
         </span>
         <span style={{fontSize:12,fontWeight:600,textAlign:'right',fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',
-                      color:changed?(better==null?C.text:(better?C.rig:C.danger)):C.text}}>
+                      color:changed?(better==null?C.text:(better?C.rig:C.danger)):(!eng&&rollColor)||C.text}}>
           {dir!==0&&<span style={{fontSize:7,verticalAlign:1,marginRight:3}}>{dir>0?'▲':'▼'}</span>}
           {fmtInfoVal(k, cur)}
         </span>
         {eng&&<span style={{fontSize:12,textAlign:'right',fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',
-                            color:changed?C.textMid:C.textMute}}>{fmtInfoVal(k, base)}</span>}
+                            fontWeight:rollColor?600:undefined,
+                            color:rollColor??(changed?C.textMid:C.textMute)}}>{fmtInfoVal(k, base)}</span>}
+        {rollDelta&&<span style={{gridColumn:'1 / -1',marginTop:-4,fontSize:10.5,textAlign:'right',fontVariantNumeric:'tabular-nums',color:C.textMute}}>
+          {t("stock {val}",{val:fmtInfoVal(k, stock)})} · <span style={{color:rollColor}}>{rollDelta}</span>
+        </span>}
       </div>
       {/* An `overrides` row has to be explained by the chain that PRODUCED it. Its value comes from
           calc.js rather than the engine, so the engine's own explain() would describe a different
@@ -1626,7 +1650,7 @@ function ItemInfoSheet({typeID, onClose, item, overrides,baseOverrides,mutaplasm
 // themselves are already the engine item's base values, so there is nothing to merge.
 function ModuleInfoTab({typeID, mod, engineItem, bleed,onSaved}) {
   const abyssal=!!mod?.mutaplasmid&&!!mod?.mutations;
-  return <ItemInfoPanel typeID={typeID ?? mod?.typeID} item={engineItem} baseOverrides={!engineItem?mod?.mutations:undefined}
+  return <ItemInfoPanel typeID={typeID ?? mod?.typeID} item={engineItem} baseOverrides={!engineItem?mod?.mutations:undefined} rolled={abyssal?mod.mutations:undefined}
                         mutaplasmid={mod?.mutaplasmid} bleed={bleed} priceContent={abyssal?<AbyssalInfo key={mod.abyssalItemId??mod.id} mod={mod} onSaved={onSaved}/>:undefined}/>;
 }
 

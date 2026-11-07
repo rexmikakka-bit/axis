@@ -107,6 +107,7 @@ export default {
   "Backup JSON copied to clipboard.": "バックアップ JSON をクリップボードにコピーしました。",
   "Backup contains {fitCount} across {shipCount}.": "バックアップには {shipCount} にわたる {fitCount} が含まれます。",
   "Base": "基本",
+  "stock {val}": "元 {val}",
   "Base Resistances": "基本耐性",
   "Boost: {n} HP/s": "ブースト: {n} HP/s",
   "Boosted on cap alone — EHP/second": "キャパシタのみでのブースト量 — EHP/秒",
