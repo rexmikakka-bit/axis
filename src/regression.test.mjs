@@ -8967,14 +8967,21 @@ Nanofiber Internal Structure II
   check('sync', 'Imperial Navy: -6% energy turret activation cost', inav.items[1].get('capacitorNeed'), 30.456);
   check('sync', 'Imperial Navy: +6% capacitor', inav.ship.get('capacitorCapacity'), 7420);
   check('sync', 'Imperial Navy: +6% armor HP', inav.ship.get('armorHP'), 8162);
-  check('sync', 'the skill control shows only where there is a penalty',
-    [RIG, 'Large Imperial Navy Synchronizer'].map(n => prereleaseSkillApplies(tid(n)) ? 1 : 0).join(''), '10');
+  // Every Synchronizer carries the CPU drawback the skill reduces, navy ones included.
+  check('sync', 'the skill control shows on every Synchronizer',
+    [RIG, 'Large Imperial Navy Synchronizer'].map(n => prereleaseSkillApplies(tid(n)) ? 1 : 0).join(''), '11');
 
-  // The skill, through calcFitStats the way the app runs it.
-  const omen = lv => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: [{ typeID: tid(RIG), state: 'online' }] },
-    [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, {}).capRechargeMs;
-  check('sync', 'skill at 0: full 200% penalty', omen(0), 1271250);
-  check('sync', 'skill at V: penalty halved to 100%', omen(5), 847500);
+  // The skill, through calcFitStats the way the app runs it. Later word (2026-11-07): it reduces only
+  // the CPU drawback, never the faction penalty — the Dark Blood's 200% recharge penalty stays whole.
+  const omen = (lv, rig = RIG) => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: rig ? [{ typeID: tid(rig), state: 'online' }] : [] },
+    [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, {});
+  check('sync', 'skill at 0: full 200% penalty', omen(0).capRechargeMs, 1271250);
+  check('sync', 'skill at V: the faction penalty is NOT reduced', omen(5).capRechargeMs, 1271250);
+  // The CPU drawback's SIZE is a placeholder (CPU_PENALTY, -10%); these pin the skill's scaling of it.
+  const bareCpu = omen(0, null).cpuTotal;
+  check('sync', 'CPU drawback, skill at 0: full placeholder 10%', omen(0).cpuTotal / bareCpu, 0.9, 1e-4);   // cpuTotal is published to 0.01 tf
+  check('sync', 'CPU drawback, skill at V: halved to 5%', omen(5).cpuTotal / bareCpu, 0.95, 1e-4);
+  check('sync', 'a navy rig carries it too', omen(0, 'Medium Imperial Navy Synchronizer').cpuTotal / bareCpu, 0.9, 1e-4);
   check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.group ?? '', 'Rigging');
   const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
   check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '9/9/9');

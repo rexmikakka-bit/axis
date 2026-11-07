@@ -80,7 +80,7 @@ export default {
   "Pre-release": "Prelanzamiento",
   "This ship is not in EVE yet, so it cannot be saved to your in-game fittings": "Esta nave aún no está en EVE, así que no se puede guardar en tus fittings del juego",
   "This fit has a pre-release rig or module that is not in EVE yet, so it cannot be saved to your in-game fittings": "Este ajuste tiene un rig o módulo de prelanzamiento que aún no está en EVE, así que no se puede guardar en tus ajustes del juego",
-  "Synchronization Rigging: {pct}% less Synchronizer rig drawback at this level (10% per level). Applies to every pilot, since no character has it yet.": "Synchronization Rigging: {pct}% menos de penalización de los rigs Synchronizer en este nivel (10% por nivel). Se aplica a todos los pilotos, ya que ningún personaje la tiene todavía.",
+  "Synchronization Rigging: {pct}% less Synchronizer rig CPU penalty at this level (10% per level). Applies to every pilot, since no character has it yet.": "Synchronization Rigging: {pct}% menos de penalización de CPU de los rigs Synchronizer en este nivel (10% por nivel). Se aplica a todos los pilotos, ya que ningún personaje la tiene aún.",
   "A saved fitting or a ship in your hangar": "Un fitting guardado o una nave de tu hangar",
   "Ancillary clip pool — tap to add it into the EHP total": "Reserva del cargador auxiliar — toca para sumarla al total de EHP",
   "Angular velocity — tap for transversal": "Velocidad angular — toca para ver la transversal",
