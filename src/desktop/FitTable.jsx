@@ -1,9 +1,9 @@
-import { createContext, Fragment, useContext, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES, tidByName } from "../calc.js";
-import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser } from "../lib/core.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser, gestureTarget, DOUBLE_TAP_MS } from "../lib/core.js";
 import { metaOf } from "../lib/meta.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -12,6 +12,9 @@ import { useItems, useItemDrop, DropHint } from "./items-context.jsx";
 import { currentDrag, draggedItem, isItemDrag, itemKind, chargePatch } from "./items.js";
 import { resourceColor } from "../components/ui.jsx";
 import { requestShipInfo } from "./kit.jsx";
+import { abyssalGrade, mutaplasmidName } from "../lib/eft-export.js";
+import { parsePastedModule, resolveItemLink, pastedSlot, moduleToText } from "../lib/abyssal-paste.js";
+import { checkFitRestriction } from "../components/tabs.jsx";
 import { getCachedPrices } from "../prices.js";
 
 // The desktop Fitting window's table (docs/desktop-handoff.md section 3, "Fitting"). Drawn by
@@ -76,6 +79,13 @@ function rangeOf(e, row) {
 // A neut, nos or remote rep reads per second; a click on it switches every such row to per cycle
 // ("600 GJ/24s") and back. One switch for the table, remembered, like the Resources bars'.
 const PER_CYCLE_KEY = "axis_desk_info_percycle";
+// Right-click Copy / Paste. Copy keeps the whole slot here (charge, state, roll) and writes its text
+// to the system clipboard (the EFT line, or a roll's abyssal text) so it also pastes into pyfa or
+// EVE. Paste uses the kept slot while the clipboard still holds what was copied, else reads the
+// clipboard as a module in any form lib/abyssal-paste.js knows, an item link copied in EVE included.
+// A copied roll leaves its abyssalItemId behind: the one rolled item cannot be fitted twice, but its
+// roll can.
+let deskClip = null;   // { text, secKey, slot }
 function infoOf(e, perCycle) {
   if (!e) return null;
   if (e.strengthText && e.strengthCycleS) {
@@ -99,20 +109,48 @@ function infoOf(e, perCycle) {
 export const FitTableConfig = createContext({});
 
 /**
- * The state dot, with pyfa's mouse bindings (Owen, 2026-11-04):
- *   click        running <-> idle: active <-> online, or online <-> offline for a module that
- *                cannot be activated
- *   right-click  overheat (or cool back down to active)
- *   ctrl-click   offline (or back online)
+ * The state dot. pyfa's mouse bindings AND the phone's gestures, so it works for whichever one you
+ * come from (Owen, 2026-11-06):
+ *   click            running <-> idle: active <-> online, or online <-> offline for a module that
+ *                    cannot be activated
+ *   right-click      overheat, or cool back down to active         (pyfa)
+ *   double-click     the same                                       (the phone's double-tap)
+ *   ctrl-click       offline, or back online                        (pyfa)
+ *   hold             the same                                       (the phone's hold)
  * Each only offers a state the module supports (validStatesFor), and goes through FitTab's own
  * setRowState, so a grouped row changes every module in its group as the phone's dot does.
+ *
+ * A double-click arrives as two clicks first, and the first has already run or stopped the module.
+ * So the pair is resolved from the state BEFORE the first click (kept per row, outside React, as the
+ * phone keeps its gesture memory: a state change can remount the row): active is overheated, and
+ * overheated cools to active, rather than whatever the first click left. The double-click never
+ * reaches the row, where it would unfit the module.
  */
+const HOLD_MS = 450;
+const lastDotClick = new Map();   // row id -> { at: event timeStamp, before: state before that click }
 function StateToggle({ row, states, onSet }) {
   const has = (st) => states.includes(st);
   const cur = row.state ?? "online";
+  const hold = useRef({ timer: null, fired: false });
+  useEffect(() => () => clearTimeout(hold.current.timer), []);
+  const set = (next, from) => { if (next && next !== from) onSet(next); };
+  const down = (e) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();   // not a row press: no row drag, no selection change
+    hold.current.fired = false; clearTimeout(hold.current.timer);
+    hold.current.timer = setTimeout(() => { hold.current.fired = true; lastDotClick.delete(row.id); set(gestureTarget(states, cur, "hold"), cur); }, HOLD_MS);
+  };
+  const cancelHold = () => clearTimeout(hold.current.timer);
   const click = (e) => {
-    e.stopPropagation();
-    if (e.ctrlKey || e.metaKey) { if (has("offline")) onSet(cur === "offline" ? "online" : "offline"); return; }
+    e.stopPropagation(); cancelHold();
+    if (hold.current.fired) { hold.current.fired = false; return; }   // the hold already acted
+    if (e.ctrlKey || e.metaKey) { lastDotClick.delete(row.id); if (has("offline")) onSet(cur === "offline" ? "online" : "offline"); return; }
+    const prev = lastDotClick.get(row.id);
+    if (prev && e.timeStamp - prev.at < DOUBLE_TAP_MS) {
+      lastDotClick.delete(row.id);
+      return set(gestureTarget(states, prev.before, "double"), cur);
+    }
+    lastDotClick.set(row.id, { at: e.timeStamp, before: cur });
     if (has("active")) onSet(cur === "active" || cur === "overheated" ? "online" : "active");
     else if (has("offline")) onSet(cur === "offline" ? "online" : "offline");
   };
@@ -124,8 +162,9 @@ function StateToggle({ row, states, onSet }) {
   // halo, so a running module reads as a lamp that is on (Owen asked for that look back).
   const color = STATE_COLORS[cur] ?? C.textMid, glow = STATE_GLOW[cur] ?? 0;
   return (
-    <button type="button" onClick={click} onContextMenu={context}
-      title={`${STATE_LABELS[cur]?.() ?? cur} — ${t("click: on/off · right-click: overheat · ctrl-click: offline")}`}
+    <button type="button" onClick={click} onContextMenu={context} onDoubleClick={e => e.stopPropagation()}
+      onPointerDown={down} onPointerUp={cancelHold} onPointerLeave={cancelHold} onPointerCancel={cancelHold}
+      title={`${STATE_LABELS[cur]?.() ?? cur} — ${t("click: on/off · double-click or right-click: overheat · hold or ctrl-click: offline")}`}
       aria-label={STATE_LABELS[cur]?.() ?? cur}
       style={{ width: 16, height: 16, padding: 0, border: "none", background: "transparent", cursor: "pointer", display: "grid", placeItems: "center" }}>
       <span style={{ width: 7, height: 7, borderRadius: 99, background: color, boxShadow: glow ? `0 0 ${glow}px ${color}` : "none",
@@ -138,7 +177,7 @@ export function FitTable({ api }) {
   const { hub, source, cols, setCols } = useContext(FitTableConfig);
     const { SECS, getDisplayRows, slots, setSlots, ship, cs, engineStatsBySlotID, validStatesFor,
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
-            removeMod, duplicateMod, duplicateRoom, hardpointRoom, fillHardpoints,
+            removeMod, duplicateMod, duplicateRoom, updateMod, hardpointRoom, fillHardpoints,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
 
     // ── Desktop mouse model: left click SELECTS (ctrl/cmd adds or removes one, shift extends within the
@@ -223,8 +262,45 @@ export function FitTable({ api }) {
       setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ...chargePatch(m, c) } : m) })); };
     const unloadFrom = (secKey, row) => { const ids = new Set(row.groupIds ?? [row.id]);
       setSlots(prev => ({ ...prev, [secKey]: prev[secKey].map(m => ids.has(m.id) ? { ...m, ammo: null, charges: undefined, maxCharges: undefined } : m) })); };
+    const SEC_NAME = { high: "high", mid: "mid", low: "low", rigs: "rig", services: "service" };
+    const copyRow = (secKey, row) => {
+      const src = (slots[secKey] ?? []).find(m => m.id === row.id);
+      if (!src) return;
+      const slot = { ...src }; delete slot.id; delete slot.orphan; delete slot.abyssalItemId;
+      const text = moduleToText(slot);
+      deskClip = { text, secKey, slot };
+      navigator.clipboard?.writeText(text).catch(() => {});
+    };
+    const pasteInto = async (secKey, row) => {
+      let text = "";
+      try { text = (await navigator.clipboard?.readText()) ?? ""; } catch { /* no permission: fall back to what was copied here */ }
+      let paste = deskClip && (!text || text === deskClip.text) ? { secKey: deskClip.secKey, slot: deskClip.slot } : null;
+      if (!paste) {
+        const p = parsePastedModule(text);
+        if (!p) return items.notify(t("The clipboard doesn't hold a module"));
+        let mod = p.mod;
+        if (p.kind === "link") {
+          items.notify(t("Reading the roll from EVE…"), 8000);
+          try { mod = await resolveItemLink(p.link); } catch (e) { return items.notify(t("Couldn't read that item from EVE: {why}", { why: e?.message ?? "" }), 5000); }
+        }
+        paste = pastedSlot(ship, mod);
+        if (!paste) return items.notify(t("{name} doesn't go in any rack this ship has", { name: mod.name }));
+      }
+      const { slot } = paste;
+      if (paste.secKey !== secKey) return items.notify(t("{name} goes in a {rack} slot", { name: slot.name, rack: t(SEC_NAME[paste.secKey] ?? paste.secKey) }));
+      const why = checkFitRestriction(slot.typeID, ship, slots.subsystems);
+      if (why) return items.notify(why);
+      // Into an empty slot it has to find a free hardpoint, and stay inside its group's limit, the
+      // way Copy to an empty slot does; a module it replaces gives its own back.
+      if (row.type === "empty" && duplicateRoom(secKey, slot) < 1) return items.notify(t("No free hardpoint or slot for {name}", { name: slot.name }));
+      updateMod(secKey, row.id, slot, false, true, row.groupIds);
+    };
+    const clipboardItems = (secKey, row) => [
+      row.type !== "empty" && { label: t("Copy"), onSelect: () => copyRow(secKey, row) },
+      { label: t("Paste"), hint: deskClip ? deskClip.slot.name : undefined, onSelect: () => { pasteInto(secKey, row); } },
+    ].filter(Boolean);
     const menuItems = (secKey, row) => {
-      if (row.type === "empty") return [{ label: t("Add module…"), onSelect: () => openEmpty(secKey, row.id) }];
+      if (row.type === "empty") return [{ label: t("Add module…"), onSelect: () => openEmpty(secKey, row.id) }, { divider: true }, ...clipboardItems(secKey, row)];
       if (secKey === "subsystems") return [{ label: t("Change subsystem…"), onSelect: () => openSubsystem(row) }];
       const src = (slots[secKey] ?? []).find(m => m.id === row.id);
       const states = validStatesFor(row);
@@ -249,6 +325,7 @@ export function FitTable({ api }) {
         { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations") },
         mutable && { label: t("Mutate…"), onSelect: () => inspectRow(secKey, row, "mutate") },
         { divider: true },
+        ...clipboardItems(secKey, row),
         src && duplicateRoom(secKey, src) > 0 && { label: t("Copy to an empty slot"), onSelect: () => duplicateMod(secKey, src, 1) },
         src && hardpointRoom(secKey, src) > 0 && { label: t("Fill hardpoints ({n})", { n: hardpointRoom(secKey, src) }), onSelect: () => fillHardpoints(secKey, src) },
         many ? { label: t("Remove {n} selected", { n: selectedRows().length }), hint: "Del", danger: true, onSelect: removeSelected }
@@ -395,15 +472,21 @@ export function FitTable({ api }) {
                           onClick={ev => { ev.stopPropagation(); insp.inspect(chargeTarget(insp.fitRef, sec.key, row.id), "info"); }}
                           onDoubleClick={ev => ev.stopPropagation()} onError={ev => { ev.target.style.visibility = "hidden"; }} />}
                       </span>}
-                      <span style={{ width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
+                      <span style={{ position: "relative", width: 20, height: 20, opacity: row.state === "offline" ? 0.4 : 1 }}>
                         {row.typeID && <img className="eve-icon" src={eveIcon(row.typeID, 32)} width={20} height={20} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}
+                        {/* EVE's own abyssal mark: the red corner triangle its item icons carry, where
+                            a T2 or faction item has its tech triangle. */}
+                        {row.mutaplasmid && <span aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, width: 8, height: 8, background: C.danger, clipPath: "polygon(0 0, 100% 0, 0 100%)" }} />}
                       </span>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, fontSize: 13.5 }}>
                         {row.count > 1 && <span style={{ fontSize: 11.5, fontWeight: 500, color: C.textMid, flex: "none" }}>{row.count}×</span>}
-                        {row.mutaplasmid && <span title={t("Abyssal (mutated) module")} style={{ fontSize: 10.5, fontWeight: 800, color: C.danger, border: `1px solid ${C.danger}`, borderRadius: 3, padding: "0 3px", flex: "none" }}>A</span>}
                         <span title={row.name} style={{ fontWeight: 500, color: row.orphan ? C.danger : row.state === "offline" ? C.textMid : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1 auto", minWidth: 60 }}>
                           {sec.key === "subsystems" ? (row.name || "").replace(/^.+?\s-\s/, "") : row.name}
                         </span>
+                        {/* Which roll: the mutaplasmid's grade (Decayed, Gravid, Unstable…), quiet beside
+                            the name; the full mutaplasmid in its tooltip. */}
+                        {row.mutaplasmid && <span title={t("Abyssal: {muta}", { muta: mutaplasmidName(row.mutaplasmid) ?? t("mutated module") })}
+                          style={{ fontSize: 12, color: C.danger, opacity: 0.85, whiteSpace: "nowrap", flex: "none" }}>{abyssalGrade(row.mutaplasmid)}</span>}
                         {row.state === "overheated" && <span style={{ fontSize: 11, fontWeight: 500, color: C.overheat, flex: "none" }}>{t("OH")}</span>}
                         {charge && !chargeRows && <span title={`${charge} · ${row.charges}/${row.maxCharges}`} style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1000 auto", minWidth: 24 }}>· {charge}</span>}
                         {charge && !chargeRows && <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")}

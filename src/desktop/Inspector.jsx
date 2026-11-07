@@ -4,7 +4,8 @@ import { t } from "../lib/i18n.js";
 import { TYPES, computeFitCostRatios } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { metaOf, META_COLORS } from "../lib/meta.js";
-import { MUTA_BY_TYPE, moduleTakesCharges, computeDisplayRows, moduleByName } from "../lib/core.js";
+import { MUTA_BY_TYPE, moduleTakesCharges, computeDisplayRows, moduleByName, lookupShip } from "../lib/core.js";
+import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
 import { fittedAbyssalIds, variationRoll } from "../lib/variation-items.js";
 import { applyModUpdate, applyRemove, applySubsystemSwap, variantSwapPatch } from "../lib/fit-ops.js";
 import { peekViewMemory } from "../lib/use-view-memory.js";
@@ -134,6 +135,14 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
   };
 
   const meta = metaOf(typeID, null);
+  // A hull opens as the phone's Ship info sheet, drawn in this window (the desktop's Ship info is a
+  // floating window, not the phone's full-screen sheet). The hull being fitted gets the fit's own
+  // "current" column beside its base stats, as on the phone.
+  const hullCat = td?.c ?? td?.category;
+  if (target.kind === "type" && (hullCat === 6 || hullCat === 65)) {
+    const own = Number(ship?.typeID) === Number(typeID);
+    return <ShipInfoSheet key={typeID} embedded ship={own ? ship : (lookupShip(name) ?? { name, typeID })} cs={own ? cs : null} onClose={noop} />;
+  }
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>

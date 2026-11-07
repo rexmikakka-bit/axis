@@ -7,15 +7,67 @@ import { WINDOWS, PRESETS, GRID, presetLayout, fitPreset, bringToFront, snapMove
          renameNamed, overwriteNamed, deleteNamed, setPresetHidden, TITLE_H, stackOf, isTabMember,
          combineWindows, setActiveTab, ungroup, closeTab, closeGroup, toggleCollapsed, moveTab, hostOf, placeInView } from "./layout.js";
 import { ContextMenu } from "./ContextMenu.jsx";
+import { LAYOUT_EVENT, LOCK_EVENT } from "./kit.jsx";
 
 // The window manager: the window chips, a workspace of freely placed windows, and a status bar
 // holding the detached tray and the layout controls. What a window CONTAINS is the caller's
 // (`renderWindow`); this only places, stacks and remembers them.
 
+// ── Reopening a closed window (Ctrl+Shift+T, as a browser reopens a tab) ─────────────────────────
+// Every layout change goes through useLayoutState's setter, so closes are noticed there, whoever
+// made them: a title bar's ×, the Windows menu, a tab's ×, an inspector's ×. Each close remembers the
+// windows it hid as they were, with their tab group's host and members, so reopening puts the window
+// back exactly where and how it was, in its group if it had one. A preset or saved layout being
+// applied hides windows on purpose and is not recorded. The newest 20 closes are kept, this session.
+export const CLOSED_EVENT = "axis-window-closed";
+const closedStack = [];
+const shown = (w) => !!w && w.open && !w.detached;
+function noteClosed(before, after) {
+  const ids = Object.keys(before).filter(id => shown(before[id]) && !shown(after[id]));
+  if (!ids.length || ids.length > 8) return;
+  const top = closedStack[closedStack.length - 1];
+  if (top && top.ids.join() === ids.join() && ids.every(id => top.entries[id] === before[id])) return;   // StrictMode's second run
+  const entries = {};
+  for (const id of ids) {
+    entries[id] = before[id];
+    const host = before[id].in;
+    if (host && before[host]) entries[host] = before[host];
+    for (const m of before[id].stack ?? []) if (before[m]) entries[m] = before[m];
+  }
+  closedStack.push({ ids, entries });
+  if (closedStack.length > 20) closedStack.shift();
+  queueMicrotask(() => window.dispatchEvent(new CustomEvent(CLOSED_EVENT, { detail: { ids } })));
+}
+/**
+ * Reopen the most recent close whose windows are all still closed in `current` (the layout's
+ * windows now). False when there is none. The entry is taken off the stack HERE, not inside the
+ * state updater, which React may run twice.
+ */
+export function reopenClosed(setState, current) {
+  let e = null;
+  while (closedStack.length && !e) {
+    const top = closedStack.pop();
+    if (!top.ids.some(id => shown(current?.[id]))) e = top;   // otherwise it was reopened by hand since
+  }
+  if (!e) return false;
+  setState(s => {
+    const top = Math.max(0, ...Object.values(s.windows).map(w => w.z || 0));
+    const windows = { ...s.windows, ...e.entries };
+    for (const id of e.ids) windows[id] = { ...windows[id], z: top + 1 };
+    return { ...s, windows };
+  });
+  return true;
+}
+
 /** The persisted layout state (axis_desktop_layout), shared by the app and the workspace. */
 export function useLayoutState() {
-  const [state, setState] = useState(() => readLayoutState(localStorage));
+  const [state, setRaw] = useState(() => readLayoutState(localStorage));
   useEffect(() => { writeLayoutState(localStorage, state); }, [state]);
+  const setState = useCallback((fn) => setRaw(prev => {
+    const next = typeof fn === "function" ? fn(prev) : fn;
+    if (next !== prev && next?.windows !== prev.windows && next?.preset === prev.preset) noteClosed(prev.windows, next.windows);
+    return next;
+  }), []);
   return [state, setState];
 }
 
@@ -243,6 +295,18 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
   const [chipMenu, setChipMenu] = useState(null);   // {x, y, items}
   const commitRename = () => { if (renaming) setState(s => renameNamed(s, renaming.from, renaming.text)); setRenaming(null); };
   const hiddenPresets = state.hidden ?? [];
+  // Alt+1…9 picks the n-th chip as drawn below — built-in presets, then saved layouts — and
+  // Ctrl+Shift+L toggles Lock layout (DesktopApp's shortcuts; kit.jsx's events).
+  const chipsRef = useRef([]);
+  const shownPresetCount = PRESETS.filter(p => !hiddenPresets.includes(p.id)).length;
+  chipsRef.current = [...PRESETS.filter(p => !hiddenPresets.includes(p.id)).map(p => () => applyPreset(p.id)),
+                      ...Object.keys(state.named).map(name => () => applyNamed(name))];
+  useEffect(() => {
+    const onLayout = (e) => chipsRef.current[e.detail?.index]?.();
+    const onLock = () => setState(s => ({ ...s, locked: !s.locked }));   // the Lock layout chip's setFlag
+    window.addEventListener(LAYOUT_EVENT, onLayout); window.addEventListener(LOCK_EVENT, onLock);
+    return () => { window.removeEventListener(LAYOUT_EVENT, onLayout); window.removeEventListener(LOCK_EVENT, onLock); };
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
   const restoreItems = hiddenPresets.length ? [{ divider: true }, { heading: t("Hidden layouts") },
     ...hiddenPresets.map(id => ({ label: t("Show {name}", { name: t(PRESETS.find(p => p.id === id)?.title ?? id) }), onSelect: () => setState(s => setPresetHidden(s, id, false)) }))] : [];
   const openChipMenu = (e, items) => { e.preventDefault(); setChipMenu({ x: e.clientX, y: e.clientY, items: [...items, ...restoreItems] }); };
@@ -314,14 +378,14 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
           : <span style={{ fontSize: 12, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>
-        {PRESETS.filter(p => !hiddenPresets.includes(p.id)).map(p => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}
-          title={t("Right-click for options")} onContextMenu={(e) => openChipMenu(e, presetMenu(p))}>{t(p.title)}</Chip>)}
-        {Object.keys(state.named).map(name => renaming?.from === name
+        {PRESETS.filter(p => !hiddenPresets.includes(p.id)).map((p, i) => <Chip key={p.id} on={state.preset === p.id} onClick={() => applyPreset(p.id)}
+          title={`${t("Right-click for options")}${i < 9 ? ` · Alt+${i + 1}` : ""}`} onContextMenu={(e) => openChipMenu(e, presetMenu(p))}>{t(p.title)}</Chip>)}
+        {Object.keys(state.named).map((name, ni) => renaming?.from === name
           ? <input key={name} autoFocus value={renaming.text} aria-label={t("Layout name")} onChange={(e) => setRenaming(r => ({ ...r, text: e.target.value }))}
               onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenaming(null); }} onBlur={commitRename}
               style={{ height: 22, width: 140, boxSizing: "border-box", padding: "0 8px", borderRadius: 11, fontSize: 11.5,
                        background: C.bg, border: `1px solid ${C.accent}`, color: C.text, outline: "none" }} />
-          : <Chip key={name} on={state.preset === `named:${name}`} onClick={() => applyNamed(name)} title={t("Double-click to rename · right-click for options")}
+          : <Chip key={name} on={state.preset === `named:${name}`} onClick={() => applyNamed(name)} title={`${t("Double-click to rename · right-click for options")}${shownPresetCount + ni < 9 ? ` · Alt+${shownPresetCount + ni + 1}` : ""}`}
               onDoubleClick={() => setRenaming({ from: name, text: name })} onContextMenu={(e) => openChipMenu(e, namedMenu(name))}>{name}</Chip>)}
         {chipMenu && <ContextMenu x={chipMenu.x} y={chipMenu.y} items={chipMenu.items} onClose={() => setChipMenu(null)} />}
         {tabMenu && <ContextMenu x={tabMenu.x} y={tabMenu.y} onClose={() => setTabMenu(null)} items={[

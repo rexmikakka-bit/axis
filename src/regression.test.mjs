@@ -8752,6 +8752,44 @@ Nanofiber Internal Structure II
   check('prerelease', 'export to EVE carries the real hull typeID', exported.ship_type_id, 97793, 0);
 }
 
+// ─── PASTING ONE MODULE (lib/abyssal-paste.js) ────────────────────────────────────────────────────
+// The three forms a module arrives in: the MutaMarket/pyfa abyssal text, EVE's item link (whose roll
+// is read from ESI — faked here, so the suite never touches the network), and a plain EFT line.
+{
+  console.log('\nPASTING A MODULE');
+  const P = await import('./lib/abyssal-paste.js');
+  const muta = (await import('./data/mutaplasmids.json', { with: { type: 'json' } })).default;
+  const { lookupShip } = await import('./lib/core.js');
+  const rupture = lookupShip('Rupture');
+  const ROLL = 'Stasis Webifier II\nUnstable Stasis Webifier Mutaplasmid\nmaxRange 14280.6, speedFactor -62.7';
+  const text = P.parsePastedModule(ROLL);
+  check('paste', 'abyssal text: base, mutaplasmid and roll', `${text.kind}|${text.mod.name}|${text.mod.mutations.maxRange}|${text.mod.mutations.speedFactor}`, 'module|Stasis Webifier II|14280.6|-62.7');
+  const link = P.parsePastedModule('<url=showinfo:47702//1043512345678>Abyssal Stasis Webifier</url>');
+  check('paste', "EVE's item link is recognised as one", `${link.kind}|${link.link.typeID}|${link.link.itemID}`, 'link|47702|1043512345678');
+  check('paste', 'a fit is not a module', P.parsePastedModule('[Rupture, x]\nWarp Scrambler II') === null ? 1 : 0, 1, 0);
+  check('paste', 'nor is a charge', P.parsePastedModule('Republic Fleet EMP M') === null ? 1 : 0, 1, 0);
+  // The link's roll, from a fake ESI answer shaped like /dogma/dynamic/items: every rolled attribute.
+  const mid = '47700', m = muta[mid];
+  const fake = async (path) => {
+    check('paste', 'the link is read from the public dynamic-items endpoint', path, '/dogma/dynamic/items/47702/1043512345678/');
+    return { source_type_id: tid('Stasis Webifier II'), mutator_type_id: Number(mid), dogma_attributes: Object.keys(m.a).map(id => ({ attribute_id: Number(id), value: id === '54' ? 14000 : 1 })) };
+  };
+  const resolved = await P.resolveItemLink(link.link, { fetchJSON: fake });
+  check('paste', 'a resolved link is that rolled module, tied to its item', `${resolved.name}|${resolved.mutaplasmid}|${resolved.mutations.maxRange}|${resolved.abyssalItemId}`, 'Stasis Webifier II|47700|14000|1043512345678');
+  // Built as an EFT import builds it: rack, type, default state, charge count.
+  const gun = P.pastedSlot(rupture, P.parsePastedModule('425mm AutoCannon II, Republic Fleet EMP M').mod);
+  check('paste', 'an EFT line with a charge: high rack, a loaded weapon', `${gun.secKey}|${gun.slot.type}|${gun.slot.state}|${gun.slot.ammo}|${gun.slot.charges}`, 'high|weapon|active|Republic Fleet EMP M|120');
+  const rig = P.pastedSlot(rupture, P.parsePastedModule('Medium Trimark Armor Pump II').mod);
+  check('paste', 'a rig: rigs rack, online', `${rig.secKey}|${rig.slot.state}`, 'rigs|online');
+  check('paste', '/OFFLINE survives', P.pastedSlot(rupture, P.parsePastedModule('Damage Control II /OFFLINE').mod).slot.state, 'offline');
+  const web = P.pastedSlot(rupture, text.mod);
+  check('paste', 'a roll keeps its mutaplasmid and values in the slot', `${web.secKey}|${web.slot.mutaplasmid}|${web.slot.mutations.maxRange}`, 'mid|47700|14280.6');
+  // Copy writes the same text forms, so what is copied pastes back as itself.
+  const again = P.parsePastedModule(P.moduleToText(web.slot)).mod;
+  check('paste', 'a copied roll pastes back with its roll', `${again.mutaplasmid}|${again.mutations.maxRange}|${again.mutations.speedFactor}`, '47700|14280.6|-62.7');
+  check('paste', 'a copied module is its EFT line', P.moduleToText({ name: '425mm AutoCannon II', ammo: 'Republic Fleet EMP M (120)', state: 'offline' }), '425mm AutoCannon II, Republic Fleet EMP M /OFFLINE');
+}
+
 // ─── 24.02 FRACTURED SKIES, PRE-RELEASE ───────────────────────────────────────────────────────────
 // data/prerelease-balance.js and data/prerelease-modules.js, from CCP's expansion notes (2026-11-06).
 // NOT pyfa-validated: pyfa has none of it yet. Each expected value is the notes' figure applied to an
@@ -8807,9 +8845,13 @@ Nanofiber Internal Structure II
   const rifterSpeed = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Overdrive Injector System"), state); f.calculate(); return f.ship.get('maxVelocity'); };
   const bare = (() => { const f = new Fit(tid('Rifter')); f.calculate(); return f.ship.get('maxVelocity'); })();
   check('2402', 'Aberrant Overdrive online: +8%', rifterSpeed('online') / bare, 1.08, 1e-9);
-  check('2402', 'Aberrant Overdrive active: +15%', rifterSpeed('active') / bare, 1.15, 1e-9);
+  // Active ADDS to passive (CCP, later word): 8% + 15% = 23% while it runs.
+  check('2402', 'Aberrant Overdrive active: 8% + 15% = +23%', rifterSpeed('active') / bare, 1.23, 1e-9);
   const capRech = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Cap Recharger"), state); f.calculate(); return f.ship.get('rechargeRate'); };
-  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.75 active', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.7500');
+  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.63 active (12% + 25%)', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.6300');
+  // Shield Boost Amplifier on a fitted booster: 24% online, 24% + 43.2% = 67.2% active.
+  const boost = (state) => { const f = new Fit(tid('Rifter')); const sb = f.addModule(tid('Small Shield Booster I'), 'active'); if (state) f.addModule(tid("Vigilant 'Vital' Shield Boost Amplifier"), state); f.calculate(); return sb.get('shieldBonus'); };
+  check('2402', 'Aberrant Shield Boost Amplifier: x1.24 online, x1.672 active', `${(boost('online') / boost(null)).toFixed(4)}/${(boost('active') / boost(null)).toFixed(4)}`, '1.2400/1.6720');
   const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
   let refused = 0;
   try { slotsToEsiFitting(tid('Rifter'), 'x', { high: [], mid: [], low: [M("Vigilant 'Vital' Overdrive Injector System", 'active')], rigs: [] }, [], [], []); } catch { refused = 1; }

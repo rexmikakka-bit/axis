@@ -85,6 +85,12 @@ export function Empty({ children }) {
 /** Ask the main window for the open fit's hull info sheet (a right-click on empty space). */
 export const SHIP_INFO_EVENT = "axis-ship-info";
 export const requestShipInfo = () => window.dispatchEvent(new Event(SHIP_INFO_EVENT));
+// Alt+1…9: apply the n-th layout chip (0-based), in the order the status bar draws them. The
+// Workspace answers it, since it alone knows the visible size a preset is fitted to.
+export const LAYOUT_EVENT = "axis-layout";
+export const requestLayout = (index) => window.dispatchEvent(new CustomEvent(LAYOUT_EVENT, { detail: { index } }));
+export const LOCK_EVENT = "axis-lock-layout";
+export const requestLockToggle = () => window.dispatchEvent(new Event(LOCK_EVENT));
 
 /**
  * A desktop dialog: a centred panel over a dimmed workspace. Escape or a click outside closes it.

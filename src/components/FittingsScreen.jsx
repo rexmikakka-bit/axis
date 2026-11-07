@@ -265,7 +265,11 @@ function FitRow({ship, fit, active, act, tagColors, showShip, hideTag, onOpen}){
 // The bundled copy is the 256px hero set, NOT the 64px render the rest of the app labels things with.
 // At the width of a phone, 64px upscales into visible pixels — the sheet spent its whole first frame
 // looking broken, which is the opposite of what a placeholder is for.
-function ShipHero({typeID, height, full, children}) {
+// `split` (desktop's Ship info window): no side bands at all. The blurred copy becomes a dim ambient
+// glow across the whole banner, and the sharp render sits square at the RIGHT, its left edge and foot
+// feathered into that glow with a mask, so the art and the backdrop read as one picture. The left of
+// the banner is then free for the name and the fit's headline numbers.
+function ShipHero({typeID, height, full, children, split = false}) {
   const bundled = eveHeroRender(typeID);
   const [hi, setHi] = useState(null);
   useEffect(() => {
@@ -289,7 +293,20 @@ function ShipHero({typeID, height, full, children}) {
   // otherwise fade to transparent in a visible band down both sides.
   // The pair fades as one — the opacity lives on the wrapper so the sharp copy cannot arrive ahead of
   // its own backdrop.
-  const img = (src) => (
+  const FEATHER = 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.55) 30%, #000 70%), linear-gradient(to bottom, #000 70%, transparent 100%)';
+  const splitImg = (src) => (
+    <div style={{position:'absolute',inset:0,transition:'opacity .35s ease'}}>
+      <img src={src} alt="" aria-hidden="true"
+           style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',
+                   transform:'scale(1.6)',filter:'blur(52px) saturate(.95) brightness(.9)',opacity:.95}}
+           onError={e=>{e.target.style.opacity='0';}}/>
+      <img src={src} alt="" aria-hidden="true"
+           style={{position:'absolute',top:0,right:0,height:'100%',aspectRatio:'1 / 1',objectFit:'cover',
+                   maskImage:FEATHER,WebkitMaskImage:FEATHER,maskComposite:'intersect',WebkitMaskComposite:'source-in'}}
+           onError={e=>{e.target.style.opacity='0';}}/>
+    </div>
+  );
+  const img = (src) => split ? splitImg(src) : (
     <div style={{position:'absolute',inset:0,opacity:1,transition:'opacity .35s ease'}}>
       <img src={src} alt="" aria-hidden="true"
            style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',
@@ -311,7 +328,7 @@ function ShipHero({typeID, height, full, children}) {
   // close button opts back in.
   return (
     <div style={{position:'absolute',top:0,left:0,right:0,height,zIndex:3,overflow:'hidden',
-                 pointerEvents:'none',borderRadius:'16px 16px 0 0',background:'#05070b'}}>
+                 pointerEvents:'none',borderRadius:split?0:'16px 16px 0 0',background:'#05070b'}}>
       {/* The picture keeps its full size and the FRAME closes over it, rather than the picture being
           scaled down to fit — collapsing by scaling shrank the ship away from the sides and gave back
           the side bands the square sizing exists to avoid. It closes on the centre, so the band left
@@ -346,8 +363,15 @@ const HERO_MIN = 78;
 // (390 wide against 844 tall), so on the device this is simply the full width.
 const heroMaxFor = (width, vh) => Math.max(HERO_MIN, Math.round(Math.min(width, vh * 0.92 - 34 - 120)));
 
-export function ShipInfoSheet({ship, cs, onClose}) {
+// `embedded` (desktop): the same sheet drawn INSIDE a window rather than over the screen — no backdrop,
+// no drag handle, no close button (the window has its own), filling whatever box it is put in.
+export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
   const [tab, setTab] = useState('traits');
+  // Type sizes: the phone's, or the desktop window's — larger, and regular/medium weight rather than
+  // bold at small sizes (Owen's readability rule for desktop).
+  const S = embedded
+    ? {tab:13.5, tabW:500, desc:14.5, descColor:C.text, sec:12, secW:500, col:11.5, colW:500, label:13.5, val:13.5, valW:500, base:13, caret:9, arrow:9, rowPad:'5px 0'}
+    : {tab:12, tabW:600, desc:13, descColor:C.textMid, sec:11, secW:700, col:10, colW:700, label:12, val:12, valW:600, base:12, caret:8, arrow:7, rowPad:null};
   // Which attribute rows have their modifier breakdown expanded. Deliberately the only state here:
   // the traced twin is derived below rather than stored, so it cannot go stale against a recomputed
   // `cs` the way a useState copy would.
@@ -369,7 +393,10 @@ export function ShipInfoSheet({ship, cs, onClose}) {
   useEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
-    const sync = () => setHeroMax(heroMaxFor(el.clientWidth, window.innerHeight));
+    // In a window, a wide banner rather than a square: the window is the box, not the screen.
+    const sync = () => setHeroMax(embedded
+      ? Math.max(HERO_MIN, Math.round(Math.min(el.clientWidth * 0.5, el.clientHeight * 0.42, 300)))
+      : heroMaxFor(el.clientWidth, window.innerHeight));
     sync();
     const ro = new ResizeObserver(sync);
     ro.observe(el);
@@ -553,30 +580,31 @@ export function ShipInfoSheet({ship, cs, onClose}) {
     setOpenAttrs(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
 
   return (
-    <div style={{position:'fixed',inset:0,zIndex:300,display:'flex',flexDirection:'column'}}
-         onClick={sheet.dismiss}>
-      <div style={{flex:1,background:'rgba(0,0,0,.5)',opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}/>
+    <div style={embedded?{height:'100%',display:'flex',flexDirection:'column'}:{position:'fixed',inset:0,zIndex:300,display:'flex',flexDirection:'column'}}
+         onClick={embedded?undefined:sheet.dismiss}>
+      {!embedded&&<div style={{flex:1,background:'rgba(0,0,0,.5)',opacity:sheet.closing?0:1,transition:`opacity ${SHEET_EXIT_MS}ms ease`}}/>}
       {/* Taller than the usual sheet because the art is the point of it — and the cap has to clear
           HERO_MAX plus the tab strip, or the picture is paying for the extra height without showing
           any more of the ship. */}
       <div ref={sheetRef}
-           style={{position:'relative',background:C.surface,borderRadius:'16px 16px 0 0',maxHeight:'92vh',
+           style={embedded?{position:'relative',background:C.surface,flex:1,minHeight:0,display:'flex',flexDirection:'column'}
+             :{position:'relative',background:C.surface,borderRadius:'16px 16px 0 0',maxHeight:'92vh',
                    display:'flex',flexDirection:'column',boxShadow:'0 -8px 32px rgba(0,0,0,.5)',
                    ...sheetTransform(sheet)}}
            onClick={e=>e.stopPropagation()}>
-        <ShipHero typeID={ship?.typeID} height={heroH} full={heroMax}>
+        <ShipHero typeID={ship?.typeID} height={heroH} full={heroMax} split={embedded}>
           {/* The grab handle moves onto the art rather than sitting above it — the sheet has no
               header bar left to hold it, and the picture goes all the way to the top edge. It opts
               back into the pointer events the hero as a whole declines, and reaches well below the
               pill so there is something to actually hit. */}
-          <SheetGrabber grabHandlers={sheet.grabHandlers} onArt
-                        style={{position:'absolute',top:0,left:0,right:0,padding:'8px 0 16px',pointerEvents:'auto'}}/>
+          {!embedded&&<SheetGrabber grabHandlers={sheet.grabHandlers} onArt
+                        style={{position:'absolute',top:0,left:0,right:0,padding:'8px 0 16px',pointerEvents:'auto'}}/>}
           {/* Close sits on its own scrim: over a bright nebula a bare glyph disappears. */}
-          <button onClick={sheet.dismiss} aria-label={t("Close")}
+          {!embedded&&<button onClick={sheet.dismiss} aria-label={t("Close")}
             style={{position:'absolute',top:10,right:10,width:30,height:30,borderRadius:15,border:'none',
                     cursor:'pointer',color:'#fff',fontSize:18,lineHeight:1,pointerEvents:'auto',
-                    background:'rgba(0,0,0,.42)',backdropFilter:'blur(6px)'}}>×</button>
-          <div style={{position:'absolute',left:16,right:16,bottom:10}}>
+                    background:'rgba(0,0,0,.42)',backdropFilter:'blur(6px)'}}>×</button>}
+          <div style={embedded?{position:'absolute',left:18,right:'40%',bottom:14}:{position:'absolute',left:16,right:16,bottom:10}}>
             {/* Faction and class, in the eyebrow-over-name order the snapshot card already uses, so a
                 hull introduces itself the same way wherever you meet it. hullClass is CCP's own group
                 name via lookupShip — ships.json's is wrong on 64 hulls.
@@ -585,20 +613,33 @@ export function ShipInfoSheet({ship, cs, onClose}) {
             {/* lineHeight stated rather than inherited: the box is sized in pixels to collapse it, and
                 the app's inherited line-height is taller than that box, so the descender row of the
                 capitals was being clipped off. */}
-            <div style={{fontSize:10,lineHeight:'14px',letterSpacing:'.5px',fontWeight:700,
+            <div style={{fontSize:embedded?12:10,lineHeight:embedded?'17px':'14px',letterSpacing:embedded?'.08em':'.5px',fontWeight:embedded?600:700,
                          textTransform:'uppercase',color:C.accent,textShadow:'0 1px 3px rgba(0,0,0,.8)',
-                         opacity:1-collapse,height:(1-collapse)*14,overflow:'hidden',
+                         opacity:1-collapse,height:(1-collapse)*(embedded?17:14),overflow:'hidden',
                          whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
               {[ship?.race, ship?.hullClass ?? ship?.groupName].filter(Boolean).join(' • ')}
               {isPrereleaseShip(ship?.typeID)&&<span style={{color:C.warning}}> • {t("Pre-release")}</span>}
             </div>
             {/* Shrinks toward a header-bar-sized title rather than scrolling away, so the collapsed
                 hero still says which ship you are reading about. */}
-            <div style={{...DISPLAY,fontSize:26-collapse*9,fontWeight:600,letterSpacing:'-.01em',lineHeight:1.1,
+            <div style={{...DISPLAY,fontSize:(embedded?30:26)-collapse*(embedded?12:9),fontWeight:600,letterSpacing:'-.01em',lineHeight:1.1,
                          color:'#fff',textTransform:'uppercase',textShadow:'0 2px 10px rgba(0,0,0,.75)',
                          whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
               {ship?.name}
             </div>
+            {/* Desktop: the fit's headline numbers in the banner's free left half, faded out as it
+                collapses like the eyebrow above. Only for the hull being fitted (cs present). */}
+            {embedded&&cs&&<div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',marginTop:8,opacity:1-collapse,
+                height:(1-collapse)*40,overflow:'hidden',textShadow:'0 1px 3px rgba(0,0,0,.8)'}}>
+              {[[t('EHP'),cs.totalEHP!=null?`${(cs.totalEHP/1000).toFixed(1)}k`:null],
+                [t('DPS'),cs.totalDps?.total!=null?Math.round(cs.totalDps.total):null],
+                [t('Speed'),(cs.maxVelocityAB??cs.maxVelocity)!=null?`${Math.round(cs.maxVelocityAB??cs.maxVelocity)} m/s`:null],
+                [t('Align'),cs.alignTime!=null?`${cs.alignTime.toFixed(2)} s`:null]].filter(([,v])=>v!=null).map(([k,v])=>(
+                <div key={k} style={{display:'flex',flexDirection:'column'}}>
+                  <span style={{fontSize:11,letterSpacing:'.06em',textTransform:'uppercase',color:'rgba(255,255,255,.62)'}}>{k}</span>
+                  <span style={{fontSize:15,color:'#fff',fontVariantNumeric:'tabular-nums'}}>{v}</span>
+                </div>))}
+            </div>}
           </div>
         </ShipHero>
         {/* minHeight:0 because a flex child will not shrink below its content by default, which would
@@ -616,7 +657,7 @@ export function ShipInfoSheet({ship, cs, onClose}) {
             {tabs.map(([id,label]) => (
               <button key={id} onClick={()=>setTab(id)}
                 style={{flex:1,padding:'9px 4px',background:'none',border:'none',cursor:'pointer',
-                        fontSize:12,fontWeight:600,color:tab===id?C.accent:C.textMute,
+                        fontSize:S.tab,fontWeight:S.tabW,color:tab===id?C.accent:C.textMute,
                         borderBottom:tab===id?`2px solid ${C.accent}`:'2px solid transparent'}}>
                 {label}
               </button>
@@ -627,11 +668,11 @@ export function ShipInfoSheet({ship, cs, onClose}) {
             the home indicator and inside the screen's curved corners. Padding here scrolls with the
             content, so that line can be brought clear rather than merely being given a smaller box. */}
         <div style={{padding:'14px 16px calc(28px + env(safe-area-inset-bottom, 0px))'}}>
-          {tab==='traits' && <TraitsPanel typeID={ship?.typeID}/>}
+          {tab==='traits' && <TraitsPanel typeID={ship?.typeID} desk={embedded}/>}
           {/* pre-wrap: CCP's descriptions are multi-paragraph, separated by blank lines; without
               it they collapse into one undifferentiated wall of text. */}
           {tab==='description' && (
-            <div style={{fontSize:13,color:C.textMid,lineHeight:1.6,whiteSpace:'pre-wrap'}}>
+            <div style={{fontSize:S.desc,color:S.descColor,lineHeight:embedded?1.7:1.6,whiteSpace:'pre-wrap',maxWidth:embedded?'68ch':undefined}}>
               {/* CCP's own flavour text, which the bundle ships in English only. */}
               {traits.desc || t('No description available.')}
             </div>
@@ -641,15 +682,15 @@ export function ShipInfoSheet({ship, cs, onClose}) {
               <ItemPrice typeID={ship?.typeID}/>
               {resistLayers.length>0 && (
                 <div style={{marginBottom:16}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.textMute,textTransform:'uppercase',
+                  <div style={{fontSize:S.sec,fontWeight:S.secW,color:C.textMute,textTransform:'uppercase',
                     letterSpacing:.5,marginBottom:8}}>{t("Base Resistances")}</div>
-                  <ResistBars layers={resistLayers}/>
+                  <ResistBars layers={resistLayers} desk={embedded}/>
                 </div>
               )}
               {twoCol && (
                 <div style={{display:'grid',gridTemplateColumns:GRID,gap:10,paddingBottom:6}}>
                   <span/>
-                  {[t('Current'),t('Base')].map(h=>(<span key={h} style={{fontSize:10,fontWeight:700,color:C.textMute,
+                  {[t('Current'),t('Base')].map(h=>(<span key={h} style={{fontSize:S.col,fontWeight:S.colW,color:C.textMute,
                     textAlign:'right',textTransform:'uppercase',letterSpacing:.5}}>{h}</span>))}
                 </div>
               )}
@@ -658,7 +699,7 @@ export function ShipInfoSheet({ship, cs, onClose}) {
                 if (!shown.length) return null;
                 return (
                 <div key={section} style={{marginBottom:16}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.textMute,textTransform:'uppercase',
+                  <div style={{fontSize:S.sec,fontWeight:S.secW,color:C.textMute,textTransform:'uppercase',
                     letterSpacing:.5,marginBottom:8}}>{sectionLabel(section)}</div>
                   {shown.map(r => {
                     const val = r.cur ?? r.base;
@@ -693,18 +734,18 @@ export function ShipInfoSheet({ship, cs, onClose}) {
                       borderBottom:isOpen?'none':`1px solid ${C.border}`,
                       cursor:tappable?'pointer':'default',
                       background:changed?C.accentLight:'transparent'}}>
-                      <span style={{fontSize:12,color:C.textMid,minWidth:0,wordBreak:'break-word'}}>
+                      <span style={{fontSize:S.label,color:C.textMid,minWidth:0,wordBreak:'break-word'}}>
                         {r.label}
-                        {tappable&&<span style={{display:'inline-block',fontSize:8,marginLeft:5,color:C.textMute,
+                        {tappable&&<span style={{display:'inline-block',fontSize:S.caret,marginLeft:5,color:C.textMute,
                                                  transform:isOpen?'rotate(90deg)':'none'}}>▶</span>}
                       </span>
-                      <span style={{fontSize:12,fontWeight:600,color:valColor,textAlign:'right',
+                      <span style={{fontSize:S.val,fontWeight:S.valW,color:valColor,textAlign:'right',
                         fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',
                         ...(twoCol&&r.cur==null?{gridColumn:'2 / span 2'}:{})}}>
-                        {dir!==0&&<span style={{fontSize:7,verticalAlign:1,marginRight:3}}>{dir>0?'▲':'▼'}</span>}
+                        {dir!==0&&<span style={{fontSize:S.arrow,verticalAlign:1,marginRight:3}}>{dir>0?'▲':'▼'}</span>}
                         {r.fmt(val)}
                       </span>
-                      {twoCol&&r.cur!=null&&<span style={{fontSize:12,textAlign:'right',fontVariantNumeric:'tabular-nums',
+                      {twoCol&&r.cur!=null&&<span style={{fontSize:S.base,textAlign:'right',fontVariantNumeric:'tabular-nums',
                         whiteSpace:'nowrap',color:changed?C.textMid:C.textMute}}>
                         {r.base!=null?r.fmt(r.base):'—'}</span>}
                     </div>

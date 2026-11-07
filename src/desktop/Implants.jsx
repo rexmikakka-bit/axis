@@ -52,6 +52,12 @@ export default function ImplantsPanel({ s }) {
   const fitSet = (st) => { set(prev => applyImplantSet(prev, st)); setQuery(""); };
   const clearSlot = (slot) => set(prev => prev.map(i => i.slot === slot ? { ...i, name: EMPTY, bonus: null } : i));
   const loadouts = s.implantLoadouts ?? [];
+  // The loadout the fitted implants ARE: the saved one whose every slot matches, empty slots
+  // included. Worked out rather than remembered, so changing one implant after loading drops the
+  // name instead of claiming a loadout that is no longer what is fitted.
+  const bySlot = (list) => { const m = new Map(); for (const i of list ?? []) if (i?.name && i.name !== EMPTY) m.set(i.slot, i.name); return m; };
+  const fittedBySlot = bySlot(implants);
+  const current = filled ? loadouts.find(lo => { const m = bySlot(lo.implants); return m.size === fittedBySlot.size && [...m].every(([k, v]) => fittedBySlot.get(k) === v); }) : null;
   const saveLoadout = () => {
     const name = (naming ?? "").trim(); setNaming(null);
     if (name) s.setImplantLoadouts(prev => [...(prev ?? []), { id: Date.now(), name, implants: [...implants] }]);
@@ -69,6 +75,8 @@ export default function ImplantsPanel({ s }) {
         <span style={{ fontSize: TYPE.label, color: C.textMid }}>{t("{n}/10 fitted", { n: filled })}</span>
         <span style={{ flex: 1, minWidth: 0, textAlign: "right", paddingRight: 6, fontSize: TYPE.label, color: C.textMid, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
           title={setValue?.missing ? t("{n} without a price at {hub}", { n: setValue.missing, hub: s.priceHub ?? "Jita" }) : t("Set value at {hub}", { hub: s.priceHub ?? "Jita" })}>
+          {current && <span title={t("The saved loadout these implants match")} style={{ color: C.accent }}>{current.name}</span>}
+          {current && setValue && setValue.total > 0 && <span style={{ margin: "0 6px" }}>·</span>}
           {setValue && setValue.total > 0 && <><span style={{ color: C.text }}>{fmtResource(setValue.total)}</span> ISK{setValue.missing ? " +" : ""}</>}
         </span>
         {naming == null

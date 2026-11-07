@@ -1,7 +1,8 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { TYPES, tidByName } from "../calc.js";
+import { TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
+import { checkFitRestriction } from "../components/tabs.jsx";
 import { eveIcon } from "../lib/icons.js";
 import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS, MT_ALL_ITEMS,
          generateEmptySlots, lookupShip } from "../lib/core.js";
@@ -66,7 +67,7 @@ function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub,
 // With an ✕ to clear it once there is something in it; Escape in the box clears it too.
 const SearchBox = ({ value, onChange, placeholder }) => (
   <div style={{ position: "relative", margin: "8px 10px 6px", flex: "none" }}>
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+    <input data-desk-search value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
       onKeyDown={e => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange(""); } }}
       style={{ height: 28, boxSizing: "border-box", width: "100%", padding: value ? "0 30px 0 10px" : "0 10px", borderRadius: 6, fontSize: 13.5,
                background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
@@ -110,6 +111,37 @@ function marketEverything() {
 let searchable = null;
 const allItems = () => searchable ??= [...MT_ALL_ITEMS, ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
 const RACK_KEY = "axis_desk_browser_rack";
+const LEGAL_KEY = "axis_desk_browser_legal";
+// "Legal": could this module EVER go on this hull, whatever else is fitted? The phone's own fitting
+// rules (checkFitRestriction: rig size, CCP's canFitShipGroup/Type whitelists, structure vs ship
+// modules, the T3C covert subsystem), plus the two the hull's layout decides on its own: a turret or
+// launcher needs a hardpoint of its kind, and a module needs a slot of its rack. Never fitting
+// COST: a module that only needs more CPU or grid than is left stays (that is what "won't fit" says).
+// Only modules are judged; charges, drones and everything else always pass.
+const RACK_SLOTS = { high: "hiSlots", mid: "medSlots", low: "lowSlots", rigs: "rigSlots", services: "serviceSlots" };
+function legalOn(ship, subsystems) {
+  return (m) => {
+    if (!m?.typeID || !ship) return true;
+    const k = itemKind(m);
+    if (k.kind !== "module") return true;
+    if (checkFitRestriction(m.typeID, ship, subsystems)) return false;
+    const e = TYPES[m.typeID]?.e ?? TYPES[String(m.typeID)]?.e;
+    if (usesTurretHardpoint(e) && !(ship.turrets > 0)) return false;
+    if (usesLauncherHardpoint(e) && !(ship.launchers > 0)) return false;
+    const slotKey = RACK_SLOTS[k.rack];
+    if (slotKey && ship[slotKey] != null && !(ship[slotKey] > 0) && k.rack !== "subsystems") return false;
+    return true;
+  };
+}
+/** `nodes` with every module that fails `ok` removed, and every category left empty pruned. */
+function pruneTree(nodes, ok) {
+  const out = [];
+  for (const n of nodes) {
+    const mods = (n.mods ?? []).filter(ok), children = pruneTree(n.children ?? [], ok);
+    if (mods.length || children.length) out.push({ ...n, mods, children });
+  }
+  return out;
+}
 const RECENT_KEY = "axis_desk_recent_shown";
 const KIND_LABEL = { module: "Module", charge: "Charge", drone: "Drone", fighter: "Fighter", implant: "Implant", booster: "Booster", ship: "Ship" };
 
@@ -169,7 +201,13 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   // "abyssal": the My Abyssals chip, your saved rolls (AbyssalPane) in place of a rack's tree.
   const abyssal = rack === "abyssal" && !isStructure;
   const rackTree = useMarketTree(rack && rack !== "abyssal" ? rack : "high", isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
-  const tree = rack ? rackTree : marketEverything();
+  // Legal only (on by default; remembered): modules this hull can never fit are left out of the
+  // tree, its counts and the search alike.
+  const [legal, setLegalState] = useState(() => { try { return localStorage.getItem(LEGAL_KEY) !== "0"; } catch { return true; } });
+  const setLegal = (v) => { setLegalState(v); try { localStorage.setItem(LEGAL_KEY, v ? "1" : "0"); } catch { /* private mode */ } };
+  const okFor = useMemo(() => legal && ship ? legalOn(ship, s.slots?.subsystems) : null, [legal, ship, s.slots?.subsystems]);
+  const fullTree = rack ? rackTree : marketEverything();
+  const tree = useMemo(() => okFor ? pruneTree(fullTree, okFor) : fullTree, [fullTree, okFor]);
   // Prices for what is on screen, fetched as the list changes (the shared cache answers what it has at
   // once); nothing is fetched for the whole tree.
   const prices = getCachedPrices(s.priceHub, s.priceSource);
@@ -185,9 +223,9 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   // Memoised on what the list depends on, which is not the fit: re-running the search on every edit
   // (adding a booster, say) cost ~70 ms a time.
   const items = useMemo(() => q
-    ? (jargonSearch(q, rack ? allMods(tree) : allItems()) ?? []).slice(0, 200)
+    ? (jargonSearch(q, rack ? allMods(tree) : okFor ? allItems().filter(okFor) : allItems()) ?? []).slice(0, 200)
     : (selected ? (rack ? find(tree, selected)?.mods ?? [] : [...(find(tree, selected)?.mods ?? [])].sort(compareForBrowser)) : []),
-    [q, rack, tree, selected]);   // eslint-disable-line react-hooks/exhaustive-deps
+    [q, rack, tree, selected, okFor]);   // eslint-disable-line react-hooks/exhaustive-deps
   // The rows' "won't fit" marks trail the fit by a render: their cost-ratio probe is a whole-fit pass,
   // and deferring it lets the edit itself paint first.
   const rowHeadroom = useDeferredValue(headroom);
@@ -249,6 +287,11 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
           style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
                    background: abyssal ? `${C.danger}22` : "transparent", border: `1px solid ${abyssal ? C.danger : C.borderStrong}`,
                    color: abyssal ? C.danger : C.textMid }}>{t("My Abyssals")}</button>}
+        {!abyssal && <button type="button" aria-pressed={legal} onClick={() => setLegal(!legal)}
+          title={legal ? t("Showing only modules this hull can fit. Click to show everything") : t("Show only modules this hull can fit (wrong-size rigs, hull-restricted modules and weapons without a hardpoint are hidden)")}
+          style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer", marginLeft: "auto",
+                   background: legal ? C.accentLight : "transparent", border: `1px solid ${legal ? C.accent : C.borderStrong}`,
+                   color: legal ? C.accent : C.textMid }}>{t("Legal")}</button>}
       </div>
       <SearchBox value={search} onChange={setSearch} placeholder={abyssal ? t("Search your rolls") : rack ? t("Search modules") : t("Search everything")} />
       {abyssal && <AbyssalPane s={s} ship={ship} search={search} rowProps={rs.rowProps} TreeRow={TreeRow}
@@ -392,12 +435,19 @@ function ShipsPane({ s }) {
   );
 }
 
-// `modeRequest` ({mode, n}): switch to that mode now — the header's "+" asks for Ships.
+// `modeRequest` ({mode, n, focus}): switch to that mode now — the header's "+" asks for Ships,
+// Ctrl+Space for "toggle" (pyfa's ship/market switch) — and with `focus`, put the cursor in the
+// search box (Ctrl+F).
 export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequest }) {
   const [mode, setMode] = useState("ships");
-  useEffect(() => { if (modeRequest?.mode) setMode(modeRequest.mode); }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (modeRequest?.mode === "toggle") setMode(m => (m === "ships" ? "market" : "ships"));
+    else if (modeRequest?.mode) setMode(modeRequest.mode);
+    if (modeRequest?.focus) requestAnimationFrame(() => { const el = rootRef.current?.querySelector("[data-desk-search]"); el?.focus(); el?.select?.(); });
+  }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div role="tablist" style={{ display: "flex", margin: "8px 10px 0", border: `1px solid ${C.borderStrong}`, borderRadius: 6, overflow: "hidden", flex: "none" }}>
         {[["market", t("Market")], ["ships", t("Ships")]].map(([id, label]) => (
           <button key={id} type="button" role="tab" aria-selected={mode === id} onClick={() => setMode(id)}
