@@ -40,6 +40,9 @@ export const WINDOWS = [
   { id: 'drones', title: 'Drones' },
   { id: 'implants', title: 'Implants' },
   { id: 'notes', title: 'Notes' },
+  // The hull being fitted (the phone's Ship info sheet). An ordinary window, so it stacks with the
+  // others and follows the open fit; a hull opened from the market is a floating inspector instead.
+  { id: 'shipinfo', title: 'Ship info' },
   // Full-time item windows: they follow whatever is selected in any list (desktop/inspect.js).
   { id: 'info', title: 'Info' },
   { id: 'variations', title: 'Variations' },
@@ -64,7 +67,7 @@ const CLOSED_BY_DEFAULT = { drones: [296, 120, 500, 420, false], implants: [340,
                             command: [300, 640, 356, 300, false], boosters: [340, 600, 380, 360, false], environment: [380, 660, 340, 140, false],
                             graphs: [200, 40, 1000, 640, false], validation: [620, 120, 356, 160, false], price: [620, 160, 356, 380, false],
                             info: [984, 200, 448, 600, false], variations: [160, 96, 1000, 600, false], mutate: [536, 120, 440, 560, false],
-                            settings: [340, 64, 760, 760, false] };
+                            settings: [340, 64, 760, 760, false], shipinfo: [520, 72, 480, 700, false] };
 
 const PRESET_GEOMETRY = {
   default: {

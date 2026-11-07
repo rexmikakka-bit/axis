@@ -4436,10 +4436,11 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
   // `totalEHP` is already weighted by `opts.damageProfile` — the same profile the Stats tab weights
   // its own layer EHP with — so the two are directly summable.
   let ancilClipEHP = 0;
+  let ancilClipHP = 0;   // the same pool in raw hit points, for a raw-HP readout beside a raw total
   if (slotEngineStats) {
     for (const [, stats] of slotEngineStats) {
       if (stats.isAAR) { aarEhpS += stats.ehpS ?? 0; armorRepIsAAR = true; }
-      if ((stats.isAAR && stats.hasPaste) || (stats.isASB && stats.hasCharges)) ancilClipEHP += stats.totalEHP ?? 0;
+      if ((stats.isAAR && stats.hasPaste) || (stats.isASB && stats.hasCharges)) { ancilClipEHP += stats.totalEHP ?? 0; ancilClipHP += stats.totalHP ?? 0; }
     }
   }
   // Rep EHP/s is weighted by the SELECTED incoming damage profile — rate / Σ(profile_i × resonance_i)
@@ -4580,6 +4581,7 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
     shieldEHP, armorEHP, hullEHP,
     totalEHP: shieldEHP + armorEHP + hullEHP,
     ancilClipEHP,
+    ancilClipHP,
     resists: effectiveResists,
 
     // Tank

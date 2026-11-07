@@ -674,6 +674,9 @@ function AbyssalBadge({grade}){
 // Desktop density for the module picker's rows (ModRow, ModuleGroupRow): set by the picker's inline
 // mode, so the phone — which never provides it — keeps its touch-sized rows.
 export const DenseRows=createContext(false);
+// Set by a desktop inspector window, whose own header already names the item (icon, name, meta,
+// where it is fitted): ItemInfoPanel then drops its matching header rather than repeating it.
+export const InfoInWindow=createContext(false);
 
 function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badges,largeInfo=false}){
   const rowMeta=metaOf(mod.typeID,mod.meta);
@@ -1267,7 +1270,11 @@ function ResistBars({layers, desk=false}) {
 // attributes tab keeps its own per-row formatters — mass in millions of kg, lock range in km — and
 // without this the breakdown would print the same quantity in a different unit to the row directly
 // above it. Percentages are unaffected: those are ratios, not values in the attribute's unit.
-export function ModifierBreakdown({attr, ex, bleed, fmt}) {
+export function ModifierBreakdown({attr, ex, bleed, fmt, desk}) {
+  // Desktop sizes in the Ship info window (desk) and in an inspector window (InfoInWindow); the
+  // phone keeps its compact ones.
+  const inWindow = useContext(InfoInWindow);
+  const Z = (desk ?? inWindow) ? {head:12.5,row:13.5,rowW:500,pad:'3px 0'} : {head:10,row:11,rowW:600,pad:'2px 0'};
   const fv = fmt ?? (v => fmtInfoVal(attr, v));
   // A modifier that changed nothing is dropped: a multiplier of exactly 1, or an add of exactly 0.
   // Both happen for real — a mining crystal adds 0 to one of the strip miner's waste attributes, and
@@ -1279,7 +1286,7 @@ export function ModifierBreakdown({attr, ex, bleed, fmt}) {
   return (
     <div style={{margin:`0 ${-bleed}px`,padding:`7px ${bleed + 10}px 9px`,background:C.surfaceAlt,
                  borderBottom:`1px solid ${C.border}`}}>
-      <div style={{fontSize:10,color:C.textMute,marginBottom:5,fontVariantNumeric:'tabular-nums'}}>
+      <div style={{fontSize:Z.head,color:C.textMute,marginBottom:5,fontVariantNumeric:'tabular-nums'}}>
         {/* Deliberately NOT the word "base": this is the start of the modifier chain, and the row's
             own BASE column is getBase(), which has already folded in the direct PreMuls. On a turret
             with ammo those differ — the chain starts at 2.4 km optimal and the BASE column reads
@@ -1289,8 +1296,8 @@ export function ModifierBreakdown({attr, ex, bleed, fmt}) {
         {ex.capped && <span style={{marginLeft:6}}>· {t("capped")}</span>}
       </div>
       {rows.map((r, i) => (
-        <div key={i} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'baseline',padding:'2px 0'}}>
-          <span style={{fontSize:11,color:C.textMid,minWidth:0,wordBreak:'break-word'}}>
+        <div key={i} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'baseline',padding:Z.pad}}>
+          <span style={{fontSize:Z.row,color:C.textMid,minWidth:0,wordBreak:'break-word'}}>
             {srcLabel(r.source)}
             {r.source && SRC_NOTE[r.source.kind] &&
               <span style={{color:C.textMute,marginLeft:5}}>{SRC_NOTE[r.source.kind]()}</span>}
@@ -1302,7 +1309,7 @@ export function ModifierBreakdown({attr, ex, bleed, fmt}) {
               </span>
             )}
           </span>
-          <span style={{fontSize:11,fontWeight:600,color:C.text,textAlign:'right',
+          <span style={{fontSize:Z.row,fontWeight:Z.rowW,color:C.text,textAlign:'right',
                         fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>
             {r.assigns ? t("set to {val}",{val:fv(ex.final)})
               : r.add != null ? `${r.add >= 0 ? '+' : '−'}${fv(Math.abs(r.add))}`
@@ -1314,7 +1321,7 @@ export function ModifierBreakdown({attr, ex, bleed, fmt}) {
           custom handlers do not. Saying so is the difference between an incomplete list and a wrong
           one — the arithmetic still adds up, the attribution just stops short. */}
       {!ex.covered && (
-        <div style={{fontSize:10,color:C.textMute,marginTop:4}}>
+        <div style={{fontSize:Z.head,color:C.textMute,marginTop:4}}>
           Some modifiers on this value aren’t identified yet.
         </div>
       )}
@@ -1360,6 +1367,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
   // other makes exactly that comparison impossible.
   const [openAttrs, setOpenAttrs] = useState(() => new Set());
   const [traced, setTraced] = useState(null);
+  const inWindow = useContext(InfoInWindow);
   const td = TYPES[String(typeID)] ?? TYPES[typeID];
   if (!td) return <div style={{padding:16,color:C.textMute,fontSize:12}}>{t("No data available")}</div>;
   const attrs = {...(td.attrs ?? td.a ?? {}),...baseOverrides};
@@ -1499,7 +1507,15 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
 
   return (
     <div>
-      {/* Header */}
+      {/* Header. In a desktop inspector window, whose title bar already shows the icon, name and meta,
+          only what that bar lacks: the group and the roll / pre-release badges. */}
+      {inWindow ? (
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',fontSize:12.5,color:C.textMid,marginBottom:12}}>
+          <span>{td.gn}</span>
+          {grade && <AbyssalBadge grade={grade}/>}
+          {isPrereleaseRig(typeID) && <SourceBadge label={t("Pre-release")} color={C.warning}/>}
+        </div>
+      ) : (
       <div style={{display:'flex',alignItems:'center',gap:12,paddingBottom:12,borderBottom:`1px solid ${C.border}`,marginBottom:12}}>
         {typeID && <img src={eveIcon(typeID,64)} width={48} height={48} style={{borderRadius:8,background:'#0d0d1a',flexShrink:0}} onError={e=>e.target.style.opacity='0'} alt=""/>}
         <div style={{flex:1,minWidth:0}}>
@@ -1515,6 +1531,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
           </div>
         </div>
       </div>
+      )}
       {/* Description */}
       {desc && (
         <div style={{fontSize:12,color:C.textMid,lineHeight:1.55,marginBottom:14,padding:'10px 12px',background:C.surfaceAlt,borderRadius:8,border:`1px solid ${C.border}`}}>

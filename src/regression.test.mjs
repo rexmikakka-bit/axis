@@ -1259,6 +1259,10 @@ function check(group, label, actual, expected, tol = 0.005) {
   // Shield resonances 1/0.8/0.6/0.5 -> 0.725 under a uniform profile -> 1314 x 1.37931 = 1812.
   check('clip', 'ASB on cap boosters, clip EHP', clipOf(car, mids([ASB('Navy Cap Booster 50')])), 1812, 1e-5);
   check('clip', 'ASB running on capacitor contributes no clip', clipOf(car, mids([ASB(null)])), 0, 0);
+  // The same pools in raw HP, for the desktop Defense window when it reads raw HP (its total is raw).
+  check('clip', 'ASB clip in raw HP: 9 x 146', calcFitStats(car, mids([ASB('Navy Cap Booster 50')]), [], null, {}).ancilClipHP, 1314, 1e-5);
+  check('clip', 'AAR clip in raw HP: 8 x 853.875', paste.ancilClipHP, 6831, 1e-4);
+  check('clip', 'no pool, no raw HP either', calcFitStats(myrm, lows([AAR('active')]), [], null, {}).ancilClipHP, 0, 0);
   // The pool is weighted by the SELECTED incoming profile, which is the whole reason it may be added
   // to the Stats tab's own profile-weighted EHP. Under pure EM a Caracal's shield has 0% resist, so
   // the clip must fall back to its raw 1314 HP — if this reads 1812 the weighting was ignored and
@@ -9463,6 +9467,26 @@ Nanofiber Internal Structure II
   check('projmod', 'GD precision script: explosion velocity (eos x1.25)', prec.explosionVelocity, 127.5 * (1 - 0.24 * 1.25), 0.006);
   check('projmod', 'GD precision script: explosion radius (eos x1.25)', prec.explosionRadius, 105 * (1 + 0.24 * 1.25), 0.006);
   check('projmod', 'GD range script: missile velocity (eos x1.25)', gdHit('Missile Range Disruption Script').velocity, 9675 * (1 - 0.18 * 1.25), 0.001);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBSYSTEM FROM THE MARKET (desktop drag/double-click): fit-ops.js subsystemSwapTarget picks the
+// fitted subsystem a market one replaces — by its subSystemSlot (125 core … 128 propulsion), never a
+// subsystem of another hull.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const { subsystemSwapTarget } = await import('./lib/fit-ops.js');
+  const legion = tid('Legion');
+  const subsOf = (hull) => Object.entries(TYPES).filter(([, x]) => (x.c ?? x.category) === 32 && Number(x.a?.fitsToShipType) === hull);
+  const bySlot = (hull, slot) => subsOf(hull).filter(([, x]) => x.a.subSystemSlot === slot).map(([id, x]) => ({ typeID: Number(id), name: x.n }));
+  const fitted = [125, 126, 127, 128].map((sl, i) => ({ id: `s${i}`, type: 'subsystem', ...bySlot(legion, sl)[0] }));
+  const otherDef = bySlot(legion, 126)[1];
+  check('subswap', 'a Legion has a subsystem per slot', fitted.every(s => s.typeID) ? 1 : 0, 1, 0);
+  check('subswap', 'a defensive replaces the defensive', subsystemSwapTarget(fitted, otherDef.typeID, 'Legion').slotId, 's1');
+  check('subswap', 'the one already fitted: nothing to do', subsystemSwapTarget(fitted, fitted[2].typeID, 'Legion').same ? 1 : 0, 1, 0);
+  const tengu = tid('Tengu');
+  check('subswap', "a Tengu's subsystem refuses a Legion", subsystemSwapTarget(fitted, bySlot(tengu, 126)[0].typeID, 'Legion').error, 'hull');
+  check('subswap', 'an empty slot is found by its index', subsystemSwapTarget([fitted[0], { id: 'e1', type: 'empty' }, fitted[2], fitted[3]], otherDef.typeID, 'Legion').slotId, 'e1');
+  check('subswap', 'no subsystem slots: refused', subsystemSwapTarget([], otherDef.typeID, 'Rupture').error ?? 'none', 'hull');
 }
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {

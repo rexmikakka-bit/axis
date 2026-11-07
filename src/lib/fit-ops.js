@@ -142,6 +142,24 @@ export function applyRowState(prev, secKey, ids, state, limits, changedId = ids[
 }
 
 /**
+ * Where subsystem `typeID` goes on a fit of `shipName` with `subsystems` fitted: { slotId } of the
+ * subsystem it replaces, { same: true } when it is already there, or { error } — a subsystem for a
+ * different hull, or a fit with no subsystem slots. Its slot is its subSystemSlot attribute (125 core …
+ * 128 propulsion), which also orders the fit's subsystems, so an empty slot is found by that index.
+ */
+export function subsystemSwapTarget(subsystems, typeID, shipName) {
+  const a = TYPES[typeID]?.attrs ?? TYPES[typeID]?.a ?? {};
+  const hull = shipName ? tidByName(shipName) : null;
+  if (a.fitsToShipType != null && hull != null && Number(a.fitsToShipType) !== Number(hull)) return { error: 'hull' };
+  const subs = subsystems ?? [];
+  const slotOf = (x) => (TYPES[x?.typeID]?.attrs ?? TYPES[x?.typeID]?.a ?? {}).subSystemSlot;
+  const target = subs.find(x => x?.typeID && slotOf(x) === a.subSystemSlot) ?? subs[Math.round(a.subSystemSlot ?? 0) - 125];
+  if (!target) return { error: 'slot' };
+  if (Number(target.typeID) === Number(typeID)) return { same: true };
+  return { slotId: target.id };
+}
+
+/**
  * A T3 cruiser's subsystem `slotId` swapped for `sub`, and every rack re-laid out for the new
  * subsystem set: slots that still exist keep their modules, new ones arrive empty, and a module whose
  * slot went away is kept past the end flagged `orphan` (see reabsorbOrphans) rather than deleted.

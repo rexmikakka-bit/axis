@@ -9,7 +9,7 @@ import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
 import { fittedAbyssalIds, variationRoll } from "../lib/variation-items.js";
 import { applyModUpdate, applyRemove, applySubsystemSwap, variantSwapPatch } from "../lib/fit-ops.js";
 import { peekViewMemory } from "../lib/use-view-memory.js";
-import { ModuleMenu, ModuleInfoTab, MutaplasmidEditor, ItemInfoPanel, TraitsPanel, hasTraits } from "../components/ui.jsx";
+import { ModuleMenu, ModuleInfoTab, MutaplasmidEditor, ItemInfoPanel, TraitsPanel, hasTraits, InfoInWindow } from "../components/ui.jsx";
 import { buildBoosterFromName } from "../components/effects.jsx";
 import { resolveTarget, inspectorTabs, typeTarget, targetKey } from "./inspect.js";
 import { useInspect } from "./inspect-context.jsx";
@@ -173,7 +173,7 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
         </div>
       )}
       {/* desk-type: the hosted phone panels at desktop type sizes (kit.jsx). Variations is native. */}
-      <div className={cur === "variations" ? undefined : "desk-type"} style={{ flex: 1, minHeight: 0, overflow: cur === "variations" ? "hidden" : "auto", lineHeight: 1.3 }}>{body()}</div>
+      <div className={cur === "variations" ? undefined : "desk-type"} style={{ flex: 1, minHeight: 0, overflow: cur === "variations" ? "hidden" : "auto", lineHeight: 1.3 }}><InfoInWindow.Provider value={true}>{body()}</InfoInWindow.Provider></div>
     </div>
   );
 }

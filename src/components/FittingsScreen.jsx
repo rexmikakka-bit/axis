@@ -293,7 +293,9 @@ function ShipHero({typeID, height, full, children, split = false}) {
   // otherwise fade to transparent in a visible band down both sides.
   // The pair fades as one — the opacity lives on the wrapper so the sharp copy cannot arrive ahead of
   // its own backdrop.
-  const FEATHER = 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.55) 30%, #000 70%), linear-gradient(to bottom, #000 70%, transparent 100%)';
+  // The fade is kept to the square's left edge: CCP centres the hull in the square, and a fade still
+  // part-transparent at 70% let the blurred copy wash over the ship itself.
+  const FEATHER = 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.7) 12%, #000 28%), linear-gradient(to bottom, #000 70%, transparent 100%)';
   const splitImg = (src) => (
     <div style={{position:'absolute',inset:0,transition:'opacity .35s ease'}}>
       <img src={src} alt="" aria-hidden="true"
@@ -766,7 +768,7 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
                     {/* The row's own formatter, so the breakdown states mass in the millions of kg
                         the row above it uses rather than the info panel's default rendering. */}
                     {isOpen&&<ModifierBreakdown attr={r.attr} ex={shipAttrExplain(r.attr)}
-                                                bleed={16} fmt={r.fmt}/>}
+                                                bleed={16} fmt={r.fmt} desk={embedded}/>}
                     </div>);
                   })}
                 </div>);

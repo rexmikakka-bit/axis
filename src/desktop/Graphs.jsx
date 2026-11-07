@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { calcFitStats, computeProjectedReps, tidByName, isT3Cruiser, t3cSlotLayout, TYPES } from "../calc.js";
+import { calcFitStats, computeProjectedReps, calcAngularSpeed, tidByName, isT3Cruiser, t3cSlotLayout, TYPES } from "../calc.js";
 import { lookupShip, getCompatibleCharges, NAVY_AMMO_PREFIXES } from "../lib/core.js";
 import { metaOf } from "../lib/meta.js";
 import { weaponRacks } from "../lib/ammo-compare.js";
 import { buildExternalBursts, buildProjectedEffects } from "../lib/projection.js";
 import { targetFitProfile } from "../lib/graph-target.js";
 import { GRAPH_CONFIG, generateCurve, TARGET_PROFILES, TARGET_FIT, profileTarget, interpCurveAt,
-         defaultEngRangeKm, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S, VectorCompass, ScrubField, IDEAL_SIG, COMPASS_DIRS } from "../components/GraphTab.jsx";
+         defaultEngRangeKm, engagementDistanceM, usesEngRange, usesTimeWindow, DEFAULT_WINDOW_S, VectorCompass, ScrubField, IDEAL_SIG, COMPASS_DIRS } from "../components/GraphTab.jsx";
 import { FitPickerSheet } from "../components/effects.jsx";
 import { tabFits } from "./tab-fits.js";
 import Menu from "./Menu.jsx";
@@ -303,6 +303,8 @@ export default function GraphsPanel({ s }) {
   const [meta, setMeta] = useState(saved.meta ?? "navy");
   const [ignoreResists, setIgnoreResists] = useState(!!saved.ignoreResists);
   const [showY0, setShowY0] = useState(saved.showY0 ?? true);
+  // Transversal in m/s, or (clicked) angular velocity in °/s — the phone's tap toggle. Remembered.
+  const [angular, setAngular] = useState(!!saved.angular);
   // Typed axis maximums, per graph and axis pair: a range scale that suits Damage vs distance means
   // nothing on Capacitor vs time. {"damage|dps|dist": {x: 60, y: null}}; null is Auto.
   const [scales, setScales] = useState(saved.scales ?? {});
@@ -321,7 +323,7 @@ export default function GraphsPanel({ s }) {
     ro.observe(el); return () => ro.disconnect();
   }, []);
   const showPanel = panelMode === "shown" || (panelMode === "auto" && rootH >= 460);
-  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales]);
+  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular]);
 
   // With no sources chosen, graph the fit being edited.
   const srcList = sources.length ? sources : (s.activeFit?.ship ? [{ ship: s.activeFit.ship, fitName: s.activeFit.fitName, auto: true }] : []);
@@ -386,6 +388,11 @@ export default function GraphsPanel({ s }) {
   const selfRef = firstCs?.maxVelocityAB ?? firstCs?.maxVelocity ?? srcData.find(Boolean)?.d.ship?.maxVelocity ?? 0;
   const tgtRef = tgtData.find(Boolean)?.vel ?? 0;
   const transversal = Math.abs(selfRef * inp.atkSpeed / 100 * Math.sin(inp.atkAngle * Math.PI / 180) - tgtRef * inp.tgtSpeed / 100 * Math.sin(inp.tgtAngle * Math.PI / 180));
+  // Angular velocity at the engagement distance: the Range field where it is shown, else the fit's
+  // weapon reach — the phone's angularDistM, so the two quote the same engagement.
+  const angDistM = showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
+  const angularDeg = calcAngularSpeed(selfRef * inp.atkSpeed / 100, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtRef * inp.tgtSpeed / 100, inp.tgtAngle, 0) * 180 / Math.PI;
+  const fmtAngular = v => !Number.isFinite(v) ? "--" : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
   const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
   // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
   const addCustom = () => { const td = tgtData.find(Boolean);
@@ -503,10 +510,13 @@ export default function GraphsPanel({ s }) {
             <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
             <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 6, fontSize: 12.5, color: C.textMid }}>
-            <span title={t("Drag a wheel to set heading and speed; double-click it to stop")}>{t("Transversal")}</span>
-            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>{Math.round(transversal)} m/s</span>
-          </div>
+          {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range). */}
+          <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
+            style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+            <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
+            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
+              {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
+          </button>
         </>}
         {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
         {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}

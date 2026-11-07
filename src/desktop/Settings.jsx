@@ -467,10 +467,10 @@ function AbyssalSync({ c, saved, onSaved }) {
 // Every ESI permission for one character, granted or not, granted from here (esi-ui.jsx
 // esiPermissions): a chip per permission, ✓ when granted and a button when not, and one login for
 // all of the missing ones.
-function EsiPermissions({ c, onError }) {
+function EsiPermissions({ c, onError, onStarted }) {
   const perms = esiPermissions(), has = (sc) => c.scopes?.includes(sc);
   const missing = perms.filter(p => !has(p.scope)).map(p => p.scope);
-  const grant = async (scopes) => { try { await grantEsiScopes(c, scopes); } catch (e) { onError(friendlyError(e)); } };
+  const grant = async (scopes) => { onError(null); try { await grantEsiScopes(c, scopes); onStarted?.(); } catch (e) { onError(friendlyError(e)); } };
   return (
     <div style={{ padding: "0 0 10px 46px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -501,7 +501,8 @@ function EsiSection({ s }) {
   const [rolls, setRolls] = useState([]);
   useEffect(() => { let live = true; readAbyssals().then(r => { if (live) setRolls(r); }).catch(() => {}); return () => { live = false; }; }, []);
   // A login finishing (the eveauth-visviva link, esi-desktop.js) changes the characters: stop waiting.
-  useEffect(() => { setWaiting(false); }, [characters.length]);
+  // On ANY change, not just a new one: granting more permissions re-logs an existing character.
+  useEffect(() => { setWaiting(false); }, [characters]);
   useEffect(() => { esi.handleWebRedirectOnLoad().then(r => { if (r) refresh(); }).catch(e => setError(friendlyError(e))); }, [refresh]);
   const connect = async () => {
     setError(null);
@@ -543,7 +544,7 @@ function EsiSection({ s }) {
               {busy === c.characterId ? t("Syncing…") : t("Sync skills")}</button>
             <button type="button" onClick={() => remove(c.characterId)} style={danger()}>{t("Unlink")}</button>
           </div>
-          <EsiPermissions c={c} onError={setError} />
+          <EsiPermissions c={c} onError={setError} onStarted={() => setWaiting(true)} />
           <AbyssalSync c={c} saved={rolls.filter(r => String(r.characterId) === String(c.characterId)).length}
             onSaved={(r) => { setRolls(r); window.dispatchEvent(new Event(ABYSSALS_CHANGED)); }} />
           </div>

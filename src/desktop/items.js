@@ -3,14 +3,15 @@ import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES,
          DRONE_FLIGHT, droneAddQty, cargoUnitVolume, canLoadCharge, IMPLANT_NAME_TO_SLOT, isBoosterName } from "../lib/core.js";
 import { buildBoosterFromName } from "../components/effects.jsx";
 import { t } from "../lib/i18n.js";
+import { applySubsystemSwap, subsystemSwapTarget } from "../lib/fit-ops.js";
 
 // What an item IS on a fit, and how it gets added — one place for the Browser's double-click and
 // right-click, and for dragging an item onto a window. Every add rule here is the one the matching
 // window already used (Drones, Fighters, Implants, Boosters, Cargo), moved out so the add works with
 // that window closed, and so a drop and a double-click can never disagree. The windows call these too.
 //
-// Kinds: module (with its rack), charge, drone, fighter, implant, booster, ship, cargo. "cargo" is
-// everything else — ore, salvage, a subsystem, a blueprint — and anything can also go in the hold.
+// Kinds: module (with its rack), charge, subsystem, drone, fighter, implant, booster, ship, cargo.
+// "cargo" is everything else — ore, salvage, a blueprint — and anything can also go in the hold.
 
 /** The drag payload type: JSON {typeID, name}. Its own type, so a dragged file or text is ignored. */
 export const ITEM_MIME = "application/x-axis-item";
@@ -50,6 +51,7 @@ export function itemKind(item) {
   if (c === 18) return { kind: "drone" };
   if (c === 87) return { kind: "fighter" };
   if (c === 8) return { kind: "charge" };
+  if (c === 32) return { kind: "subsystem" };
   if (c === 20 || IMPLANT_NAME_TO_SLOT.has(name) || isBoosterName(name)) {
     if (isBoosterName(name)) return { kind: "booster" };
     const slot = IMPLANT_NAME_TO_SLOT.get(name) ?? td?.attrs?.implantness ?? td?.a?.implantness;
@@ -146,6 +148,19 @@ export function loadCharge(s, charge, only = null) {
   return targets.length;
 }
 
+/**
+ * A subsystem from the market into the slot it belongs to, replacing what is there — the phone's
+ * subsystem picker's swap (applySubsystemSwap), so the racks resize exactly as they do there. Which
+ * slot, or why not, is fit-ops.js subsystemSwapTarget. Returns a refusal message, or null.
+ */
+export function swapSubsystem(s, item) {
+  const to = subsystemSwapTarget(s.slots?.subsystems, item.typeID, s.activeFit?.ship);
+  if (to.error === 'hull') return t("{name} does not fit a {ship}", { name: item.name, ship: s.activeFit?.ship });
+  if (to.error) return t("No subsystem slot for {name}", { name: item.name });
+  if (to.slotId != null) s.setSlots(prev => applySubsystemSwap(prev, to.slotId, { name: item.name, typeID: item.typeID }));
+  return null;
+}
+
 // ── Routing ────────────────────────────────────────────────────────────────────────────────────
 
 /** Where an item goes by default, and the label that action reads as. */
@@ -153,6 +168,8 @@ export function defaultAction(item, { slots, hasFighters } = {}) {
   const k = itemKind(item);
   switch (k.kind) {
     case "module": return { to: "fitting", label: t("Fit") };
+    // Into the fit only on a T3 cruiser (it has subsystem slots); anywhere else it is cargo.
+    case "subsystem": return (slots?.subsystems ?? []).length ? { to: "fitting", label: t("Swap in") } : { to: "cargo", label: t("Add to cargo") };
     case "charge": return chargeTargets(slots, item).length ? { to: "fitting", label: t("Load into compatible modules") } : { to: "cargo", label: t("Add to cargo") };
     case "drone": return hasFighters ? { to: "cargo", label: t("Add to cargo") } : { to: "drones", label: t("Add to drone bay") };
     case "fighter": return hasFighters ? { to: "fighters", label: t("Add to fighter bay") } : { to: "cargo", label: t("Add to cargo") };
@@ -167,7 +184,7 @@ export function defaultAction(item, { slots, hasFighters } = {}) {
 export function accepts(to, item, { hasFighters } = {}) {
   const k = itemKind(item).kind;
   switch (to) {
-    case "fitting": return k === "module" || k === "charge";
+    case "fitting": return k === "module" || k === "charge" || k === "subsystem";
     case "drones": return k === "drone" && !hasFighters;
     case "fighters": return k === "fighter" && !!hasFighters;
     case "implants": return k === "implant";
@@ -194,6 +211,7 @@ export function addItem(env, item, to) {
   switch (to) {
     case "fitting":
       if (k.kind === "charge") { const n = loadCharge(s, item, env.only); return n ? done(to, t("Loaded {name}", { name: item.name })) : t("Nothing fitted takes {name}", { name: item.name }); }
+      if (k.kind === "subsystem") return swapSubsystem(s, { ...item, typeID: tid }) ?? done(to);
       // A saved abyssal roll fits as itself — the phone library's libraryModule shape — never as the
       // stock module its typeID names.
       if (item.mutations) { fitModule?.(k.rack, { name: item.name, typeID: tid, mutaplasmid: item.mutaplasmid, mutations: { ...item.mutations }, abyssalItemId: item.abyssalItemId }); return done(to); }
