@@ -1,6 +1,6 @@
 [package]
 name = "axis"
-version = "0.2.0"
+version = "0.3.0"
 description = "Axis, the EVE Online fitting tool, for desktop"
 authors = ["rex mikakka"]
 license = ""
