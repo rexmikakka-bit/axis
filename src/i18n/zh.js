@@ -78,7 +78,7 @@ export default {
   "Pre-release": "预发布",
   "This ship is not in EVE yet, so it cannot be saved to your in-game fittings": "这艘舰船尚未加入 EVE，无法保存到游戏内装配",
   "This fit has a pre-release rig or module that is not in EVE yet, so it cannot be saved to your in-game fittings": "此装配包含尚未加入 EVE 的预发布改装件或装备，因此无法保存到游戏内装配",
-  "Synchronization Rigging: {pct}% less Synchronizer rig drawback at this level (10% per level). Applies to every pilot, since no character has it yet.": "Synchronization Rigging：此等级下 Synchronizer 改装件的惩罚减少 {pct}%（每级 10%）。由于尚无角色拥有，它对所有驾驶员生效。",
+  "Synchronization Rigging: {pct}% less Synchronizer rig CPU penalty at this level (10% per level). Applies to every pilot, since no character has it yet.": "Synchronization Rigging：此等级下 Synchronizer 改装件的 CPU 惩罚减少 {pct}%（每级 10%）。由于尚无角色拥有该技能，它适用于所有飞行员。",
   "A saved fitting or a ship in your hangar": "已保存的装配或机库中的舰船",
   "Ancillary clip pool — tap to add it into the EHP total": "辅助弹夹储量——点击可计入 EHP 总量",
   "Angular velocity — tap for transversal": "角速度——点击查看横向速度",

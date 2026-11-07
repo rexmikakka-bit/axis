@@ -12,7 +12,7 @@
 //     penalty does not grow.
 //   - ABYSSAL modules never count, even when their base type is a faction module. Every other fitted
 //     module whose name starts with the faction's name does, offline ones included ("fitted").
-//   - a skill reduces the penalty by 10% per level (50% at V): see SKILL below.
+//   - SUPERSEDED (see the CPU note below): a skill was read as reducing this penalty.
 //
 // CCP's Fractured Skies expansion notes (2026-11-06) then gave all nine rigs in text. Every bonus and
 // penalty matched; they also confirmed the ECM reading below, named the skill Synchronization
@@ -35,8 +35,13 @@
 // `sync` field on each rig type.
 //
 // The four empire navy Synchronizers (Republic Fleet, Federation Navy, Caldari Navy, Imperial Navy)
-// came later, from four Large info windows Owen passed on. They have four bonuses and NO penalty, so
-// the skill does nothing for them. Same +1% rule, same 250 calibration, same three sizes.
+// came later, from four Large info windows Owen passed on. They have four bonuses and no faction
+// penalty. Same +1% rule, same 250 calibration, same three sizes.
+//
+// CPU drawback (later word, Owen 2026-11-07): every Synchronizer also carries a CPU drawback, and
+// THAT is the only thing Synchronization Rigging reduces — not the faction penalty above. Confirmed the
+// same day: 10% on all nine Synchronizers, navy included, and 50% less at skill level V. Modelled as a
+// cut to the ship's CPU output.
 //
 // It retires itself: everything is skipped once the bundle has a type named "Medium Dark Blood
 // Synchronizer". When CCP ships them, delete this file, its call sites and the pre-release skill
@@ -55,7 +60,11 @@ export const PRERELEASE_SKILL_KEY = 'synchronizationRigging';
 // Attributes. One drawback and four bonus slots per rig, like CCP's `drawback` (1138) on its rigs.
 const A_DRAWBACK = 990901;
 const A_BONUS = [990902, 990903, 990904, 990905];
+const A_CPU = 990906;   // the CPU drawback, the one the skill reduces
+// % change to the ship's CPU output (negative is a cut): 10% on every Synchronizer, before the skill.
+const CPU_PENALTY = -10;
 const NEW_ATTRS = {
+  [A_CPU]: { n: 'synchronizerCpuDrawback', s: 1, h: 1, d: 0 },
   [A_DRAWBACK]: { n: 'synchronizerDrawback', s: 1, h: 1, d: 0 },
   [A_BONUS[0]]: { n: 'synchronizerBonus1', s: 1, h: 1, d: 0 },
   [A_BONUS[1]]: { n: 'synchronizerBonus2', s: 1, h: 1, d: 0 },
@@ -79,7 +88,7 @@ const RECHARGE = 55, SHIELD_HP = 263, ARMOR_HP = 265, HULL_HP = 9, SIG = 552, WA
 const DRONE_RANGE = 458, LOCK_RANGE = 76, WEB_RESIST = 2115, VELOCITY = 37, CAP_NEED = 6;
 const DAMAGE = 64, FALLOFF = 158, TRACKING = 160, OPTIMAL = 54, FALLOFF_EFF = 2044;
 const NOS_AMOUNT = 90, NEUT_AMOUNT = 97, OVERHEAT_CYCLE = 1206, SPEED_FACTOR = 20, OVERHEAT_SPEED = 1223;
-const DURATION = 73, REPAIR_AMOUNT = 84, CAP_CAPACITY = 482;
+const DURATION = 73, REPAIR_AMOUNT = 84, CAP_CAPACITY = 482, CPU_OUTPUT = 48;
 const MISSILE_DAMAGES = [114, 116, 117, 118];
 const SHIELD_RESONANCES = [271, 272, 273, 274];
 const ECM_STRENGTHS = [238, 239, 240, 241];
@@ -267,14 +276,16 @@ const MG_RIGS = 1111;
 const RIG_SLOT_EFFECT = 2663;
 const CALIBRATION = 250;
 
-// Effect IDs: 990900 + faction*10 + slot (0 = drawback, 1..4 = bonuses), and the skill's.
+// Effect IDs: 990900 + faction*10 + slot (0 = drawback, 1..4 = bonuses, 5 = CPU drawback), and the skill's.
 const effectID = (fi, slot) => 990900 + fi * 10 + slot;
 const EFF_SKILL = 990990;
 const EFF_SKILL_PRESCALE = 2725; // Armor Rigging's: rigDrawbackBonus (1139) *= skillLevel
 const A_SKILL_BONUS = 1139;      // rigDrawbackBonus, the attribute every rigging skill carries
 
 export const PRERELEASE_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies on 10 November. Its bonuses are from the expansion notes, not the game data yet, so a figure may still change when it goes live. Only one Synchronizer fits a ship.';
-const SKILL_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies (25 million ISK in the empire schools). 10% less Synchronizer rig drawback per level, 50% at V. No character has it yet, so Axis applies the level you set here to every pilot.';
+const SKILL_NOTICE = 'PRE-RELEASE: arrives with Fractured Skies (25 million ISK in the empire schools). 10% less Synchronizer rig CPU penalty per level, 50% at V; it does not reduce a rig\'s other penalty. No character has it yet, so Axis applies the level you set here to every pilot.';
+// The trait line for the CPU drawback.
+const CPU_LINE = [`${Math.abs(CPU_PENALTY)}%`, 'penalty to ship CPU output'];
 
 export const PRERELEASE_RIG_TYPE_IDS = new Set();
 // typeID -> trait entry, for core.js to merge into shipTraits (the info sheet's Traits tab).
@@ -294,6 +305,7 @@ export function applyPrereleaseRigs(types, effects, attrs) {
   FACTIONS.forEach((f, fi) => {
     const slots = f.m.flatMap((mods, slot) => mods.length ? [slot] : []);
     for (const slot of slots) effects[effectID(fi, slot)] = { c: 0, m: f.m[slot] };
+    effects[effectID(fi, 5)] = { c: 0, m: [ship(CPU_OUTPUT, A_CPU)] };
     SIZES.forEach((s, si) => {
       const id = 990901 + fi * 3 + si;
       const name = `${s.name} ${f.prefix} Synchronizer`;
@@ -303,10 +315,11 @@ export function applyPrereleaseRigs(types, effects, attrs) {
         1544: 1,   // maxGroupFitted: one Synchronizer per ship (the expansion notes)
         ...(f.v[0] != null && { [A_DRAWBACK]: f.v[0] }),
         ...Object.fromEntries(A_BONUS.map((aid, i) => [aid, f.v[i + 1]])),
+        [A_CPU]: CPU_PENALTY,
       };
       types[id] = {
         n: name, g: GROUP, gn: GROUP_NAME, c: 7, mg: 4, a,
-        e: [RIG_SLOT_EFFECT, ...slots.map(slot => effectID(fi, slot))],
+        e: [RIG_SLOT_EFFECT, ...slots.map(slot => effectID(fi, slot)), effectID(fi, 5)],
         sync: f.prefix,
       };
       PRERELEASE_RIG_TYPE_IDS.add(id);
@@ -316,18 +329,19 @@ export function applyPrereleaseRigs(types, effects, attrs) {
         misc: {
           header: 'Misc bonus:',
           bonuses: [
-            ...f.lines.map(([number, text]) => ({ number, text })),
+            // The CPU drawback sits with the penalties: after the faction one, or first on a navy rig.
+            ...[...(f.v[0] != null ? [f.lines[0], CPU_LINE, ...f.lines.slice(1)] : [CPU_LINE, ...f.lines])].map(([number, text]) => ({ number, text })),
             { text: `• the bonuses provided by this rig increase by a flat +1% for every ${f.prefix} module fitted to this ship (abyssal modules excluded)` },
           ],
         },
       };
-      PRERELEASE_RIG_DESCRIPTIONS[id] = f.v[0] == null ? PRERELEASE_NOTICE
-        : `${PRERELEASE_NOTICE} The penalty is reduced by the ${PRERELEASE_SKILL_NAME} skill, also pre-release: set its level below or in Settings > Skills.`;
+      PRERELEASE_RIG_DESCRIPTIONS[id] = `${PRERELEASE_NOTICE} Its CPU penalty is reduced by the ${PRERELEASE_SKILL_NAME} skill, also pre-release: set its level below or in Settings > Skills.`;
     });
   });
 
-  // The skill: Armor Rigging's shape (attributes, prescale), pointed at the synchronizer group.
-  effects[EFF_SKILL] = { c: 0, m: [{ domain: 'shipID', func: 'LocationGroupModifier', groupID: GROUP, modifiedAttributeID: A_DRAWBACK, modifyingAttributeID: A_SKILL_BONUS, operation: 6 }] };
+  // The skill: Armor Rigging's shape (attributes, prescale), pointed at the synchronizer group's CPU
+  // drawback only — the faction penalty (A_DRAWBACK) is not reduced by it.
+  effects[EFF_SKILL] = { c: 0, m: [{ domain: 'shipID', func: 'LocationGroupModifier', groupID: GROUP, modifiedAttributeID: A_CPU, modifyingAttributeID: A_SKILL_BONUS, operation: 6 }] };
   types[SKILL_ID] = {
     n: PRERELEASE_SKILL_NAME, g: 269, gn: 'Rigging', c: 16,
     a: { 4: 0, 38: 0, 161: 0.01, 162: 1, 180: 165, 181: 166, 182: 26252, 275: 3, 277: 3, 280: 0, [A_SKILL_BONUS]: -10 },
@@ -368,6 +382,6 @@ export function applyPrereleaseRigModules(modulesData, marketGroups, typeIcons, 
  *  user — the Pre-release badge, the info sheet's traits, the ESI export block — treats them alike. */
 export const isPrereleaseRig = typeID => PRERELEASE_RIG_TYPE_IDS.has(Number(typeID)) || Number(typeID) === SKILL_ID || isPrereleaseModule(typeID);
 
-/** True where the skill control means something: the skill itself, or a rig with a penalty. */
-export const prereleaseSkillApplies = typeID => Number(typeID) === SKILL_ID
-  || (PRERELEASE_RIG_TYPE_IDS.has(Number(typeID)) && RIGS.find(r => r.id === Number(typeID))?.faction.v[0] != null);
+/** True where the skill control means something: the skill itself, or any Synchronizer (all carry the
+ *  CPU drawback it reduces). */
+export const prereleaseSkillApplies = typeID => Number(typeID) === SKILL_ID || PRERELEASE_RIG_TYPE_IDS.has(Number(typeID));

@@ -27,7 +27,7 @@ export function PrereleaseSkillControl(){
         </div>
       </div>
       <div style={{fontSize:11,color:C.textMute,lineHeight:1.45,marginTop:6}}>
-        {t("Synchronization Rigging: {pct}% less Synchronizer rig drawback at this level (10% per level). Applies to every pilot, since no character has it yet.",{pct:lv*10})}
+        {t("Synchronization Rigging: {pct}% less Synchronizer rig CPU penalty at this level (10% per level). Applies to every pilot, since no character has it yet.",{pct:lv*10})}
       </div>
     </div>
   );

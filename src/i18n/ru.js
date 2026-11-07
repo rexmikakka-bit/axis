@@ -81,7 +81,7 @@ export default {
   "Pre-release": "Предрелиз",
   "This ship is not in EVE yet, so it cannot be saved to your in-game fittings": "Этого корабля ещё нет в EVE, поэтому его нельзя сохранить во внутриигровые фиттинги",
   "This fit has a pre-release rig or module that is not in EVE yet, so it cannot be saved to your in-game fittings": "В этом фите есть предрелизный риг или модуль, которого ещё нет в EVE, поэтому его нельзя сохранить в игровые фиты",
-  "Synchronization Rigging: {pct}% less Synchronizer rig drawback at this level (10% per level). Applies to every pilot, since no character has it yet.": "Synchronization Rigging: на этом уровне штраф ригов Synchronizer меньше на {pct}% (10% за уровень). Применяется ко всем пилотам, так как ни у одного персонажа его ещё нет.",
+  "Synchronization Rigging: {pct}% less Synchronizer rig CPU penalty at this level (10% per level). Applies to every pilot, since no character has it yet.": "Synchronization Rigging: на этом уровне штраф риггов Synchronizer к CPU меньше на {pct}% (10% за уровень). Действует на всех пилотов, так как ни у одного персонажа его ещё нет.",
   "A saved fitting or a ship in your hangar": "Сохранённый фиттинг или корабль из ангара",
   "Ancillary clip pool — tap to add it into the EHP total": "Запас вспомогательного картриджа — нажмите, чтобы включить его в общий EHP",
   "Angular velocity — tap for transversal": "Угловая скорость — нажмите для трансверсали",
