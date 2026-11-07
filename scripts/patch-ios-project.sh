@@ -57,6 +57,15 @@ $PB -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
 $PB -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
 $PB -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationPortrait" "$PLIST"
 
+# ── Saving the snapshot card to Photos ───────────────────────────────────────
+# The snapshot's Save image button hands a PNG to the share sheet (navigator.share), and iOS only
+# lists "Save Image" there for an app that declares this key — without it the sheet offers Files,
+# Messages and the rest, and no way into the camera roll. Add-only: it lets the app put images in
+# Photos and grants no read access, so it is the narrowest photo permission there is. iOS asks the
+# user once, on the first save, with this string.
+$PB -c "Delete :NSPhotoLibraryAddUsageDescription" "$PLIST" 2>/dev/null || true
+$PB -c "Add :NSPhotoLibraryAddUsageDescription string Axis saves the fit snapshot images you choose to your photo library." "$PLIST"
+
 # ── Export compliance ────────────────────────────────────────────────────────
 # Declaring this up front skips the "does your app use encryption?" prompt on every single upload.
 # False is correct here: the app ships no cryptography of its own and only makes ordinary HTTPS
