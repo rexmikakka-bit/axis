@@ -9402,6 +9402,68 @@ Nanofiber Internal Structure II
   check('webres', 'Serpentis Synchronizer rig: 0.9', projectionResistances({ name: 'Rupture', typeID: tid('Rupture') },
     { high: [], mid: [], low: [], rigs: [{ name: rig, typeID: tid(rig), state: 'online' }] }).web, 0.9, 1e-9);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// DEFAULT PROJECTED EFFECTS (lib/projected-modules.js) — a stock module projected at a count with no
+// source fit, resolved to a synthetic Capsule fit flown at all V. Target: a Rupture with 4x 425mm
+// AutoCannon II + Republic Fleet EMP M, the module at 5 km.
+//
+// Against pyfa's eos (master c9671de): eos projects a BARE module with no pilot skills at all (fit.py
+// keeps projectedModules out of the skill pass), where a real pilot at V adds Signature Focusing /
+// Weapon Destabilization's +25%. Webs carry no such skill and match eos outright; the painter and the
+// disruptor are eos's bare figure with that +25% on top (TP 30% -> 37.5%; TD optimal 34.38% ->
+// 42.975%), the same number a projected FIT with the module gives here and in pyfa.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const PM = await import('./lib/projected-modules.js');
+  const gun = () => ({ id: 'g' + Math.random(), name: '425mm AutoCannon II', typeID: tid('425mm AutoCannon II'), type: 'weapon', state: 'active', ammo: 'Republic Fleet EMP M' });
+  const hit = (entries) => {
+    const slots = { high: [gun(), gun(), gun(), gun()], mid: [], low: [], rigs: [] };
+    // A generic entry must not ask whose skills it flies with: it is always all V.
+    const pe = buildProjectedEffects({ projFits: entries, fitsDB: {}, sourceSkills: () => { throw new Error('generic entry asked for source skills'); },
+                                       shipName: 'Rupture', slots, skills: null, externalBursts: [] });
+    const cs = calcFitStats({ name: 'Rupture', typeID: tid('Rupture') }, slots, [], null, { projectedWebMult: pe.webMult, projectedDebuffs: pe.debuffs });
+    const g = cs.fittedItems.get(slots.high[0].id);
+    return { opt: g.get('maxRange'), trk: g.get('trackingSpeed'), vel: cs.fittedShip.attrs.get('maxVelocity') * pe.webMult, sig: cs.exact.sigRadius, pe };
+  };
+  const E = (module, script = null, qty = 1) => ({ ...PM.makeProjectedModule(module, 5), script, qty });
+  check('projmod', '2 webs (eos)', hit([E('Stasis Webifier II', null, 2)]).vel, 50.24544120957496, 1e-9);
+  check('projmod', 'Target Painter II (eos x Signature Focusing V)', hit([E('Target Painter II')]).sig, 125 * 1.375, 1e-9);
+  check('projmod', 'TD II, optimal script (eos x Weapon Destabilization V)', hit([E('Tracking Disruptor II', 'Optimal Range Disruption Script')]).opt, 1500 * (1 - 0.343800 * 1.25), 1e-6);
+  check('projmod', '2 TD II, optimal script: stacking penalised', hit([E('Tracking Disruptor II', 'Optimal Range Disruption Script', 2)]).opt,
+    1500 * (1 - 0.42975) * (1 - 0.42975 * Math.exp(-1 / 7.1289)), 1e-6);
+  check('projmod', 'optimal script leaves tracking alone', hit([E('Tracking Disruptor II', 'Optimal Range Disruption Script')]).trk, 58.08, 1e-9);
+  check('projmod', 'unscripted TD hits tracking too', hit([E('Tracking Disruptor II')]).trk < 58.08 * 0.8 ? 1 : 0, 1, 0);
+  // Same module, same path: a generic painter equals a painter on a bonus-free hull's saved fit.
+  const fitsDB = { Stabber: [{ name: 'tp', slots: { high: [], mid: [{ id: 't', name: 'Target Painter II', typeID: tid('Target Painter II'), type: 'passive', state: 'active' }], low: [], rigs: [] } }] };
+  const viaFit = buildProjectedEffects({ projFits: [{ ship: 'Stabber', fitName: 'tp', rangeKm: 5 }], fitsDB, sourceSkills: () => null, shipName: 'Rupture', slots: { high: [], mid: [], low: [], rigs: [] }, skills: null, externalBursts: [] });
+  check('projmod', 'generic painter == the same painter on a fit', hit([E('Target Painter II')]).pe.debuffs?.sig ?? 0, viaFit.debuffs.sig, 1e-12);
+  const neut = hit([E('Heavy Energy Neutralizer II', null, 3)]).pe.neutGJs;
+  check('projmod', '3 heavy neuts: 3x one (neuts do not stack-penalise)', neut, 3 * hit([E('Heavy Energy Neutralizer II')]).pe.neutGJs, 1e-12);
+  check('projmod', 'out past range: nothing', hit([{ ...E('Stasis Webifier II'), rangeKm: 50 }]).vel, 262.5, 1e-9);
+  check('projmod', 'toggled off: nothing', hit([{ ...E('Stasis Webifier II'), active: false }]).vel, 262.5, 1e-9);
+  check('projmod', 'qty clamps to 1..MAX', `${PM.clampQty(0)},${PM.clampQty(99)},${PM.clampQty('3')}`, `1,${PM.MAX_QTY},3`);
+  check('projmod', 'a script the module cannot load is dropped', PM.projectedModuleFit(E('Stasis Webifier II', 'Optimal Range Disruption Script'), tid).slots.mid[0].ammo ?? 'none', 'none');
+  check('projmod', 'neuts go in the high rack', PM.projectedModuleFit(E('Small Energy Neutralizer II', null, 2), tid).slots.high.length, 2, 0);
+  check('projmod', 'an unknown module resolves to nothing', PM.projectedSource({ kind: 'module', module: 'Not A Module' }, {}, tid) === null ? 1 : 0, 1, 0);
+  check('projmod', 'label', PM.projectedModuleLabel(E('Tracking Disruptor II', null, 2)), '2× Tracking Disruptor II');
+
+  // A Missile Precision script zeroes range and flight time and moves the whole effect onto
+  // explosion velocity and radius. computeProjectedReps gated on the first two, so a precision-
+  // scripted Guidance Disruptor projected NOTHING, from a fit or as a default effect. eos (bare
+  // module, so x1.25 for Weapon Destabilization V): -24% explosion velocity, +24% radius on a
+  // Caracal's Scourge Heavy Missiles (127.5 m/s, 105 m). explosionVelocity/Radius are published
+  // rounded to the metre, hence the tolerance.
+  const lch = () => ({ id: 'l' + Math.random(), name: 'Heavy Missile Launcher II', typeID: tid('Heavy Missile Launcher II'), type: 'weapon', state: 'active', ammo: 'Scourge Heavy Missile' });
+  const gdHit = (script) => {
+    const slots = { high: [lch(), lch(), lch(), lch(), lch()], mid: [], low: [], rigs: [] };
+    const pe = buildProjectedEffects({ projFits: [E('Guidance Disruptor II', script)], fitsDB: {}, sourceSkills: () => null, shipName: 'Caracal', slots, skills: null, externalBursts: [] });
+    return calcFitStats({ name: 'Caracal', typeID: tid('Caracal') }, slots, [], null, { projectedDebuffs: pe.debuffs }).slotEngineStats.get(slots.high[0]);
+  };
+  const prec = gdHit('Missile Precision Disruption Script');
+  check('projmod', 'GD precision script: explosion velocity (eos x1.25)', prec.explosionVelocity, 127.5 * (1 - 0.24 * 1.25), 0.006);
+  check('projmod', 'GD precision script: explosion radius (eos x1.25)', prec.explosionRadius, 105 * (1 + 0.24 * 1.25), 0.006);
+  check('projmod', 'GD range script: missile velocity (eos x1.25)', gdHit('Missile Range Disruption Script').velocity, 9675 * (1 - 0.18 * 1.25), 0.001);
+}
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {
   console.log(`ALL ${passed} REGRESSION CHECKS PASSED`);

@@ -8,7 +8,8 @@ import { BOOSTER_DATA, CMD_SHIP_FITS, WARFARE_BUFF_UNIT, haptic } from "../lib/c
 import { byRecentlyModified } from "../lib/fit-order.js";
 import { boosterSideEffectsFor, computeProjectedReps, computeCommandBursts, calcRangeFactor, stackingPenalty, jamChanceFrom, SKILL_DEFAULTS, tidByName, TYPES } from "../calc.js";
 import { t } from "../lib/i18n.js";
-import { projectedFitEffects } from "../lib/projection.js";
+import { projectedFitEffects, projectedSource } from "../lib/projection.js";
+import { PROJECTED_MODULES, MAX_QTY, isProjectedModule, makeProjectedModule, projectedModuleLabel, scriptLabel, scriptsFor, clampQty } from "../lib/projected-modules.js";
 import { LINK_DEFS, CATEGORIES, STRENGTHS, ALL_LINKS, BUFF_NAMES, LINK_UNIT, linksOf, makeLink, isLink, linkLabel, linkBursts, strengthLabel } from "../lib/command-links.js";
 
 const BOOSTER_SIDE_EFFECTS = {
@@ -175,6 +176,21 @@ export function GenericLinksSheet({onAdd,onClose}){
         </div>
       ))}
     </div>);})}
+  </BottomSheet>);
+}
+
+// Generic projected effects (lib/projected-modules.js): a stock T2 module projected at a count, with
+// no source fit. One tap adds one at its optimal range; the count and script are set on its card.
+export function ProjectedModulesSheet({onAdd,onClose}){
+  const row={display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:`1px solid ${C.border}`,cursor:"pointer"};
+  return(<BottomSheet title={t("Default Effects")} onClose={onClose} height="70vh" fillHeight>
+    <div style={{padding:"10px 14px",fontSize:11,color:C.textMute,borderBottom:`1px solid ${C.border}`}}>{t("A stock module projected onto this fit, flown with every skill at V. Set how many and the script on its card.")}</div>
+    {PROJECTED_MODULES.map(d=>{const tid=tidByName(d.module);return(
+      <div key={d.module} onClick={()=>{haptic();onAdd(d.module);onClose();}} className="press" style={row}>
+        {tid&&<img src={eveIcon(tid,32)} width={28} height={28} alt="" style={{borderRadius:4,flexShrink:0}} onError={e=>{e.target.style.visibility="hidden";}}/>}
+        <span style={{flex:1,fontSize:12.5,fontWeight:500,color:C.text}}>{d.module}</span>
+        {d.scripts&&<span style={{fontSize:10,color:C.textMute}}>{t("scripts")}</span>}
+      </div>);})}
   </BottomSheet>);
 }
 
@@ -542,6 +558,7 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
   const[showProjPicker,setShowProjPicker]=useState(false);
   const[showCmdPicker,setShowCmdPicker]=useState(false);
   const[showLinks,setShowLinks]=useState(false);   // the Generic Links sheet
+  const[showProjModules,setShowProjModules]=useState(false);   // the Default Effects sheet
   const[showEnvPicker,setShowEnvPicker]=useState(false);
   // The open fit tabs as both pickers' shortcut list, same as the graph's target picker. They arrive
   // already reconciled against fitsDB, so a pointer here always names a fit that exists. The fit
@@ -638,11 +655,14 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
     </div>)}
     {section==="projected"&&(<div style={{flex:1,overflowY:"auto",padding:12}}>
       <div style={{fontSize:11,color:C.textMute,marginBottom:12}}>{t("Project another fit's effects onto this ship. Remote reps and EWAR scale with range. Modules use the source fit's active/overheated state.")}</div>
-      {projFits.length===0&&<div style={{textAlign:"center",color:C.textMute,padding:"24px 0",fontSize:13}}>{t("No projected fits applied")}</div>}
+      {projFits.length===0&&<div style={{textAlign:"center",color:C.textMute,padding:"24px 0",fontSize:13}}>{t("No projected fits or effects applied")}</div>}
       {projFits.map((f,i)=>{
-        const srcFit=fitsDB[f.ship]?.find(x=>x.name===f.fitName);
+        // A saved fit, or a generic projected module's synthetic one (lib/projected-modules.js).
+        const src=projectedSource(f,fitsDB);
+        const generic=isProjectedModule(f);
         const rangeKm=f.rangeKm??30;
-        const eff=srcFit?projectedFitEffects(f.ship,srcFit,fitsDB,sourceSkills):{reps:[],webs:[],neuts:[]};
+        const eff=src?projectedFitEffects(src.ship,src.fit,fitsDB,sourceSkills):{reps:[],webs:[],neuts:[]};
+        const patch=(p)=>setProjFits(projFits.map((x,j)=>j===i?{...x,...p}:x));
         const rf=(o,fo)=>calcRangeFactor(o,fo,rangeKm*1000,true);
         const totals={shield:0,armor:0,hull:0};
         // What THIS fit accepts (HIC bubble, siege/triage/bastion impedance), as App.jsx applies it.
@@ -669,6 +689,8 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
         const rtcOpt=stk((eff.trackBoosts||[]).map(b=>(b.optimalBonus||0)*rtcF(b)));
         const rtcFall=stk((eff.trackBoosts||[]).map(b=>(b.falloffBonus||0)*rtcF(b)));
         const gdRange=stk((eff.guideDisr||[]).map(g=>g.missileRange*rz("disrupt")*rf(g.optimal,g.falloff)));
+        // A precision script moves a guidance disruptor onto explosion velocity and radius instead.
+        const gdAoe=stk((eff.guideDisr||[]).map(g=>(g.aoeVel||0)*rz("disrupt")*rf(g.optimal,g.falloff)));
         // Strength is the strongest of the jammer's four racial attrs, matching the MOD_STRENGTH badge
         // a locally fitted jammer gets. Jam CHANCE is target-relative and needs the edited fit's own
         // engine-computed sensor strength and type, handed down as jamTarget — so it is 0 when no fit
@@ -683,9 +705,9 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
           jamTarget?.strength??0,jamTarget?.type??"");
         const hasReps=totals.shield+totals.armor+totals.hull>0.5;
         const hasWeb=webMs.length>0, hasNeut=neutGJs>0.05, hasCap=capGJs>0.05, hasEcm=ecmMax>0.5, hasJam=jamChance>0.05;
-        const hasPaint=Math.abs(painterSig)>0.5, hasDamp=Math.abs(dampLock)>0.5, hasTD=Math.abs(tdTrack)>0.5, hasTDrng=Math.abs(tdOpt)>0.5||Math.abs(tdFall)>0.5, hasGD=Math.abs(gdRange)>0.5;
+        const hasPaint=Math.abs(painterSig)>0.5, hasDamp=Math.abs(dampLock)>0.5, hasTD=Math.abs(tdTrack)>0.5, hasTDrng=Math.abs(tdOpt)>0.5||Math.abs(tdFall)>0.5, hasGD=Math.abs(gdRange)>0.5, hasGDaoe=Math.abs(gdAoe)>0.5;
         const hasRTC=rtcTrack>0.5, hasRTCrng=rtcOpt>0.5||rtcFall>0.5;
-        const hasAny=hasReps||hasWeb||hasNeut||hasCap||hasPaint||hasDamp||hasTD||hasTDrng||hasGD||hasRTC||hasRTCrng||hasEcm||hasJam;
+        const hasAny=hasReps||hasWeb||hasNeut||hasCap||hasPaint||hasDamp||hasTD||hasTDrng||hasGD||hasGDaoe||hasRTC||hasRTCrng||hasEcm||hasJam;
         const setRange=(km)=>setProjFits(projFits.map((p,j)=>j===i?{...p,rangeKm:Math.max(0,km)}:p));
         // Opt-out, matching App.jsx's guard: a fit saved before the toggle existed has no `active`
         // and must keep applying.
@@ -694,10 +716,23 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
           <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
             <button title={on?t("Applied to this fit"):t("Ignored")} onClick={()=>setProjFits(projFits.map((p,j)=>j===i?{...p,active:!on}:p))}
               style={{width:24,height:24,borderRadius:5,flexShrink:0,background:on?C.accentLight:"none",border:`1px solid ${on?C.accentBorder:C.borderStrong}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,lineHeight:1,color:on?C.accent:""}}>{on?"✓":""}</button>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:on?C.text:C.textMid}}>{f.fitName}</div><div style={{fontSize:10,color:C.textMute,marginTop:2}}>{f.ship}</div></div>
-            {onOpenFit&&<button title={t("Open this fit in a new tab")} onClick={()=>onOpenFit(f.ship,f.fitName)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,color:C.textMid,cursor:"pointer",fontSize:10,fontWeight:700,padding:"4px 7px",flexShrink:0}}>{t("Open")}</button>}
+            {generic
+              ?<div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:on?C.text:C.textMid}}>{projectedModuleLabel(f)}</div><div style={{fontSize:10,color:C.textMute,marginTop:2}}>{t("Default effect")}</div></div>
+              :<div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:on?C.text:C.textMid}}>{f.fitName}</div><div style={{fontSize:10,color:C.textMute,marginTop:2}}>{f.ship}</div></div>}
+            {onOpenFit&&!generic&&<button title={t("Open this fit in a new tab")} onClick={()=>onOpenFit(f.ship,f.fitName)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:6,color:C.textMid,cursor:"pointer",fontSize:10,fontWeight:700,padding:"4px 7px",flexShrink:0}}>{t("Open")}</button>}
             <button onClick={()=>setProjFits(projFits.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:C.danger,cursor:"pointer",fontSize:14,flexShrink:0}}>x</button>
           </div>
+          {generic&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+            {/* How many: a plain stepper, tapped as often as needed. */}
+            <span style={{fontSize:11,color:C.textMid,minWidth:42}}>{t("Count")}</span>
+            <button className="press" aria-label={t("One fewer")} disabled={clampQty(f.qty)<=1} onClick={()=>patch({qty:clampQty(f.qty)-1})} style={{width:30,height:28,borderRadius:6,fontSize:15,fontWeight:700,cursor:"pointer",background:C.surfaceAlt,border:`1px solid ${C.border}`,color:C.text,opacity:clampQty(f.qty)<=1?0.4:1}}>−</button>
+            <span style={{minWidth:22,textAlign:"center",fontSize:13,fontWeight:700,color:C.text,fontVariantNumeric:"tabular-nums"}}>{clampQty(f.qty)}</span>
+            <button className="press" aria-label={t("One more")} disabled={clampQty(f.qty)>=MAX_QTY} onClick={()=>patch({qty:clampQty(f.qty)+1})} style={{width:30,height:28,borderRadius:6,fontSize:15,fontWeight:700,cursor:"pointer",background:C.surfaceAlt,border:`1px solid ${C.border}`,color:C.text,opacity:clampQty(f.qty)>=MAX_QTY?0.4:1}}>+</button>
+            {scriptsFor(f.module)&&<div style={{display:"flex",gap:4,flexWrap:"wrap",flexBasis:"100%",marginTop:6}}>
+              {scriptsFor(f.module).map(sc=>{const sel=(f.script??null)===sc;return(
+                <button key={sc??"none"} onClick={()=>patch({script:sc})} style={{padding:"5px 9px",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer",background:sel?C.accentLight:C.surfaceAlt,border:`1px solid ${sel?C.accentBorder:C.border}`,color:sel?C.accent:C.textMid}}>{sc?scriptLabel(sc):t("No script")}</button>);})}
+            </div>}
+          </div>}
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
             <span style={{fontSize:11,color:C.textMid,minWidth:42}}>{t("Range")}</span>
             <input type="range" min={0} max={150} step={1} value={rangeKm} onChange={e=>setRange(Number(e.target.value))} style={{flex:1,accentColor:C.accent}}/>
@@ -719,13 +754,25 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
               {hasRTC&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.success}}>+{Math.round(rtcTrack)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your tracking")}</div></div>}
               {hasRTCrng&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.success}}>+{Math.round(Math.max(rtcOpt,rtcFall))}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your turret range")}</div></div>}
               {hasGD&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(gdRange)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your missile range")}</div></div>}
+              {hasGDaoe&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(gdAoe)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your explosion velocity")}</div></div>}
               {hasEcm&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(ecmMax)}</div><div style={{fontSize:9,color:C.textMute}}>{t("ECM strength")}</div></div>}
               {hasJam&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.danger}}>{jamChance.toFixed(1)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("Jam chance")}</div></div>}
             </div>
           ):<div style={{fontSize:11,color:C.textMute,paddingLeft:2}}>{t("Nothing on this fit projects onto a target")}</div>}
         </div>);
       })}
-      <button className="press" onClick={()=>{haptic();setShowProjPicker(true);}} style={{width:"100%",padding:"12px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:4}}>{t("+ Add Projected Fit")}</button>
+      {/* Two buttons side by side, as the command tab lays out a fit and its generic links. */}
+      <div style={{display:"flex",gap:8,marginTop:4}}>
+        <button className="press" onClick={()=>{haptic();setShowProjPicker(true);}} style={{flex:1,padding:"12px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("+ Add Projected Fit")}</button>
+        <button className="press" onClick={()=>{haptic();setShowProjModules(true);}} style={{flex:1,padding:"12px 0",background:C.surface,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer"}}>{t("+ Default Effects")}</button>
+      </div>
+      {showProjModules&&<ProjectedModulesSheet onAdd={(module)=>{
+        // At its optimal, so it lands at full strength until the range is moved.
+        const e=makeProjectedModule(module), src=projectedSource(e,fitsDB);
+        const eff=src?projectedFitEffects(src.ship,src.fit,fitsDB,sourceSkills):null;
+        const opt=[...(eff?.webs??[]),...(eff?.neuts??[]),...(eff?.painters??[]),...(eff?.damps??[]),...(eff?.trackDisr??[]),...(eff?.guideDisr??[])].map(m=>m.optimal).filter(v=>v>0);
+        setProjFits(prev=>[...prev,{...e,rangeKm:opt.length?Math.floor(Math.min(...opt)/1000):10}]);
+      }} onClose={()=>setShowProjModules(false)}/>}
       {showProjPicker&&<FitPickerSheet title={t("Project a Fit")} fitsDB={fitsDB} pinned={openTabFits} onSelect={(ship,fit)=>{
         const eff=projectedFitEffects(ship,fit,fitsDB,sourceSkills);
         const optims=[...eff.reps,...eff.webs,...eff.neuts,...(eff.painters||[]),...(eff.damps||[]),...(eff.trackDisr||[]),...(eff.trackBoosts||[]),...(eff.guideDisr||[])].map(m=>m.optimal).filter(v=>v>0);

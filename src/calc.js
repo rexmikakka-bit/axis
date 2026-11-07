@@ -1950,7 +1950,11 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
       if (trk < 0 || (fitItem.get('maxRangeBonus') ?? 0) < 0 && mv === 0) {
         trackDisr.push({ name: slot.name, tracking: trk, optimalBonus: fitItem.get('maxRangeBonus') ?? 0, falloffBonus: fitItem.get('falloffBonus') ?? 0, optimal, falloff });
       }
-      if (mv < 0 || (fitItem.get('explosionDelayBonus') ?? 0) !== 0) {
+      // A Missile Precision script moves the whole effect onto explosion velocity and radius, with
+      // range and flight time at 0 — gating on those two alone dropped a precision-scripted
+      // disruptor entirely.
+      if (mv < 0 || (fitItem.get('explosionDelayBonus') ?? 0) !== 0
+          || (fitItem.get('aoeVelocityBonus') ?? 0) !== 0 || (fitItem.get('aoeCloudSizeBonus') ?? 0) !== 0) {
         guideDisr.push({ name: slot.name, missileRange: mv, explosionDelay: fitItem.get('explosionDelayBonus') ?? 0, aoeVel: fitItem.get('aoeVelocityBonus') ?? 0, aoeCloud: fitItem.get('aoeCloudSizeBonus') ?? 0, optimal, falloff });
       }
     } else if (gn === 'ECM') {

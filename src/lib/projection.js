@@ -1,6 +1,10 @@
 import { computeCommandBursts, computeProjectedReps, projectionResistances, assistanceFactors,
          applyRemoteRepDiminishing, calcRangeFactor, stackingPenalty, tidByName } from "../calc.js";
 import { isLink, linkBursts } from './command-links.js';
+import { projectedSource as resolveSource } from './projected-modules.js';
+
+/** A projFits entry's source, {ship, fit}: a saved fit, or a generic module's synthetic Capsule fit. */
+export const projectedSource = (entry, fitsDB) => resolveSource(entry, fitsDB, tidByName);
 
 // What OTHER fits do to a fit: the command links it sits under and the modules projected onto it.
 //
@@ -47,7 +51,8 @@ export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
  * unlinked reps on the card while the Stats tab beside it applied the linked ones.
  */
 export function projectedFitEffects(ship, fit, fitsDB, sourceSkills) {
-  return computeProjectedReps({name:ship,typeID:tidByName(ship)},fit.slots,sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits,fitsDB,sourceSkills)});
+  // A generic projected module (lib/projected-modules.js) is flown at all V, as pyfa projects one.
+  return computeProjectedReps({name:ship,typeID:tidByName(ship)},fit.slots,fit.generic?undefined:sourceSkills(fit),{implants:fit.implants,boosters:fit.boosters,drones:fit.drones,externalBursts:buildExternalBursts(fit.cmdFits,fitsDB,sourceSkills)});
 }
 
 /**
@@ -82,14 +87,15 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   const AF=assistanceFactors(R);
   for(const pf of projFits){
     if(pf.active===false)continue;   // see buildExternalBursts — opt-out, so old saves stay active
-    const fit=fitsDB?.[pf.ship]?.find(f=>f.name===pf.fitName);
-    if(!fit)continue;
+    const src=projectedSource(pf,fitsDB);
+    if(!src)continue;
+    const {ship:srcShip,fit}=src;
     // A PROJECTED fit is another pilot's ship, so the local skill sheet has no business scaling its
     // logi reps, webs or neuts — sourceSkills resolves it from that fit's own pilot.
     // The projected fit's OWN command links (e.g. a Guardian sitting under its own Sleipnir's
     // Rapid Repair burst) boost ITS reps before they ever reach the target — read from that
     // fit's saved cmdFits, not the locally-edited fit's, or a boosted logi projects as if unboosted.
-    const eff=projectedFitEffects(pf.ship,fit,fitsDB,sourceSkills);
+    const eff=projectedFitEffects(srcShip,fit,fitsDB,sourceSkills);
     const rangeM=(pf.rangeKm??30)*1000;
     const rf=(o,fo)=>calcRangeFactor(o,fo,rangeM,true);
     // One entry per rep SOURCE: a flight of logistic drones is `sources` of them (computeProjectedReps).
