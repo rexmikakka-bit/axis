@@ -8845,9 +8845,13 @@ Nanofiber Internal Structure II
   const rifterSpeed = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Overdrive Injector System"), state); f.calculate(); return f.ship.get('maxVelocity'); };
   const bare = (() => { const f = new Fit(tid('Rifter')); f.calculate(); return f.ship.get('maxVelocity'); })();
   check('2402', 'Aberrant Overdrive online: +8%', rifterSpeed('online') / bare, 1.08, 1e-9);
-  check('2402', 'Aberrant Overdrive active: +15%', rifterSpeed('active') / bare, 1.15, 1e-9);
+  // Active ADDS to passive (CCP, later word): 8% + 15% = 23% while it runs.
+  check('2402', 'Aberrant Overdrive active: 8% + 15% = +23%', rifterSpeed('active') / bare, 1.23, 1e-9);
   const capRech = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Cap Recharger"), state); f.calculate(); return f.ship.get('rechargeRate'); };
-  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.75 active', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.7500');
+  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.63 active (12% + 25%)', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.6300');
+  // Shield Boost Amplifier on a fitted booster: 24% online, 24% + 43.2% = 67.2% active.
+  const boost = (state) => { const f = new Fit(tid('Rifter')); const sb = f.addModule(tid('Small Shield Booster I'), 'active'); if (state) f.addModule(tid("Vigilant 'Vital' Shield Boost Amplifier"), state); f.calculate(); return sb.get('shieldBonus'); };
+  check('2402', 'Aberrant Shield Boost Amplifier: x1.24 online, x1.672 active', `${(boost('online') / boost(null)).toFixed(4)}/${(boost('active') / boost(null)).toFixed(4)}`, '1.2400/1.6720');
   const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
   let refused = 0;
   try { slotsToEsiFitting(tid('Rifter'), 'x', { high: [], mid: [], low: [M("Vigilant 'Vital' Overdrive Injector System", 'active')], rigs: [] }, [], [], []); } catch { refused = 1; }
