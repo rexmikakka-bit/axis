@@ -1223,29 +1223,31 @@ function ItemPrice({typeID}) {
 //
 // `layers` is [{label, em, th, kin, exp}], each value a 0-100 resist percentage or null/undefined
 // for "this layer doesn't carry that type" (kept null-safe for a future item that only has three).
-function ResistBars({layers}) {
+function ResistBars({layers, desk=false}) {
   const present = (layers||[]).filter(l => [l.em,l.th,l.kin,l.exp].some(v => v != null));
   if (!present.length) return null;
-  const COLS = '40px repeat(4,1fr)';
+  const COLS = desk ? '64px repeat(4,1fr)' : '40px repeat(4,1fr)';
+  // `desk`: the desktop's sizes (Ship info window), regular weight; the phone's tiny bold otherwise.
+  const Z = desk ? {head:12, headW:500, label:13.5, labelW:400, pct:13, pctW:400, bar:4, pad:'6px 0'} : {head:9, headW:700, label:10, labelW:600, pct:9, pctW:600, bar:3, pad:'3px 0'};
   return (
     <div>
       <div style={{display:'grid',gridTemplateColumns:COLS,gap:4,padding:'0 0 4px'}}>
         <span/>
         {Object.values(DMG).map(d => (
-          <span key={d.label} style={{fontSize:9,fontWeight:700,color:d.color,textAlign:'center'}}>{d.label}</span>
+          <span key={d.label} style={{fontSize:Z.head,fontWeight:Z.headW,color:d.color,textAlign:'center'}}>{d.label}</span>
         ))}
       </div>
       {present.map(l => (
-        <div key={l.label} style={{display:'grid',gridTemplateColumns:COLS,gap:4,alignItems:'center',padding:'3px 0'}}>
-          <span style={{fontSize:10,fontWeight:600,color:C.textMid}}>{l.label}</span>
+        <div key={l.label} style={{display:'grid',gridTemplateColumns:COLS,gap:4,alignItems:'center',padding:Z.pad}}>
+          <span style={{fontSize:Z.label,fontWeight:Z.labelW,color:C.textMid}}>{l.label}</span>
           {[['em',l.em],['th',l.th],['kin',l.kin],['exp',l.exp]].map(([k,v]) => (
             <div key={k} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
               {v!=null ? (<>
-                <div style={{width:'80%',height:3,background:C.border,borderRadius:99,overflow:'hidden'}}>
+                <div style={{width:'80%',height:Z.bar,background:C.border,borderRadius:99,overflow:'hidden'}}>
                   <div style={{width:`${v}%`,height:'100%',background:DMG[k].color,borderRadius:99}}/>
                 </div>
-                <span style={{fontSize:9,fontWeight:600,color:DMG[k].color}}>{v.toFixed(0)}%</span>
-              </>) : <span style={{fontSize:9,color:C.textMute}}>—</span>}
+                <span style={{fontSize:Z.pct,fontWeight:Z.pctW,color:DMG[k].color,fontVariantNumeric:'tabular-nums'}}>{v.toFixed(0)}%</span>
+              </>) : <span style={{fontSize:Z.pct,color:C.textMute}}>—</span>}
             </div>
           ))}
         </div>
@@ -1556,18 +1558,20 @@ function hasTraits(typeID){
 
 // The default is a DEFAULT PARAMETER, evaluated per call rather than at module scope, so a plain
 // t() is safe here — see lib/i18n.js.
-function TraitsPanel({typeID, empty=t("No trait data available.")}){
+// `desk`: the desktop's larger, lighter type (its Ship info window); the phone's sizes otherwise.
+function TraitsPanel({typeID, empty=t("No trait data available."), desk=false}){
   const tr=(shipTraits??{})[String(typeID)]??{};
+  const Z=desk?{head:14,headW:600,num:14,numW:600,text:14,gap:9,pad:'4px 0',sec:20}:{head:12,headW:700,num:12,numW:700,text:12,gap:6,pad:'2px 0',sec:14};
   const Section=({header,bonuses})=>(
-    <div style={{marginBottom:14}}>
-      {header&&<div style={{fontSize:12,fontWeight:700,color:C.text,marginBottom:6}}>{header}</div>}
+    <div style={{marginBottom:Z.sec}}>
+      {header&&<div style={{fontSize:Z.head,fontWeight:Z.headW,color:C.text,marginBottom:desk?8:6}}>{header}</div>}
       {(bonuses||[]).map((b,i)=>(
-        <div key={i} style={{display:'flex',gap:6,padding:'2px 0'}}>
+        <div key={i} style={{display:'flex',gap:Z.gap,padding:Z.pad,lineHeight:desk?1.45:undefined}}>
           {/* No minimum width. Reserving one aligned the descriptions into a column at the cost of a
               gutter after the short values that read as a missing word, and the values are all two to
               four characters anyway, so the column was nearly straight without paying for it. */}
-          {b.number&&<span style={{fontSize:12,fontWeight:700,color:C.accent,flexShrink:0}}>{b.number}</span>}
-          <span style={{fontSize:12,color:C.textMid}}>{b.text}</span>
+          {b.number&&<span style={{fontSize:Z.num,fontWeight:Z.numW,color:C.accent,flexShrink:0,fontVariantNumeric:'tabular-nums',minWidth:desk?46:undefined}}>{b.number}</span>}
+          <span style={{fontSize:Z.text,color:desk?C.text:C.textMid}}>{b.text}</span>
         </div>
       ))}
     </div>
