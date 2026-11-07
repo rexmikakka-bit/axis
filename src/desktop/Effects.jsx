@@ -162,6 +162,11 @@ export function projectedLines(eff, rangeKm, assist, jamTarget) {
   const tdTrack = stk((eff.trackDisr ?? []).map(td => td.tracking * rf(td.optimal, td.falloff)));
   const tdOpt = stk((eff.trackDisr ?? []).map(td => (td.optimalBonus || 0) * rf(td.optimal, td.falloff)));
   const tdFall = stk((eff.trackDisr ?? []).map(td => (td.falloffBonus || 0) * rf(td.optimal, td.falloff)));
+  // Remote tracking computers: a boost, so the target's assistance impedance scales it.
+  const rtcF = (b) => af.assist * rf(b.optimal, b.falloff);
+  const rtcTrack = stk((eff.trackBoosts ?? []).map(b => (b.tracking || 0) * rtcF(b)));
+  const rtcRange = Math.max(stk((eff.trackBoosts ?? []).map(b => (b.optimalBonus || 0) * rtcF(b))),
+                            stk((eff.trackBoosts ?? []).map(b => (b.falloffBonus || 0) * rtcF(b))));
   const gd = stk((eff.guideDisr ?? []).map(g => g.missileRange * rf(g.optimal, g.falloff)));
   const ecmMax = Math.max(0, ...(eff.ecm ?? []).map(e => Math.max(0, ...Object.values(e.byType)) * rf(e.optimal, e.falloff)));
   const jam = jamChanceFrom((eff.ecm ?? []).map(e => ({ byType: Object.fromEntries(Object.entries(e.byType).map(([k, v]) => [k, (v || 0) * (jamTarget?.resist ?? 1) * rf(e.optimal, e.falloff)])) })),
@@ -177,6 +182,8 @@ export function projectedLines(eff, rangeKm, assist, jamTarget) {
   if (Math.abs(damp) > 0.5) out.push([t("Damped"), `${Math.round(damp)}% ${t("lock range")}`, C.accent]);
   if (Math.abs(tdTrack) > 0.5) out.push([t("Tracking disrupted"), `${Math.round(tdTrack)}% ${t("tracking")}`, C.accent]);
   if (Math.abs(tdOpt) > 0.5 || Math.abs(tdFall) > 0.5) out.push([t("Turret range disrupted"), `${Math.round(Math.abs(tdOpt) >= Math.abs(tdFall) ? tdOpt : tdFall)}%`, C.accent]);
+  if (rtcTrack > 0.5) out.push([t("Tracking boosted"), `+${Math.round(rtcTrack)}% ${t("tracking")}`, C.success]);
+  if (rtcRange > 0.5) out.push([t("Turret range boosted"), `+${Math.round(rtcRange)}%`, C.success]);
   if (Math.abs(gd) > 0.5) out.push([t("Guidance disrupted"), `${Math.round(gd)}% ${t("missile range")}`, C.accent]);
   if (ecmMax > 0.5) out.push([t("ECM strength"), String(Math.round(ecmMax)), C.accent]);
   if (jam > 0.05) out.push([t("Jam chance"), `${jam.toFixed(1)}%`, C.danger]);
@@ -196,7 +203,7 @@ export function ProjectedPanel({ s, jamTarget }) {
   const add = (ship, fit) => {
     // The phone's default range: the shortest optimal of anything on the fit that projects.
     const eff = projectedFitEffects(ship, fit, s.fitsDB, s.sourceSkills);
-    const optims = [...eff.reps, ...eff.webs, ...eff.neuts, ...(eff.painters || []), ...(eff.damps || []), ...(eff.trackDisr || []), ...(eff.guideDisr || [])].map(m => m.optimal).filter(v => v > 0);
+    const optims = [...eff.reps, ...eff.webs, ...eff.neuts, ...(eff.painters || []), ...(eff.damps || []), ...(eff.trackDisr || []), ...(eff.trackBoosts || []), ...(eff.guideDisr || [])].map(m => m.optimal).filter(v => v > 0);
     const rangeKm = optims.length ? Math.round(Math.min(...optims) / 1000) : 30;
     s.setProjFits(prev => [...(prev ?? []), { ship, fitName: fit.name, rangeKm }]);
   };

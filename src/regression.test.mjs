@@ -9337,6 +9337,38 @@ Nanofiber Internal Structure II
   check('insp', 'open-fit shortcuts honour the picker filter', TF.tabFits([{ ship: 'Rifter', name: 'a' }, { ship: 'Tempest', name: 'b' }], tdb, (sh) => sh === 'Tempest').length, 1, 0);
   check('insp', 'layouts: an unknown hidden id is dropped', L.readLayoutState({ getItem: () => JSON.stringify({ ...hid, hidden: ['focus', 'zzz'] }) }).hidden.join(), 'focus');
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// PROJECTED REMOTE TRACKING COMPUTERS — never collected by computeProjectedReps, so a projected RTC
+// did nothing at all. Values from pyfa's eos (master c9671de, all V): a Rupture with 4x 425mm
+// AutoCannon II + Republic Fleet EMP M, Remote Tracking Computer II projected as a module. The
+// source is a Stabber, which has no RTC bonus, so its strength matches eos's bare projected module.
+// An RTC shares the turret's penalised pool with its own Tracking Computer: own TC + 1 RTC equals
+// 2 RTCs exactly.
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  const mod = (n, state, ammo) => ({ id: n + Math.random(), name: n, typeID: tid(n), type: 'module', state, ammo });
+  const gunFit = (ownTc) => ({ high: [0, 1, 2, 3].map(() => mod('425mm AutoCannon II', 'active', 'Republic Fleet EMP M')),
+    mid: ownTc ? [mod('Tracking Computer II', 'active', 'Tracking Speed Script')] : [], low: [], rigs: [] });
+  const gun = (ownTc, n, script, rangeKm = 5) => {
+    const slots = gunFit(ownTc);
+    const fitsDB = { Stabber: [{ name: 'rtc', slots: { high: [], mid: Array.from({ length: n }, () => mod('Remote Tracking Computer II', 'active', script)), low: [], rigs: [] } }] };
+    const pe = buildProjectedEffects({ projFits: [{ ship: 'Stabber', fitName: 'rtc', rangeKm }], fitsDB, sourceSkills: () => null,
+                                       shipName: 'Rupture', slots, skills: null, externalBursts: [] });
+    const cs = calcFitStats({ name: 'Rupture', typeID: tid('Rupture') }, slots, [], null, { projectedBoosts: pe.boosts, projectedDebuffs: pe.debuffs });
+    const g = cs.fittedItems.get(slots.high[0].id);
+    return { trk: g.get('trackingSpeed'), opt: g.get('maxRange'), fal: g.get('falloff') };
+  };
+  check('rtc', 'bare tracking (eos)', gun(false, 0).trk, 58.08, 1e-9);
+  check('rtc', '1 RTC + tracking script (eos)', gun(false, 1, 'Tracking Speed Script').trk, 75.504, 1e-9);
+  check('rtc', '2 RTC, stacking penalised (eos)', gun(false, 2, 'Tracking Speed Script').trk, 95.19061050910597, 1e-9);
+  check('rtc', 'own TC + 1 RTC share one pool (eos)', gun(true, 1, 'Tracking Speed Script').trk, 95.19061050910597, 1e-9);
+  const rng = gun(false, 1, 'Optimal Range Script');
+  check('rtc', 'range script: optimal (eos)', rng.opt, 1725, 1e-9);
+  check('rtc', 'range script: falloff (eos)', rng.fal, 17608.5, 1e-9);
+  check('rtc', 'range script: tracking untouched', rng.trk, 58.08, 1e-9);
+  // Out past optimal + 2x falloff (72 + 2x36 km for a Stabber at all V): nothing reaches the guns.
+  check('rtc', 'out of range: no boost', gun(false, 1, 'Tracking Speed Script', 200).trk, 58.08, 1e-9);
+}
 console.log('\n' + '─'.repeat(72));
 if (failures.length === 0) {
   console.log(`ALL ${passed} REGRESSION CHECKS PASSED`);

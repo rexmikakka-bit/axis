@@ -1849,6 +1849,7 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
   const sensorBoosts = []; // projected Remote Sensor Booster: {lockBonus, scanResBonus, optimal, falloff}
   const trackDisr = [];  // {tracking, optimal:rangeBonus, falloff:falloffBonus, opt, fall}
   const guideDisr = [];  // {missileRange, explosionDelay, aoeVel, aoeCloud, opt, fall}
+  const trackBoosts = []; // projected Remote Tracking Computers: {tracking, optimalBonus, falloffBonus, optimal, falloff}
   const ecm = [];        // {strength, optimal, falloff}
   for (const { slot, fitItem } of modItems) {
     if (!fitItem || !isActive(slot.state)) continue;
@@ -1934,6 +1935,11 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
       const lr = fitItem.get('maxTargetRangeBonus') ?? 0;
       const sr = fitItem.get('scanResolutionBonus') ?? 0;
       if (lr > 0 || sr > 0) sensorBoosts.push({ name: slot.name, lockBonus: lr, scanResBonus: sr, optimal, falloff });
+    } else if (gn === 'Remote Tracking Computer') {
+      // ASSISTANCE, like a remote sensor booster: bonuses to the target's turrets, its script
+      // (tracking or range) already applied by the engine. Turrets only — CCP took missiles off them.
+      const trk = fitItem.get('trackingSpeedBonus') ?? 0, opt = fitItem.get('maxRangeBonus') ?? 0, fal = fitItem.get('falloffBonus') ?? 0;
+      if (trk || opt || fal) trackBoosts.push({ name: slot.name, tracking: trk, optimalBonus: opt, falloffBonus: fal, optimal, falloff });
     } else if (gn === 'Weapon Disruptor') {
       const trk = fitItem.get('trackingSpeedBonus') ?? 0;
       const mv  = fitItem.get('missileVelocityBonus') ?? 0;
@@ -1985,7 +1991,7 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
       if (amt[kind] > 0) reps.push({ kind, name, rawPS: (amt[kind] / dur) * qty, amount: amt[kind], cycleS: dur, sources: qty, optimal: droneReach, falloff: 0 });
     }
   }
-  return { reps, caps, webs, neuts, painters, scrams, damps, sensorBoosts, trackDisr, guideDisr, ecm };
+  return { reps, caps, webs, neuts, painters, scrams, damps, sensorBoosts, trackDisr, guideDisr, ecm, trackBoosts };
 }
 
 /**
@@ -2438,6 +2444,21 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       }
     }
     // Guidance disruption (missile range + application) is applied directly in the missile range calc.
+  }
+  // Projected Remote Tracking Computers: BONUSES, so each one goes into the turret's attribute pool
+  // stacking-penalised (direct=false) — competing with the target's own tracking computers and
+  // enhancers in one group, as eos stacks them — rather than multiplied onto the finished figure.
+  // Same reasoning and same shape as the projected Remote Sensor Boosters above.
+  const pb = opts.projectedBoosts;
+  if (pb?.trk?.length || pb?.topt?.length || pb?.tfall?.length) {
+    const rtcSrc = tracing() ? { name: 'Remote Tracking Computer', kind: 'projected' } : null;
+    for (const { slot: s2, fitItem: m } of modItems) {
+      if (!m || !isOnline(s2.state)) continue;
+      if (!(TYPES[m.typeID]?.rs ?? []).includes('Gunnery')) continue;
+      for (const b of pb.trk ?? [])   if (b) m.attrs.applyMod(AID['trackingSpeed'], 6, b, false, null, rtcSrc);
+      for (const b of pb.topt ?? [])  if (b) m.attrs.applyMod(AID['maxRange'],      6, b, false, null, rtcSrc);
+      for (const b of pb.tfall ?? []) if (b) m.attrs.applyMod(AID['falloff'],       6, b, false, null, rtcSrc);
+    }
   }
 
   let abMwdSpeed = maxVelocity;

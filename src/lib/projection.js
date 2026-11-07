@@ -14,7 +14,7 @@ export const NO_BURSTS = [];
 // single tap recalculate the whole fit twice. `sigList`/`webList` are the per-source values before
 // stacking, for a caller that has to stack its OWN painters and webs into the same pool.
 export const NO_PROJECTION = {reps:{shield:0,armor:0,hull:0},webMult:1,neutGJs:0,capGJs:0,capEntries:[],
-  debuffs:null,boosts:{lock:[],scan:[]},ecm:[],ecmResist:1,sigList:[],webList:[]};
+  debuffs:null,boosts:{lock:[],scan:[],trk:[],topt:[],tfall:[]},ecm:[],ecmResist:1,sigList:[],webList:[]};
 
 /** Every active command fit in `cmdFitsList`, resolved against `fitsDB`, as one burst list. */
 export function buildExternalBursts(cmdFitsList, fitsDB, sourceSkills) {
@@ -62,7 +62,9 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
   const webMults=[]; let neutGJs=0, capGJs=0;
   const capEntries=[];   // projected Remote Capacitor Transmitters, kept for the Projected list
   const col={sig:[],lock:[],scan:[],trk:[],topt:[],tfall:[],mrng:[],edly:[],avel:[],acld:[]};
-  const boosts={lock:[],scan:[]};   // projected Remote Sensor Boosters -> attribute pool, not the debuff stack
+  // Projected Remote Sensor Boosters and Remote Tracking Computers -> the attribute pool, not the
+  // debuff stack (calcFitStats). One entry per projected module.
+  const boosts={lock:[],scan:[],trk:[],topt:[],tfall:[]};
   // ECM is kept as raw per-type strengths, range-factored but NOT yet reduced to one number —
   // which of the four attributes matters depends on the TARGET's sensor type, which calcFitStats
   // (not this function) knows. See calcFitStats's jamChance for the combination itself.
@@ -104,6 +106,9 @@ export function buildProjectedEffects({projFits, fitsDB, sourceSkills, shipName,
     // ship's own signal amps/Sensor Optimization burst in one penalized group. Only the attribute
     // pool can do that, so these are handed to calcFitStats rather than stacked here.
     if(AF.assist>0)for(const b of (eff.sensorBoosts||[])){if(b.lockBonus)boosts.lock.push(b.lockBonus*AF.assist*rf(b.optimal,b.falloff));if(b.scanResBonus)boosts.scan.push(b.scanResBonus*AF.assist*rf(b.optimal,b.falloff));}
+    // Remote Tracking Computers: assistance too, so refused by a HIC bubble and scaled by impedance.
+    if(AF.assist>0)for(const b of (eff.trackBoosts||[])){const f=AF.assist*rf(b.optimal,b.falloff);
+      if(b.tracking)boosts.trk.push(b.tracking*f);if(b.optimalBonus)boosts.topt.push(b.optimalBonus*f);if(b.falloffBonus)boosts.tfall.push(b.falloffBonus*f);}
     for(const td of (eff.trackDisr||[])){const f=rz('disrupt')*rf(td.optimal,td.falloff);col.trk.push(td.tracking*f);col.topt.push(td.optimalBonus*f);col.tfall.push(td.falloffBonus*f);}
     for(const g of (eff.guideDisr||[])){const f=rz('disrupt')*rf(g.optimal,g.falloff);col.mrng.push(g.missileRange*f);col.edly.push(g.explosionDelay*f);col.avel.push(g.aoeVel*f);col.acld.push(g.aoeCloud*f);}
     // ECM jammers carry remoteResistanceID 2253 = ECMResistance, so they are resisted like any other

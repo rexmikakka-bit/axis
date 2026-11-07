@@ -660,6 +660,11 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
         // falloff, so reading `tracking` alone made a range-scripted disruptor look inert.
         const tdOpt=stk((eff.trackDisr||[]).map(td=>(td.optimalBonus||0)*rf(td.optimal,td.falloff)));
         const tdFall=stk((eff.trackDisr||[]).map(td=>(td.falloffBonus||0)*rf(td.optimal,td.falloff)));
+        // Remote tracking computers: a boost, so the target's assistance impedance scales it.
+        const rtcF=(b)=>af.assist*rf(b.optimal,b.falloff);
+        const rtcTrack=stk((eff.trackBoosts||[]).map(b=>(b.tracking||0)*rtcF(b)));
+        const rtcOpt=stk((eff.trackBoosts||[]).map(b=>(b.optimalBonus||0)*rtcF(b)));
+        const rtcFall=stk((eff.trackBoosts||[]).map(b=>(b.falloffBonus||0)*rtcF(b)));
         const gdRange=stk((eff.guideDisr||[]).map(g=>g.missileRange*rf(g.optimal,g.falloff)));
         // Strength is the strongest of the jammer's four racial attrs, matching the MOD_STRENGTH badge
         // a locally fitted jammer gets. Jam CHANCE is target-relative and needs the edited fit's own
@@ -676,7 +681,8 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
         const hasReps=totals.shield+totals.armor+totals.hull>0.5;
         const hasWeb=webMs.length>0, hasNeut=neutGJs>0.05, hasCap=capGJs>0.05, hasEcm=ecmMax>0.5, hasJam=jamChance>0.05;
         const hasPaint=Math.abs(painterSig)>0.5, hasDamp=Math.abs(dampLock)>0.5, hasTD=Math.abs(tdTrack)>0.5, hasTDrng=Math.abs(tdOpt)>0.5||Math.abs(tdFall)>0.5, hasGD=Math.abs(gdRange)>0.5;
-        const hasAny=hasReps||hasWeb||hasNeut||hasCap||hasPaint||hasDamp||hasTD||hasTDrng||hasGD||hasEcm||hasJam;
+        const hasRTC=rtcTrack>0.5, hasRTCrng=rtcOpt>0.5||rtcFall>0.5;
+        const hasAny=hasReps||hasWeb||hasNeut||hasCap||hasPaint||hasDamp||hasTD||hasTDrng||hasGD||hasRTC||hasRTCrng||hasEcm||hasJam;
         const setRange=(km)=>setProjFits(projFits.map((p,j)=>j===i?{...p,rangeKm:Math.max(0,km)}:p));
         // Opt-out, matching App.jsx's guard: a fit saved before the toggle existed has no `active`
         // and must keep applying.
@@ -707,6 +713,8 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
               {hasDamp&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(dampLock)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your lock range")}</div></div>}
               {hasTD&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(tdTrack)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your tracking")}</div></div>}
               {hasTDrng&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(Math.abs(tdOpt)>=Math.abs(tdFall)?tdOpt:tdFall)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your turret range")}</div></div>}
+              {hasRTC&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.success}}>+{Math.round(rtcTrack)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your tracking")}</div></div>}
+              {hasRTCrng&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.success}}>+{Math.round(Math.max(rtcOpt,rtcFall))}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your turret range")}</div></div>}
               {hasGD&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(gdRange)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("your missile range")}</div></div>}
               {hasEcm&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.accent}}>{Math.round(ecmMax)}</div><div style={{fontSize:9,color:C.textMute}}>{t("ECM strength")}</div></div>}
               {hasJam&&<div style={{flex:1,minWidth:84,background:C.surfaceAlt,borderRadius:6,padding:"6px 8px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:C.danger}}>{jamChance.toFixed(1)}%</div><div style={{fontSize:9,color:C.textMute}}>{t("Jam chance")}</div></div>}
@@ -717,7 +725,7 @@ export function EffectsScreen({fitsDB,boosters,setBoosters,projFits,setProjFits,
       <button className="press" onClick={()=>{haptic();setShowProjPicker(true);}} style={{width:"100%",padding:"12px 0",background:C.accentLight,border:`1px solid ${C.accentBorder}`,borderRadius:8,color:C.accent,fontSize:13,fontWeight:700,cursor:"pointer",marginTop:4}}>{t("+ Add Projected Fit")}</button>
       {showProjPicker&&<FitPickerSheet title={t("Project a Fit")} fitsDB={fitsDB} pinned={openTabFits} onSelect={(ship,fit)=>{
         const eff=projectedFitEffects(ship,fit,fitsDB,sourceSkills);
-        const optims=[...eff.reps,...eff.webs,...eff.neuts,...(eff.painters||[]),...(eff.damps||[]),...(eff.trackDisr||[]),...(eff.guideDisr||[])].map(m=>m.optimal).filter(v=>v>0);
+        const optims=[...eff.reps,...eff.webs,...eff.neuts,...(eff.painters||[]),...(eff.damps||[]),...(eff.trackDisr||[]),...(eff.trackBoosts||[]),...(eff.guideDisr||[])].map(m=>m.optimal).filter(v=>v>0);
         const rangeKm=optims.length?Math.round(Math.min(...optims)/1000):30;
         setProjFits(prev=>[...prev,{ship,fitName:fit.name,rangeKm}]);
       }} onClose={()=>setShowProjPicker(false)}/>}
