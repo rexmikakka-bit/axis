@@ -645,7 +645,7 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
             </div>
             {/* Desktop: the fit's headline numbers in the banner's free left half, faded out as it
                 collapses like the eyebrow above. Only for the hull being fitted (cs present). */}
-            {embedded&&cs&&<div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',marginTop:8,opacity:1-collapse,
+            {embedded&&cs&&<div style={{display:'flex',flexWrap:'wrap',gap:'4px 13px',marginTop:8,opacity:1-collapse,
                 height:(1-collapse)*40,overflow:'hidden',textShadow:'0 1px 3px rgba(0,0,0,.8)'}}>
               {[[t('EHP'),cs.totalEHP!=null?`${(cs.totalEHP/1000).toFixed(1)}k`:null],
                 [t('DPS'),cs.totalDps?.total!=null?Math.round(cs.totalDps.total):null],
