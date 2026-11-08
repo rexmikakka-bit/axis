@@ -5,14 +5,14 @@ import { tidByName, calcRangeFactor, stackingPenalty, jamChanceFrom, computeComm
 import { WARFARE_BUFF_UNIT } from "../lib/core.js";
 import { projectedFitEffects, projectedSource } from "../lib/projection.js";
 import { PROJECTED_MODULES, MAX_QTY, isProjectedModule, makeProjectedModule, projectedModuleLabel, scriptLabel, scriptsFor, clampQty } from "../lib/projected-modules.js";
-import { FitPickerSheet, BoosterPickerSheet, EnvironmentPickerSheet, boosterSideEffectState, BoosterIcon, buildBoosterFromName,
+import { FitPickerSheet, EnvironmentPickerSheet, boosterSideEffectState, BoosterIcon, buildBoosterFromName,
          hasCommandBursts, boosterBonuses, boosterSlotOf } from "../components/effects.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { tabFits } from "./tab-fits.js";
 import { useInspect } from "./inspect-context.jsx";
 import { boosterTarget } from "./inspect.js";
-import { useItemDrop, useFitDrop, DropHint } from "./items-context.jsx";
+import { useItemDrop, useFitDrop, DropHint, useItems } from "./items-context.jsx";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { LINK_DEFS, CATEGORIES, STRENGTHS, ALL_LINKS, BUFF_NAMES, LINK_UNIT, linksOf, makeLink, isLink, linkLabel, linkBursts } from "../lib/command-links.js";
 
@@ -85,7 +85,8 @@ function SideEffects({ booster, onUpdate }) {
 }
 
 export function BoostersPanel({ s }) {
-  const [picker, setPicker] = useState(false);
+  // "+ Booster" opens the Browser narrowed to boosters; its double-click (or a drag) lands here.
+  const itemOps = useItems();
   const insp = useInspect();
   const rs = useRowSelect();
   const drop = useItemDrop("boosters");
@@ -98,7 +99,7 @@ export function BoostersPanel({ s }) {
   const show = (b, tab) => insp.inspect(bTarget(b), tab);
   return (
     <Shell drop={drop} dropLabel={t("Add booster")}>
-      <Header onAdd={() => setPicker(true)} addLabel={t("Booster")}>{t("Toggle boosters to simulate their stat effects on this fit.")}</Header>
+      <Header onAdd={() => itemOps.browse("boosters")} addLabel={t("Booster")}>{t("Toggle boosters to simulate their stat effects on this fit.")}</Header>
       <Body list={rs.listProps({ onDelete: remove })}>
         {!list.length && <None>{t("No boosters added")}</None>}
         {list.map(b => {
@@ -135,7 +136,6 @@ export function BoostersPanel({ s }) {
           );
         })}
       </Body>
-      {picker && <BoosterPickerSheet onAdd={b => set(prev => [...prev, b])} onClose={() => setPicker(false)} />}
       {rs.view}
     </Shell>
   );

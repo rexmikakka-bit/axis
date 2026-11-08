@@ -155,7 +155,7 @@ function ShortcutsSheet({ onClose }) {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode, openWindowFor, browseRack } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode, openWindowFor, browseRack, browseFor } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
@@ -178,6 +178,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     // A short message on the app's banner, for windows that refuse something (Fitting's Paste).
     notify: (msg, ms = 3000) => notify?.("none", msg, ms),
     accepts: (to, item) => itemAccepts(to, item, { hasFighters }),
+    // Bring up the Browser narrowed to what `to` takes (opts.slot: one implant slot).
+    browse: (to, opts) => browseFor?.(to, opts),
     add: (item, to, extra) => {
       // Whatever took the item comes up (Owen): its window opens, or its tab comes to the front.
       // Fighters live in the Drones window.
@@ -374,10 +376,13 @@ function DesktopApp() {
   // An empty module slot's double-click: the Browser, on Market, filtered to that rack, search focused.
   // What is picked there fits into the rack's first free slot (adderRef), as a Market double-click does.
   const browseRack = (rack) => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "market", rack, n: Date.now(), focus: true }); };
+  // A window's "+" (Drones, Cargo, Boosters, an empty implant slot): the same Browser, narrowed to what
+  // goes there; its double-click then adds to that window.
+  const browseFor = (dest, { slot = null } = {}) => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "market", dest, slot, n: Date.now(), focus: true }); };
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openWindowFor: (id) => openWindow(setLayoutState, id), openProfilePicker: () => setSheet("dmgprofile"),
-      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash, browserMode, browseRack });
+      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash, browserMode, browseRack, browseFor });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const id of Object.keys(layoutState.windows)) if (layoutState.windows[id]?.detached) dockWindow(setLayoutState, id);

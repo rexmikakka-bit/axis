@@ -4,13 +4,11 @@ import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { DRONE_FLIGHT, MUTA_BY_TYPE } from "../lib/core.js";
-import { DroneBrowserSheet } from "../components/drones.jsx";
 import { UsageBar, Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { droneTarget } from "./inspect.js";
-import { addDrone } from "./items.js";
-import { useItemDrop, DropHint } from "./items-context.jsx";
+import { useItemDrop, DropHint, useItems } from "./items-context.jsx";
 
 // The desktop Drones window: bay, bandwidth and drones-in-space on top, then one table row per
 // stack — in space, quantity, name, and the engine's range / tracking / speed / EHP for it. Adding
@@ -27,7 +25,8 @@ const bwOf = (d) => recOf(d)?.attrs?.droneBandwidthUsed ?? d.bandwidth ?? 5;
 const NARROW_W = 470;
 
 export default function DronesPanel({ s, stats }) {
-  const [picker, setPicker] = useState(false);
+  // "+" opens the Browser narrowed to drones; its double-click (or a drag) lands here.
+  const itemOps = useItems();
   const insp = useInspect();
   const open = (d, tab) => insp.inspect(droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)), tab);
   const rs = useRowSelect();
@@ -47,7 +46,6 @@ export default function DronesPanel({ s, stats }) {
   const cap = { bay: stats.snapshot?.droneBay ?? 0, bw: stats.snapshot?.droneBandwidth ?? 0, max: stats.snapshot?.maxActiveDrones ?? 5 };
   const set = (fn) => s.setDrones(prev => fn(prev ?? []));
   // The add rule lives in items.js, shared with the Browser and drag-and-drop.
-  const add = (d) => addDrone(s, d, cap);
   const info = (d) => (d.id != null ? stats.droneInfo.find(x => x.id === d.id) : null) ?? stats.droneInfo.find(x => x.name === d.name) ?? {};
   const km = (m) => parseFloat((m / 1000).toFixed(2));
   const narrow = width > 0 && width < NARROW_W;
@@ -80,7 +78,7 @@ export default function DronesPanel({ s, stats }) {
                     letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, borderBottom: `1px solid ${C.border}` }}>
         <span /><span style={{ textAlign: "right" }}>{t("Qty")}</span><span>{t("Drone")}</span>
         {!narrow && <><span style={{ textAlign: "right" }}>{t("Range")}</span><span style={{ textAlign: "right" }}>{t("Speed")}</span><span style={{ textAlign: "right" }}>EHP</span></>}
-        <button type="button" onClick={() => setPicker(true)} aria-label={t("Add drones")} title={t("Add drones")}
+        <button type="button" onClick={() => itemOps.browse("drones")} aria-label={t("Add drones")} title={t("Add drones")}
           style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 16, padding: 0 }}>+</button>
       </div>
       <div {...rs.listProps({ onDelete: remove })} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
@@ -122,7 +120,6 @@ export default function DronesPanel({ s, stats }) {
           );
         })}
       </div>
-      {picker && <DroneBrowserSheet existingDrones={drones} onAdd={add} onClose={() => setPicker(false)} />}
       {rs.view}
     </div>
   );

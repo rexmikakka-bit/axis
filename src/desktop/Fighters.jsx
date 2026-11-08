@@ -1,15 +1,13 @@
-import { useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
-import { FighterBrowserSheet } from "../components/drones.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { UsageBar, Empty, TYPE } from "./kit.jsx";
-import { addFighter, fighterAttrs, fighterClassOf } from "./items.js";
-import { useItemDrop, DropHint } from "./items-context.jsx";
+import { fighterAttrs, fighterClassOf } from "./items.js";
+import { useItemDrop, DropHint, useItems } from "./items-context.jsx";
 
 // The desktop Fighters window, for carriers, supercarriers and structures with fighter tubes: the
 // bay, the tubes and the per-class launch limits on top, then one row per squadron — launched,
@@ -28,7 +26,8 @@ const attrsOf = fighterAttrs;
 const fmtK = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n ?? 0));
 
 export default function FightersPanel({ s, stats, shipFighter }) {
-  const [picker, setPicker] = useState(false);
+  // "+" opens the Browser narrowed to fighters; its double-click (or a drag) lands here.
+  const itemOps = useItems();
   const rs = useRowSelect();
   const insp = useInspect();
   const drop = useItemDrop("fighters");
@@ -46,7 +45,6 @@ export default function FightersPanel({ s, stats, shipFighter }) {
   }, 0);
   const dps = info.reduce((a, d) => a + (d?.active !== false ? (d?.dps || 0) : 0), 0);
   // The add rule lives in items.js, shared with the Browser and drag-and-drop.
-  const add = (f) => addFighter(s, f, shipFighter, classOf);
   const toggle = (id) => set(l => l.map(f => f.id === id ? { ...f, active: f.active === false } : f));
   const setQty = (id, n) => set(l => l.map(f => f.id === id ? { ...f, qty: Math.max(1, n) } : f));
   const remove = (id) => set(l => l.filter(f => f.id !== id));
@@ -68,7 +66,7 @@ export default function FightersPanel({ s, stats, shipFighter }) {
                     letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, borderBottom: `1px solid ${C.border}` }}>
         <span /><span style={{ textAlign: "right" }}>{t("Sqd")}</span><span>{t("Squadron")} · <span style={{ color: C.high, textTransform: "none" }}>{fmtK(dps)} DPS</span></span>
         <span style={{ textAlign: "right" }}>DPS</span><span style={{ textAlign: "right" }}>{t("Speed")}</span><span style={{ textAlign: "right" }}>EHP</span>
-        <button type="button" onClick={() => setPicker(true)} aria-label={t("Add fighters")} title={t("Add fighters")}
+        <button type="button" onClick={() => itemOps.browse("fighters")} aria-label={t("Add fighters")} title={t("Add fighters")}
           style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 16, padding: 0 }}>+</button>
       </div>
       <div {...rs.listProps({ onDelete: remove })} style={{ flex: 1, minHeight: 0, overflowY: "auto", outline: "none" }}>
@@ -130,7 +128,6 @@ export default function FightersPanel({ s, stats, shipFighter }) {
         })}
       </div>
       {rs.view}
-      {picker && <FighterBrowserSheet onAdd={add} onClose={() => setPicker(false)} />}
     </div>
   );
 }
