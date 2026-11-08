@@ -49,21 +49,40 @@ const LABELS = { cpu: "CPU", power: "Powergrid", upgradeCost: "Calibration" };
 const colLabel = (k) => t(LABELS[k] ?? mutaLabel(k));
 const num = (v) => typeof v === "number" && Number.isFinite(v);
 const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.+-eE]/g, "")); return Number.isFinite(n) ? n : null; };
+// A price as people type it: "8m", "7.5b", "250k", "1,200,000", "8m isk". null when empty or unreadable.
+const parseIsk = (s) => {
+  const m = /^(\d+(?:\.\d+)?)([kmb])?$/.exec(String(s ?? "").trim().toLowerCase().replace(/[\s,_]/g, "").replace(/isk$/, ""));
+  if (!m) return null;
+  const v = Number(m[1]) * ({ k: 1e3, m: 1e6, b: 1e9 }[m[2]] ?? 1);
+  return Number.isFinite(v) && v >= 0 ? v : null;
+};
+// And back, short: 8000000 -> "8m", 7500000000 -> "7.5b".
+const fmtIsk = (v) => {
+  if (!num(v)) return "";
+  for (const [d, u] of [[1e9, "b"], [1e6, "m"], [1e3, "k"]]) if (Math.abs(v) >= d) return `${+(v / d).toFixed(3)}${u}`;
+  return String(+v.toFixed(2));
+};
 
 // Module scope, so a re-render (prices or contracts arriving) never remounts a box being typed in.
 // Uncontrolled and applied on blur / Enter; keyed on the applied value so Clear filters empties it.
-function FilterBox({ k, value, onSet, onAtLeastRef }) {
+// The price column reads and shows ISK the short way (8m, 7b), and its button is a ≤: "no dearer
+// than the reference", where every other column's ≥ is "no worse".
+function FilterBox({ k, value, onSet, onAtLeastRef, onAtMostRef }) {
+  const show = (v) => v == null ? "" : k === "price" ? fmtIsk(v) : v;
   return (
     <div style={{ display: "flex", gap: 2, alignItems: "center", justifyContent: "flex-end" }}>
       {["min", "max"].map(side => (
-        <input key={`${side}:${value?.[side] ?? ""}`} defaultValue={value?.[side] ?? ""} placeholder={side === "min" ? t("min") : t("max")}
+        <input key={`${side}:${value?.[side] ?? ""}`} defaultValue={show(value?.[side])} placeholder={side === "min" ? t("min") : t("max")}
+          title={k === "price" ? t("ISK; 250k, 8m and 7b work") : undefined}
           aria-label={`${colLabel(k)} ${side === "min" ? t("min") : t("max")}`}
-          onBlur={e => onSet(k, side, e.target.value)} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          onBlur={e => { if (e.target.value !== String(show(value?.[side]))) onSet(k, side, e.target.value); }} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
           style={{ width: 50, height: 20, boxSizing: "border-box", padding: "0 4px", fontSize: 11.5, textAlign: "right", borderRadius: 4,
                    background: C.bg, border: `1px solid ${value?.[side] != null ? C.accent : C.border}`, color: C.text, outline: "none" }} />
       ))}
       {onAtLeastRef ? <button type="button" title={t("No worse than the reference")} aria-label={t("No worse than the reference")} onClick={onAtLeastRef}
         style={{ width: 18, height: 20, padding: 0, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 11.5 }}>≥</button>
+        : onAtMostRef ? <button type="button" title={t("No more expensive than the reference")} aria-label={t("No more expensive than the reference")} onClick={onAtMostRef}
+        style={{ width: 18, height: 20, padding: 0, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 11.5 }}>≤</button>
         : <span aria-hidden="true" style={{ width: 18, flex: "none" }} />}
     </div>
   );
@@ -251,7 +270,7 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
     ] });
   };
   const setFilter = (k, side, text) => setFilters(f => {
-    const v = parseNum(text), cur = { ...(f[k] ?? {}) };
+    const v = k === "price" ? parseIsk(text) : parseNum(text), cur = { ...(f[k] ?? {}) };
     if (v == null) delete cur[side]; else cur[side] = v;
     const out = { ...f };
     if (cur.min == null && cur.max == null) delete out[k]; else out[k] = cur;
@@ -294,7 +313,8 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
                textTransform: "uppercase", color: C.textMid, fontWeight: 500, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}`, cursor: "pointer", userSelect: "none" };
   const fth = { position: "sticky", top: 27, zIndex: 2, background: C.surface, padding: "3px 4px", borderBottom: `1px solid ${C.border}` };
   const sortMark = (k) => activeSort === k ? <span style={{ color: C.accent }}>{sort.dir === "asc" ? " ▲" : " ▼"}</span> : null;
-  const filterBox = (k) => <FilterBox k={k} value={filters[k]} onSet={setFilter} onAtLeastRef={k !== "price" && span[k] ? () => atLeastRef(k) : null} />;
+  const filterBox = (k) => <FilterBox k={k} value={filters[k]} onSet={setFilter} onAtLeastRef={k !== "price" && span[k] ? () => atLeastRef(k) : null}
+    onAtMostRef={k === "price" && refPrice != null ? () => setFilters(f => ({ ...f, price: { ...(f.price ?? {}), max: refPrice } })) : null} />;
   const cards = width > 0 && width < Math.min(CARD_MAX, NAME_W + COL_W * (shownCols.length + 1));
   const sortLabel = (k) => k === "meta" ? t("Meta level") : k === "price" ? t("Price") : colLabel(k);
   const sortItems = ["meta", "price", ...attributes].map(k => ({
