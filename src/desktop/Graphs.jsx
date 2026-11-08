@@ -13,6 +13,8 @@ import { FitPickerSheet } from "../components/effects.jsx";
 import { tabFits } from "./tab-fits.js";
 import Menu from "./Menu.jsx";
 import { TYPE } from "./kit.jsx";
+import { useFitDrop, DropHint } from "./items-context.jsx";
+import { ContextMenu } from "./ContextMenu.jsx";
 
 // The desktop Graphs window, after pyfa's graph window (docs/desktop.md, "Graphs"): several SOURCE
 // fits plotted against several TARGETS at once — every source x target pair is one line, colour by
@@ -175,7 +177,7 @@ const fmt = (v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(Math.abs(v) >= 10
 // `xFixed` / `yFixed` are typed axis maximums (null = fit to the data). Lines past them are clipped.
 // `pinX` is a point the user clicked to keep: its line and readout stay put when the pointer leaves,
 // and the hover readout takes over only while the pointer is on the plot. Clicking the pin clears it.
-function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pinX = null, onPin }) {
+function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pinX = null, onPin, onContextMenu }) {
   const box = useRef(null);
   const [size, setSize] = useState({ w: 600, h: 360 });
   useLayoutEffect(() => {
@@ -211,10 +213,10 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pi
   // The readout follows the pointer while it is on the plot, and falls back to the pin.
   const tipX = hx ?? pin;
   return (
-    <div ref={box} style={{ flex: 1, minHeight: 0, position: "relative" }}>
+    <div ref={box} onContextMenu={onContextMenu} style={{ flex: 1, minHeight: 0, position: "relative" }}>
       <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHx(null)} onClick={onClick}
         style={{ display: "block", cursor: onPin ? "crosshair" : undefined }}>
-        <title>{pin != null ? t("Click to move the pin; click the pin to clear it") : t("Click to pin this point")}</title>
+        <title>{pin != null ? t("Click to move the pin; click the pin to clear it") : t("Click to pin this point")}{" · "}{t("right-click for display options")}</title>
         {yt.map(v => <g key={`y${v}`}><line x1={pad.l} x2={W - pad.r} y1={Y(v)} y2={Y(v)} stroke={C.border} />
           <text x={pad.l - 6} y={Y(v) + 4} textAnchor="end" fontSize="11" fill={C.textMid}>{fmt(v)}</text></g>)}
         {xt.map(v => <g key={`x${v}`}><line x1={X(v)} x2={X(v)} y1={pad.t} y2={pad.t + ih} stroke={`${C.border}88`} />
@@ -344,6 +346,7 @@ export default function GraphsPanel({ s }) {
   // 20 km on one graph and 20 s on the next; a pin from another graph or axis is simply not shown.
   const [pin, setPin] = useState(saved.pin ?? null);
   const [picker, setPicker] = useState(null);   // "source" | "target"
+  const [plotMenu, setPlotMenu] = useState(null);   // the plot's right-click menu, {x, y}
   // Compact (plot only) or expanded (controls under it). The controls sit BELOW the plot so the plot
   // keeps the window's full width, which a distance or time axis needs far more than height. "auto"
   // follows the window: under 460 px tall the controls fold away, so the graph can sit small in a
@@ -476,6 +479,10 @@ export default function GraphsPanel({ s }) {
     return base.some(q => q.ship === ship && q.fitName === fitName) ? base : [...base, { ship, fitName }];
   });
   const addTarget = (ship, fitName) => setTargets(l => l.some(q => q.kind === "fit" && q.ship === ship && q.fitName === fitName) ? l : [...l, { kind: "fit", ship, fitName }]);
+  // A saved fit dragged from the ship browser: onto Fits it is graphed, onto Targets it is shot at.
+  const hasFit = (ship, name) => !!s.fitsDB?.[ship]?.some(f2 => f2.name === name);
+  const srcDrop = useFitDrop(hasFit, (ship, name) => added(() => addSource(ship, name))());
+  const tgtDrop = useFitDrop(hasFit, (ship, name) => added(() => addTarget(ship, name))());
   const cur = s.activeFit?.ship && s.activeFit?.fitName ? { ship: s.activeFit.ship, fitName: s.activeFit.fitName } : null;
   const curIsSource = !!cur && srcList.some(q => q.ship === cur.ship && q.fitName === cur.fitName);
   const curIsTarget = !!cur && targets.some(q => q.kind === "fit" && q.ship === cur.ship && q.fitName === cur.fitName);
@@ -509,7 +516,8 @@ export default function GraphsPanel({ s }) {
         {!series.length && !busy
           ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
           : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null}
-              pinX={pinX} onPin={v => setPin(v == null ? null : { key: pinKey, x: v })} />}
+              pinX={pinX} onPin={v => setPin(v == null ? null : { key: pinKey, x: v })}
+              onContextMenu={e => { e.preventDefault(); setPlotMenu({ x: e.clientX, y: e.clientY }); }} />}
         {/* The legend names each fit once (its colour) and each target once (its dash) rather than every
             fit × target line, so six lines from three fits and two targets is five short entries. */}
         {series.length > 0 && (
@@ -551,16 +559,10 @@ export default function GraphsPanel({ s }) {
               title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
           </div>
         ))}
-        <Label>{t("Display")}</Label>
-        {(cat === "damage" || cat === APP_PROFILE) && <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
-          <input type="checkbox" checked={ignoreResists} onChange={() => setIgnoreResists(v => !v)} style={{ accentColor: C.accent }} />{t("Ignore target resists")}
-        </label>}
-        <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
-          <input type="checkbox" checked={showY0} onChange={() => setShowY0(v => !v)} style={{ accentColor: C.accent }} />{t("Always show Y = 0")}
-        </label>
         </div>
 
-        <div>
+        <div {...srcDrop.props} style={{ position: "relative" }}>
+        <DropHint over={srcDrop.over} ok={srcDrop.ok} label={t("Graph this fit")} />
         <Label>{t("Fits")}</Label>
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
           onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
@@ -572,7 +574,8 @@ export default function GraphsPanel({ s }) {
         </div>
         </div>
 
-        {hasTargets && <div>
+        {hasTargets && <div {...tgtDrop.props} style={{ position: "relative" }}>
+          <DropHint over={tgtDrop.over} ok={tgtDrop.ok} label={t("Graph against this fit")} />
           <Label>{t("Targets")}</Label>
           {targets.map((tg, j) => {
             const P = tg.kind === "profile" ? TARGET_PROFILES[tg.profile] : null;
@@ -641,6 +644,14 @@ export default function GraphsPanel({ s }) {
       </div>}
       </div>}
 
+      {/* Display options, on a right-click of the plot (they were checkboxes under it). */}
+      {plotMenu && <ContextMenu x={plotMenu.x} y={plotMenu.y} onClose={() => setPlotMenu(null)} items={[
+        { heading: t("Display") },
+        (cat === "damage" || cat === APP_PROFILE) && { label: t("Ignore target resists"), checked: ignoreResists, onSelect: () => setIgnoreResists(v => !v) },
+        { label: t("Always show Y = 0"), checked: showY0, onSelect: () => setShowY0(v => !v) },
+        pinX != null && { divider: true },
+        pinX != null && { label: t("Clear the pin"), onSelect: () => setPin(null) },
+      ].filter(Boolean)} />}
       {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={added((ship, fit) => {
           // A fit already on the graph is not added twice: two identical lines say nothing, and the
