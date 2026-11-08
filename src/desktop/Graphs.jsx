@@ -170,7 +170,9 @@ function niceTicks(max, n = 5) {
 const fmt = (v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1)}k` : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 
 // `xFixed` / `yFixed` are typed axis maximums (null = fit to the data). Lines past them are clipped.
-function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) {
+// `pinX` is a point the user clicked to keep: its line and readout stay put when the pointer leaves,
+// and the hover readout takes over only while the pointer is on the plot. Clicking the pin clears it.
+function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pinX = null, onPin }) {
   const box = useRef(null);
   const [size, setSize] = useState({ w: 600, h: 360 });
   useLayoutEffect(() => {
@@ -190,14 +192,26 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) 
   const X = (x) => pad.l + (x / xMax) * iw, Y = (y) => pad.t + ih - ((y - yMin) / (yMax - yMin)) * ih;
   const path = (pts) => pts.filter(p => p[1] != null).map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
   const xt = niceTicks(xMax), yt = niceTicks(yMax).filter(v => v >= yMin);
-  const onMove = (e) => {
+  const xAt = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - r.left - pad.l) / iw) * xMax;
-    setHx(x >= 0 && x <= xMax ? x : null);
+    return x >= 0 && x <= xMax ? x : null;
   };
+  const onMove = (e) => setHx(xAt(e));
+  const pin = pinX != null && pinX >= 0 && pinX <= xMax ? pinX : null;
+  // From the click's own position, not `hx`: a click can land before the hover state has rendered.
+  const onClick = (e) => {
+    const cx = xAt(e);
+    if (cx == null || !onPin) return;
+    onPin(pin != null && Math.abs(X(cx) - X(pin)) <= 6 ? null : cx);
+  };
+  // The readout follows the pointer while it is on the plot, and falls back to the pin.
+  const tipX = hx ?? pin;
   return (
     <div ref={box} style={{ flex: 1, minHeight: 0, position: "relative" }}>
-      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHx(null)} style={{ display: "block" }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHx(null)} onClick={onClick}
+        style={{ display: "block", cursor: onPin ? "crosshair" : undefined }}>
+        <title>{pin != null ? t("Click to move the pin; click the pin to clear it") : t("Click to pin this point")}</title>
         {yt.map(v => <g key={`y${v}`}><line x1={pad.l} x2={W - pad.r} y1={Y(v)} y2={Y(v)} stroke={C.border} />
           <text x={pad.l - 6} y={Y(v) + 4} textAnchor="end" fontSize="11" fill={C.textMid}>{fmt(v)}</text></g>)}
         {xt.map(v => <g key={`x${v}`}><line x1={X(v)} x2={X(v)} y1={pad.t} y2={pad.t + ih} stroke={`${C.border}88`} />
@@ -216,16 +230,18 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) 
             })
           : <path key={s.key} d={path(s.pts)} fill="none" stroke={s.color} strokeWidth="2" strokeDasharray={s.dash} />)}
         </g>
+        {pin != null && <line x1={X(pin)} x2={X(pin)} y1={pad.t} y2={pad.t + ih} stroke={C.accent} strokeWidth="1.5" />}
+        {pin != null && series.map(s => { const y = interpCurveAt(s.pts, pin); return y == null ? null : <circle key={`p${s.key}`} cx={X(pin)} cy={Y(y)} r="3.5" fill={s.color} />; })}
         {hx != null && <line x1={X(hx)} x2={X(hx)} y1={pad.t} y2={pad.t + ih} stroke={C.textMid} strokeDasharray="3 3" />}
         {hx != null && series.map(s => { const y = interpCurveAt(s.pts, hx); return y == null ? null : <circle key={`c${s.key}`} cx={X(hx)} cy={Y(y)} r="3.5" fill={s.color} />; })}
       </svg>
-      {hx != null && (
-        <div style={{ position: "absolute", top: pad.t + 6, left: Math.min(X(hx) + 12, W - 250), pointerEvents: "none", background: `${C.surface}ee`,
-                      border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, lineHeight: 1.45, minWidth: 160, maxWidth: 240 }}>
-          <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmt(hx)}</span></div>
+      {tipX != null && (
+        <div style={{ position: "absolute", top: pad.t + 6, left: Math.max(pad.l, Math.min(X(tipX) + 12, W - 310)), pointerEvents: "none", background: `${C.surface}ee`,
+                      border: `1px solid ${hx == null ? C.accent : C.borderStrong}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, lineHeight: 1.45, minWidth: 160, maxWidth: 300 }}>
+          <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmt(tipX)}</span></div>
           {series.map(s => {
-            const y = interpCurveAt(s.pts, hx);
-            const seg = s.segments?.find(g => hx >= g.from - 1e-9 && hx <= g.to + xMax / 200);
+            const y = interpCurveAt(s.pts, tipX);
+            const seg = s.segments?.find(g => tipX >= g.from - 1e-9 && tipX <= g.to + xMax / 200);
             return y == null ? null : (
               <div key={s.key} style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
                 <span style={{ width: 8, height: 8, borderRadius: 2, background: seg?.color ?? s.color, flex: "none" }} />
@@ -237,6 +253,18 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) 
         </div>
       )}
     </div>
+  );
+}
+
+// A graphed fit as the legend and readout name it: two fits of one hull differ only by fit name.
+const fitLabel = (sc) => `${sc.ship} · ${sc.fitName}`;
+// One legend entry. Long fit names are cut with an ellipsis and given whole on hover.
+function LegendItem({ swatch, label }) {
+  return (
+    <span title={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.textMid, minWidth: 0, maxWidth: 280 }}>
+      <span style={{ flex: "none", display: "inline-flex" }}>{swatch}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+    </span>
   );
 }
 
@@ -266,7 +294,8 @@ const fieldStyle = () => ({ width: 64, height: 24, boxSizing: "border-box", padd
 // same frame: east is along the line between the ships), drawn larger and with the desktop's readout.
 // Speeds stay a PERCENT of each fit's own top speed, as the sliders were, because one setting drives
 // every source and target on the graph; the wheel shows it in m/s against the first of them.
-function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct }) {
+// `mixed`: the lines it drives have different top speeds, so no one m/s is true and only the % shows.
+function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct, mixed = false }) {
   const vel = Math.round(refVel * pct / 100);
   const cardinal = COMPASS_DIRS[((Math.round((angle + 90) / 45) % 8) + 8) % 8];
   return (
@@ -277,7 +306,7 @@ function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct }) {
       <span style={{ fontSize: 12, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
         {refVel > 0 ? `${angle}° ${cardinal}` : "—"}</span>
       <span style={{ fontSize: 11.5, color: C.textMid, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-        {refVel > 0 ? `${vel} m/s · ${Math.round(pct)}%` : t("immobilised")}</span>
+        {refVel > 0 ? (mixed ? `${Math.round(pct)}%` : `${vel} m/s · ${Math.round(pct)}%`) : t("immobilised")}</span>
     </div>
   );
 }
@@ -308,6 +337,9 @@ export default function GraphsPanel({ s }) {
   // Typed axis maximums, per graph and axis pair: a range scale that suits Damage vs distance means
   // nothing on Capacitor vs time. {"damage|dps|dist": {x: 60, y: null}}; null is Auto.
   const [scales, setScales] = useState(saved.scales ?? {});
+  // The clicked-in point on the X axis, {key: "<graph>|<x axis>", x}. Keyed because an x of 20 means
+  // 20 km on one graph and 20 s on the next; a pin from another graph or axis is simply not shown.
+  const [pin, setPin] = useState(saved.pin ?? null);
   const [picker, setPicker] = useState(null);   // "source" | "target"
   // Compact (plot only) or expanded (controls under it). The controls sit BELOW the plot so the plot
   // keeps the window's full width, which a distance or time axis needs far more than height. "auto"
@@ -323,7 +355,7 @@ export default function GraphsPanel({ s }) {
     ro.observe(el); return () => ro.disconnect();
   }, []);
   const showPanel = panelMode === "shown" || (panelMode === "auto" && rootH >= 460);
-  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular]);
+  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular, pin }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular, pin]);
 
   // With no sources chosen, graph the fit being edited.
   const srcList = sources.length ? sources : (s.activeFit?.ship ? [{ ship: s.activeFit.ship, fitName: s.activeFit.fitName, auto: true }] : []);
@@ -353,7 +385,7 @@ export default function GraphsPanel({ s }) {
       if (hasTargets && !td) return;
       const r = curveTo(cat, y, x, curveParams(cat, sd.d, td, inp), scale.x);
       out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
-                 short: hasTargets ? `${sd.sc.ship} → ${td.label}` : `${sd.sc.ship} · ${sd.sc.fitName}`, i, j });
+                 short: hasTargets ? `${fitLabel(sd.sc)} → ${td.label}` : fitLabel(sd.sc), i, j });
     }); });
     return out;
   }, [cat, y, x, srcData, tgtData, inp, hasTargets, scale.x]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -371,7 +403,7 @@ export default function GraphsPanel({ s }) {
       const [sd, i, td, j] = jobs[k];
       const r = appProfile(s, sd.fit, sd.d, td, inp, y, meta, scale.x);
       // Round names only on each fit's first target: its other targets' curves run alongside and the labels pile up.
-      if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${sd.sc.ship} → ${td.label}` });
+      if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${fitLabel(sd.sc)} → ${td.label}` });
       setTimeout(() => step(k + 1), 0);
     };
     setTimeout(() => step(0), 0);
@@ -384,14 +416,33 @@ export default function GraphsPanel({ s }) {
   const showRange = cat !== APP_PROFILE && usesEngRange(cat, x);
   const showWindow = cat !== APP_PROFILE && usesTimeWindow(cat, y, x);
   const setI = (k, v) => setInp(p => ({ ...p, [k]: v }));
-  // The wheels read in m/s against the first fit and the first target; the percent applies to all.
-  const selfRef = firstCs?.maxVelocityAB ?? firstCs?.maxVelocity ?? srcData.find(Boolean)?.d.ship?.maxVelocity ?? 0;
+  // The pin, if it belongs to this graph and axis and is still on the plot.
+  const pinKey = `${cat}|${x}`;
+  const xShown = scale.x > 0 ? scale.x : Math.max(0, ...series.map(sr => sr.xMax ?? 0));
+  const pinX = pin?.key === pinKey && pin.x <= xShown ? pin.x : null;
+  // The wheels' speeds are a PERCENT of each fit's own top speed, so one setting can mean several
+  // m/s. The m/s, the transversal and the angular readout are quoted only when every line on the
+  // graph shares them: one top speed among the fits (or your ship parked), and one target speed.
+  const velOf = cs => cs?.maxVelocityAB ?? cs?.maxVelocity ?? 0;
+  const srcVels = [...new Set(srcData.filter(Boolean).map(sd => Math.round(velOf(sd.d.cs) || sd.d.ship?.maxVelocity || 0)))];
+  const tgtVels = [...new Set(tgtData.filter(Boolean).map(td => Math.round(td.vel ?? 0)))];
+  const selfRef = srcVels.length === 1 ? srcVels[0] : (velOf(firstCs) || srcData.find(Boolean)?.d.ship?.maxVelocity || 0);
   const tgtRef = tgtData.find(Boolean)?.vel ?? 0;
-  const transversal = Math.abs(selfRef * inp.atkSpeed / 100 * Math.sin(inp.atkAngle * Math.PI / 180) - tgtRef * inp.tgtSpeed / 100 * Math.sin(inp.tgtAngle * Math.PI / 180));
-  // Angular velocity at the engagement distance: the Range field where it is shown, else the fit's
-  // weapon reach — the phone's angularDistM, so the two quote the same engagement.
-  const angDistM = showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
-  const angularDeg = calcAngularSpeed(selfRef * inp.atkSpeed / 100, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtRef * inp.tgtSpeed / 100, inp.tgtAngle, 0) * 180 / Math.PI;
+  const selfMixed = srcVels.length > 1, tgtMixed = tgtVels.length > 1;
+  // On a target-speed axis the graph sweeps the target's speed and ignores the Target wheel's, so the
+  // target speed is the PINNED one: absolute m/s is the same for every target; a percent is only one
+  // m/s if the targets share a top speed. Unpinned there is no single speed to quote.
+  const tgtSpeedNow = x === "tgtSpeedMs" ? pinX
+    : x === "tgtSpeedPct" ? (pinX != null && !tgtMixed ? tgtRef * pinX / 100 : null)
+    : !tgtMixed ? tgtRef * inp.tgtSpeed / 100 : null;
+  const selfSpeedNow = inp.atkSpeed === 0 ? 0 : !selfMixed ? selfRef * inp.atkSpeed / 100 : null;
+  const showTransversal = tgtSpeedNow != null && selfSpeedNow != null;
+  const transversal = showTransversal ? Math.abs(selfSpeedNow * Math.sin(inp.atkAngle * Math.PI / 180) - tgtSpeedNow * Math.sin(inp.tgtAngle * Math.PI / 180)) : 0;
+  // Angular velocity at the engagement distance: a pinned point on a distance axis, else the Range
+  // field where it is shown, else the fit's weapon reach (the phone's angularDistM).
+  const angDistM = x === "dist" && pinX != null ? pinX * 1000
+    : showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
+  const angularDeg = showTransversal ? calcAngularSpeed(selfSpeedNow, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtSpeedNow, inp.tgtAngle, 0) * 180 / Math.PI : NaN;
   const fmtAngular = v => !Number.isFinite(v) ? "--" : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
   const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
   // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
@@ -422,15 +473,24 @@ export default function GraphsPanel({ s }) {
         </div>
         {!series.length && !busy
           ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
-          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null} />}
+          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null}
+              pinX={pinX} onPin={v => setPin(v == null ? null : { key: pinKey, x: v })} />}
+        {/* The legend names each fit once (its colour) and each target once (its dash) rather than every
+            fit × target line, so six lines from three fits and two targets is five short entries. */}
         {series.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "6px 4px 0", fontSize: 12 }}>
-            {series.map(sr => (
-              <span key={sr.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.textMid }}>
-                <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={sr.color} strokeWidth="2.5" strokeDasharray={sr.dash} /></svg>
-                {sr.short}{sr.rack ? ` · ${sr.rack}` : ""}
-              </span>
-            ))}
+            {srcData.map((sd, i) => {
+              if (!sd || !series.some(sr => sr.i === i)) return null;
+              const rack = series.find(sr => sr.i === i && sr.rack)?.rack;
+              const label = fitLabel(sd.sc) + (rack ? ` · ${rack}` : "");
+              return <LegendItem key={`s${i}`} label={label}
+                swatch={<span style={{ width: 16, height: 3, borderRadius: 2, background: SRC_COLORS[i % SRC_COLORS.length] }} />} />;
+            })}
+            {hasTargets && tgtData.some(Boolean) && <span style={{ width: 1, alignSelf: "stretch", background: C.border }} />}
+            {hasTargets && tgtData.map((td, j) => td && series.some(sr => sr.j === j) ? (
+              <LegendItem key={`t${j}`} label={td.label}
+                swatch={<svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={C.text} strokeWidth="2" strokeDasharray={DASHES[j % DASHES.length]} /></svg>} />
+            ) : null)}
           </div>
         )}
       </div>
@@ -526,16 +586,17 @@ export default function GraphsPanel({ s }) {
       {(hasTargets || cat === "damage") && <div style={{ flex: "none", width: 230 }}>
         <Label>{t("Engagement")}</Label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-          <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
-          <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
+          <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} mixed={selfMixed} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
+          <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} mixed={tgtMixed} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
         </div>
-        {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range). */}
-        <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
+        {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range).
+            Hidden when the lines on the graph do not share one speed each (see showTransversal). */}
+        {showTransversal && <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
           style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
           <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
           <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
             {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
-        </button>
+        </button>}
       </div>}
       </div>}
 
