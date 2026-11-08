@@ -13,7 +13,7 @@ import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
 import { getCachedPrices } from "../prices.js";
 import { FitCost, fitCostParts } from "../components/ui.jsx";
-import { variantCostFits, fitCostRatioOf, getCompatibleCharges } from "../lib/core.js";
+import { variantCostFits, fitCostRatioOf, getCompatibleCharges, implantSetMembers, applyImplantSet } from "../lib/core.js";
 import { fetchPrices } from "../prices.js";
 import { useHeadroom } from "./Inspector.jsx";
 import Menu from "./Menu.jsx";
@@ -312,6 +312,10 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
     const d = dest && itemOps.accepts(dest.to, it) ? { to: dest.to, label: DEST_LABEL[dest.to] } : defaultAction(it, { slots: s.slots, hasFighters: itemOps.hasFighters });
     const out = d.to ? [{ label: d.label, onSelect: () => itemOps.add(it, d.to) }] : [];
     for (const to of Object.keys(DEST_LABEL)) if (to !== d.to && to !== "fitting" && itemOps.accepts(to, it)) out.push({ label: DEST_LABEL[to], onSelect: () => itemOps.add(it, to) });
+    // A set implant can bring its whole set, as the Implants window's "+ set" does: every member into
+    // its own slot, the other slots left as they are.
+    const set = itemKind(it).kind === "implant" ? implantSetMembers(m.name) : null;
+    if (set && s.setImplants) out.push({ label: t("+ {set} set", { set: set.setName }), onSelect: () => s.setImplants(prev => applyImplantSet(prev ?? [], set)) });
     return out;
   };
   const toggle = (n) => {
@@ -356,10 +360,17 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
       {destOk && <div style={{ display: "flex", gap: 6, padding: "6px 10px 0", flex: "none", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 4px 0 10px", borderRadius: 11, fontSize: 12.5,
                        background: C.accentLight, border: `1px solid ${C.accent}`, color: C.accent }}>
-          {t("For {dest}", { dest: DESTS[dest.to].label() })}{dest.slot ? ` · ${t("slot {n}", { n: dest.slot })}` : ""}
+          {t("For {dest}", { dest: DESTS[dest.to].label() })}
           <button type="button" onClick={() => { setDest(null); setSelected(null); setOpen(new Set()); }} aria-label={t("Show everything")} title={t("Show everything")}
             style={{ width: 16, height: 16, padding: 0, border: "none", borderRadius: 8, background: "transparent", color: C.accent, cursor: "pointer", fontSize: 12, lineHeight: "16px" }}>✕</button>
         </span>
+        {/* Its own chip, so the slot can go while the implants stay: every slot's implants, searchable. */}
+        {dest.slot && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 4px 0 10px", borderRadius: 11, fontSize: 12.5,
+                       background: C.accentLight, border: `1px solid ${C.accent}`, color: C.accent }}>
+          {t("Slot {n}", { n: dest.slot })}
+          <button type="button" onClick={() => setDest(d => ({ ...d, slot: null }))} aria-label={t("Every slot")} title={t("Every slot")}
+            style={{ width: 16, height: 16, padding: 0, border: "none", borderRadius: 8, background: "transparent", color: C.accent, cursor: "pointer", fontSize: 12, lineHeight: "16px" }}>✕</button>
+        </span>}
         {dest.to === "cargo" && <button type="button" aria-pressed={fitOnly} onClick={() => setFitOnly(v => !v)} title={t("Only the charges this fit's modules can load")}
           style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
                    background: fitOnly ? C.accentLight : "transparent", border: `1px solid ${fitOnly ? C.accent : C.borderStrong}`, color: fitOnly ? C.accent : C.textMid }}>{t("Fit's charges")}</button>}
