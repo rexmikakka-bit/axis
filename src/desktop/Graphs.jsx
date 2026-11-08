@@ -312,7 +312,7 @@ const ListRow = ({ swatch, label, onRemove, children }) => (
     {onRemove && <button type="button" onClick={onRemove} aria-label={t("Remove")} style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
   </div>
 );
-const addBtn = (disabled = false) => ({ height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: disabled ? "default" : "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid, opacity: disabled ? 0.45 : 1 });
+const addBtn = (disabled = false) => ({ height: 24, padding: "0 9px", whiteSpace: "nowrap", borderRadius: 5, fontSize: 12, cursor: disabled ? "default" : "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid, opacity: disabled ? 0.45 : 1 });
 const fieldStyle = () => ({ width: 64, height: 24, boxSizing: "border-box", padding: "0 6px", borderRadius: 5, fontSize: 12.5, textAlign: "right",
                      fontVariantNumeric: "tabular-nums", background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" });
 
@@ -566,12 +566,16 @@ export default function GraphsPanel({ s }) {
       {showPanel && <div style={{ flex: "none", maxHeight: "50%", overflowY: "auto", padding: "0 12px 12px", borderTop: `1px solid ${C.border}`,
                                   display: "flex", gap: 22, alignItems: "flex-start" }}>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", columnGap: 22, alignItems: "flex-start" }}>
-        <div style={{ flex: "0 1 240px", minWidth: 200 }}>
+        {/* Grows into a row of its own when Fits and Targets wrap beneath it, and lays Y and X side by
+            side there, rather than leaving the width beside it empty. Beside them it barely grows (1 to
+            their 10), so the spare width goes to the fit and target names. */}
+        <div style={{ flex: "1 1 230px", minWidth: 190 }}>
         <Label>{t("Graph")}</Label>
         <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle()} aria-label={t("Graph")}>
           {GRAPH_TYPES.map(g => <option key={g.key} value={g.key}>{g.label()}</option>)}
         </select>
         {/* Each axis on one row: what it plots, then its maximum (empty is Auto). */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", columnGap: 16 }}>
         {[["y", y, setY, yAxes, t("Y axis")], ["x", x, setX, xAxes, t("X axis")]].map(([axis, val, set, axes, aria]) => (
           <div key={axis} style={{ display: "grid", gridTemplateColumns: "14px minmax(0,1fr) auto", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12.5 }}>
             <span style={{ color: C.textMid }}>{axis.toUpperCase()}</span>
@@ -580,6 +584,7 @@ export default function GraphsPanel({ s }) {
               title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
           </div>
         ))}
+        </div>
         {/* What the curve is run at: range, time window, the application profile's ammo. Under the axes,
             in the same column, since they belong to the graph rather than to a fit or a target. */}
         {(showRange || showWindow || cat === APP_PROFILE) && <div style={{ marginTop: 8 }}>
@@ -600,14 +605,14 @@ export default function GraphsPanel({ s }) {
         {/* Fits, then Targets: a pair that stays in that order (pyfa's: what is shooting on the left, what
             it shoots at on the right). The grid around them used to wrap them apart, which on a medium
             window put Targets under Graph with Fits up on the right. */}
-        <div style={{ flex: "1 1 400px", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", columnGap: 22, alignItems: "start" }}>
+        <div style={{ flex: "10 1 340px", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))", columnGap: 22, alignItems: "start" }}>
         <div {...srcDrop.props} style={{ position: "relative" }}>
         <DropHint over={srcDrop.over} ok={srcDrop.ok} label={t("Graph this fit")} />
         <Label>{t("Fits")}</Label>
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
           onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
         {!srcList.length && <div style={{ fontSize: 12.5, color: C.textMid }}>{t("Open a fit, or add one.")}</div>}
-        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
           <button type="button" style={addBtn()} onClick={() => setPicker("source")}>+ {t("Fit")}</button>
           <button type="button" style={addBtn(!cur || curIsSource)} disabled={!cur || curIsSource} title={curIsSource ? t("Already on the graph") : undefined}
             onClick={added(() => addSource(cur.ship, cur.fitName))}>+ {t("Current fit")}</button>
@@ -640,7 +645,7 @@ export default function GraphsPanel({ s }) {
               </div>
             );
           })}
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
             <Menu label={`+ ${t("Profile")}`} align="left" buttonStyle={{ ...addBtn() }} items={Object.keys(TARGET_PROFILES).map(k => ({
               label: TARGET_PROFILES[k].label(), onSelect: added(() => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }])) })).concat([
               { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
