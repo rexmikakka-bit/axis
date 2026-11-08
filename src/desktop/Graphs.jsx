@@ -113,10 +113,11 @@ function curveParams(cat, src, tgt, inp) {
 // A typed X maximum has to widen the curve's DATA, not just the axis, or a line stops dead where its
 // own domain ended. generateCurve already does that through xZoom (the phone's axis zoom); the zoom
 // that lands one curve exactly on `xTo` is its own auto range over xTo, so each curve gets its own.
+// `natXMax` is how far the curve runs on its own, before a typed X maximum stretched or cut it.
 function curveTo(cat, yKey, xKey, params, xTo) {
   const r = generateCurve(cat, yKey, xKey, params);
-  if (!(xTo > 0) || !(r.xMax > 0) || Math.abs(r.xMax - xTo) < 1e-9) return r;
-  return generateCurve(cat, yKey, xKey, { ...params, xZoom: r.xMax / xTo });
+  if (!(xTo > 0) || !(r.xMax > 0) || Math.abs(r.xMax - xTo) < 1e-9) return { ...r, natXMax: r.xMax };
+  return { ...generateCurve(cat, yKey, xKey, { ...params, xZoom: r.xMax / xTo }), natXMax: r.xMax };
 }
 
 /**
@@ -143,7 +144,7 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
     const cs = src.calc(slots);
     if (!cs) continue;
     const r = curveTo("damage", yKey, "dist", curveParams(APP_PROFILE, { ...src, cs }, tgt, inp), xTo);
-    curves.push({ name: c.name, pts: r.pts, xMax: r.xMax });
+    curves.push({ name: c.name, pts: r.pts, xMax: r.xMax, natXMax: r.natXMax });
   }
   if (!curves.length) return null;
   const xMax = Math.max(...curves.map(c => c.xMax));
@@ -157,7 +158,7 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
     if (!last || last.ammo !== best.name) segments.push({ ammo: best.name, color: ammoColor(best.name), from: x, to: x });
     else last.to = x;
   }
-  return { pts, segments, xMax, rack: `${rack.mounts.length}× ${rack.name}` };
+  return { pts, segments, xMax, natXMax: Math.max(...curves.map(c => c.natXMax)), rack: `${rack.mounts.length}× ${rack.name}` };
 }
 
 // ── The plot ─────────────────────────────────────────────────────────────────────────────────
@@ -167,6 +168,8 @@ function niceTicks(max, n = 5) {
   const out = []; for (let v = 0; v <= max + step * 1e-6; v += step) out.push(+v.toFixed(6));
   return [...new Set(out)];
 }
+// The readout X value: one decimal, grouped, never abbreviated (the axis ticks keep `fmt`'s 1.5k).
+const fmtX = (v) => v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt = (v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1)}k` : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 
 // `xFixed` / `yFixed` are typed axis maximums (null = fit to the data). Lines past them are clipped.
@@ -238,7 +241,7 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pi
       {tipX != null && (
         <div style={{ position: "absolute", top: pad.t + 6, left: Math.max(pad.l, Math.min(X(tipX) + 12, W - 310)), pointerEvents: "none", background: `${C.surface}ee`,
                       border: `1px solid ${hx == null ? C.accent : C.borderStrong}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, lineHeight: 1.45, minWidth: 160, maxWidth: 300 }}>
-          <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmt(tipX)}</span></div>
+          <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmtX(tipX)}</span></div>
           {series.map(s => {
             const y = interpCurveAt(s.pts, tipX);
             const seg = s.segments?.find(g => tipX >= g.from - 1e-9 && tipX <= g.to + xMax / 200);
@@ -384,7 +387,7 @@ export default function GraphsPanel({ s }) {
       const td = tgtData[j];
       if (hasTargets && !td) return;
       const r = curveTo(cat, y, x, curveParams(cat, sd.d, td, inp), scale.x);
-      out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
+      out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, natXMax: r.natXMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
                  short: hasTargets ? `${fitLabel(sd.sc)} → ${td.label}` : fitLabel(sd.sc), i, j });
     }); });
     return out;
@@ -411,6 +414,23 @@ export default function GraphsPanel({ s }) {
   }, [profKey, srcData, tgtData]);   // eslint-disable-line react-hooks/exhaustive-deps
   const series = cat === APP_PROFILE ? (profiles.key === profKey ? profiles.series : []) : plain;
   const busy = cat === APP_PROFILE && profiles.key !== profKey;
+  // Adding a fit or a target re-checks the typed axis maximums once its curves land: an axis goes
+  // back to Auto when the new lines reach past BOTH the typed maximum and everything already on the
+  // graph. So an added fit is never hidden past the edge, but a deliberate zoom (10 km on curves that
+  // run to 45) survives adding another fit that also runs to 45. X is tested on each curve's natural
+  // extent, since a typed X maximum stretches every curve to exactly that width.
+  const grow = useRef(null);
+  const extent = (list) => ({ x: Math.max(0, ...list.map(sr => sr.natXMax ?? sr.xMax ?? 0)),
+                              y: Math.max(0, ...list.flatMap(sr => sr.pts.map(p => p[1] ?? 0))) });
+  const added = (fn) => (...a) => { grow.current = extent(series); return fn(...a); };
+  useEffect(() => {
+    if (!grow.current || busy || !series.length) return;
+    const before = grow.current, now = extent(series);
+    grow.current = null;
+    const over = { x: scale.x > 0 && now.x > Math.max(scale.x, before.x) * 1.0001,
+                   y: scale.y > 0 && now.y > Math.max(scale.y, before.y) * 1.0001 };
+    if (over.x || over.y) setScales(m => ({ ...m, [scaleKey]: { ...(m[scaleKey] ?? {}), ...(over.x && { x: null }), ...(over.y && { y: null }) } }));
+  }, [series, busy]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const firstCs = srcData.find(Boolean)?.d.cs;
   const showRange = cat !== APP_PROFILE && usesEngRange(cat, x);
@@ -425,9 +445,13 @@ export default function GraphsPanel({ s }) {
   // graph shares them: one top speed among the fits (or your ship parked), and one target speed.
   const velOf = cs => cs?.maxVelocityAB ?? cs?.maxVelocity ?? 0;
   const srcVels = [...new Set(srcData.filter(Boolean).map(sd => Math.round(velOf(sd.d.cs) || sd.d.ship?.maxVelocity || 0)))];
-  const tgtVels = [...new Set(tgtData.filter(Boolean).map(td => Math.round(td.vel ?? 0)))];
+  // An Ideal target (stationary, infinite signature, or a custom one typed that way) is perfect
+  // application at any transversal, so the Target wheel has nothing to say about it: the wheel and
+  // the readouts follow the targets that can move, and Ideal's line stays flat at full damage.
+  const moving = tgtData.filter(td => td && !(td.vel === 0 && td.sig >= IDEAL_SIG));
+  const tgtVels = [...new Set(moving.map(td => Math.round(td.vel ?? 0)))];
   const selfRef = srcVels.length === 1 ? srcVels[0] : (velOf(firstCs) || srcData.find(Boolean)?.d.ship?.maxVelocity || 0);
-  const tgtRef = tgtData.find(Boolean)?.vel ?? 0;
+  const tgtRef = moving[0]?.vel ?? 0;
   const selfMixed = srcVels.length > 1, tgtMixed = tgtVels.length > 1;
   // On a target-speed axis the graph sweeps the target's speed and ignores the Target wheel's, so the
   // target speed is the PINNED one: absolute m/s is the same for every target; a percent is only one
@@ -446,8 +470,8 @@ export default function GraphsPanel({ s }) {
   const fmtAngular = v => !Number.isFinite(v) ? "--" : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
   const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
   // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
-  const addCustom = () => { const td = tgtData.find(Boolean);
-    setTargets(l => [...l, { kind: "custom", sig: td && td.sig < IDEAL_SIG ? Math.round(td.sig) : 150, vel: Math.round(td?.vel ?? 300) }]); };
+  const addCustom = added(() => { const td = tgtData.find(Boolean);
+    setTargets(l => [...l, { kind: "custom", sig: td && td.sig < IDEAL_SIG ? Math.round(td.sig) : 150, vel: Math.round(td?.vel ?? 300) }]); });
   const swatch = (i) => <span style={{ width: 14, height: 3, borderRadius: 2, background: SRC_COLORS[i % SRC_COLORS.length], flex: "none" }} />;
   const dashSwatch = (j) => <svg width="18" height="6" style={{ flex: "none" }}><line x1="0" y1="3" x2="18" y2="3" stroke={C.text} strokeWidth="2" strokeDasharray={DASHES[j % DASHES.length]} /></svg>;
   const xLabel = xAxes.find(a => a.key === x)?.label() ?? "";
@@ -560,7 +584,7 @@ export default function GraphsPanel({ s }) {
           })}
           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
             <Menu label={`+ ${t("Profile")}`} align="left" buttonStyle={{ ...addBtn() }} items={Object.keys(TARGET_PROFILES).map(k => ({
-              label: TARGET_PROFILES[k].label(), onSelect: () => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }]) })).concat([
+              label: TARGET_PROFILES[k].label(), onSelect: added(() => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }])) })).concat([
               { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
             <button type="button" style={addBtn()} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
           </div>
@@ -601,7 +625,7 @@ export default function GraphsPanel({ s }) {
       </div>}
 
       {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
-        onSelect={(ship, fit) => {
+        onSelect={added((ship, fit) => {
           // A fit already on the graph is not added twice: two identical lines say nothing, and the
           // pair is the line's identity (its React key and its legend entry).
           if (picker === "source") setSources(l => {
@@ -609,7 +633,7 @@ export default function GraphsPanel({ s }) {
             return cur.some(x => x.ship === ship && x.fitName === fit.name) ? cur : [...cur, { ship, fitName: fit.name }];
           });
           else setTargets(l => l.some(x => x.kind === "fit" && x.ship === ship && x.fitName === fit.name) ? l : [...l, { kind: "fit", ship, fitName: fit.name }]);
-        }} onClose={() => setPicker(null)} />}
+        })} onClose={() => setPicker(null)} />}
     </div>
   );
 }

@@ -106,7 +106,7 @@ function useBanner() {
 // Ctrl+1…8, in pyfa's additions-pane order; fighters live in the Drones window here.
 const ADDITIONS = ["drones", "drones", "cargo", "implants", "boosters", "projected", "command", "notes"];
 // The Windows menu's key hints: the window each shortcut brings up.
-const WINDOW_KEYS = { graphs: "Ctrl+G", browser: "Ctrl+F", drones: "Ctrl+1", cargo: "Ctrl+3", implants: "Ctrl+4",
+const WINDOW_KEYS = { graphs: "Ctrl+G", fitting: "Ctrl+M", browser: "Ctrl+F", drones: "Ctrl+1", cargo: "Ctrl+3", implants: "Ctrl+4",
                       boosters: "Ctrl+5", projected: "Ctrl+6", command: "Ctrl+7", notes: "Ctrl+8", settings: "Ctrl+," };
 // The keyboard shortcuts, for the F1 sheet. A function so t() runs at render (lib/i18n.js).
 const SHORTCUTS = () => [
@@ -118,7 +118,7 @@ const SHORTCUTS = () => [
     ["Ctrl+D", t("Optimize the fit's price")], ["Ctrl+K", t("Pick the pilot")],
   ]],
   [t("Windows"), [
-    ["Ctrl+G", t("Graphs")], ["Ctrl+F", t("Search the Browser")], ["Ctrl+Space", t("Browser: switch Ships and Market")],
+    ["Ctrl+G", t("Graphs")], ["Ctrl+M", t("Fitting")], ["Ctrl+F", t("Search the Browser")], ["Ctrl+Space", t("Browser: switch Ships and Market")],
     ["Ctrl+1 … 8", t("Drones, Fighters, Cargo, Implants, Boosters, Projected, Command links, Notes")],
     ["Ctrl+I", t("Implants")], ["Ctrl+,", t("Settings")],
   ]],
@@ -426,10 +426,11 @@ function DesktopApp() {
         if (k === "t") go(() => { if (!reopenClosed(setLayoutState, keysRef.current.windows)) flash("none", t("No closed window to reopen"), 2000); });
         return;
       }
-      // Graphs to the front, never away: open it if closed, raise it if open, and if it is a tab in
-      // another window, make it that window's shown tab, in place (Owen: it is often stacked with
-      // the Fitting window).
+      // Graphs (Ctrl+G) and Fitting (Ctrl+M, for modules) to the front, never away: open it if closed,
+      // raise it if open, and if it is a tab in another window, make it that window's shown tab, in
+      // place. Owen stacks the two, and swaps between them with these.
       if (k === "g") return go(() => openWindow(setLayoutState, "graphs"));
+      if (k === "m") return go(() => openWindow(setLayoutState, "fitting"));
       if (k === "t") return go(startTab);
       if (k === "w") { if (at >= 0) go(() => cur.closeFitTab(tabs[at])); return; }
       if (k === " ") return go(() => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "toggle", n: Date.now() }); });
