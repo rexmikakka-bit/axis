@@ -4,7 +4,7 @@ import { t } from "../lib/i18n.js";
 import { TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { checkFitRestriction } from "../components/tabs.jsx";
 import { eveIcon } from "../lib/icons.js";
-import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS, MT_ALL_ITEMS,
+import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS,
          generateEmptySlots, lookupShip } from "../lib/core.js";
 import marketTreeData from "../data/market-tree.json";
 import { jargonSearch } from "../lib/jargon.js";
@@ -99,17 +99,23 @@ function useMarketTree(rack, isStructure, hullRigSize) {
   }, [rack, isStructure, hullRigSize]);
 }
 
-// CCP's market groups (market-tree.json, the cargo picker's tree) in the module tree's node shape.
+// CCP's market groups (market-tree.json, the cargo picker's tree) in the module tree's node shape,
+// less what a fit can't use. Ships are opened from the Ships tab, not added to a fit. Of Structures,
+// only the Deployable Structures carry (mobile depots, tractor units, cyno inhibitors…), so that group
+// takes the Structures root's place and the structure hulls (citadels, engineering complexes,
+// refineries, FLEX) go. Structure Equipment and Modifications stay: a structure fit needs them.
+const MG_SHIPS = 4, MG_STRUCTURES = 477, MG_DEPLOYABLES = 404;
 let everything = null;
 function marketEverything() {
   if (everything) return everything;
   const node = (gid) => ({ id: `mt:${gid}`, name: marketTreeData.g[gid]?.n ?? String(gid), iconTid: marketTreeData.g[gid]?.i ?? null,
                            mods: MT_ITEMS[gid] ?? [], children: (MT_CHILDREN[gid] ?? []).map(node) });
-  return (everything = MT_ROOTS.map(node));
+  const roots = MT_ROOTS.map(Number).flatMap(gid => gid === MG_SHIPS ? [] : gid === MG_STRUCTURES ? [MG_DEPLOYABLES] : [gid]);
+  return (everything = roots.map(node).sort((x, y) => x.name.localeCompare(y.name)));
 }
-// Every item the All search reaches: the market tree, plus the fittable modules CCP does not sell.
+// Every item the All search reaches: what that tree holds, plus the fittable modules CCP does not sell.
 let searchable = null;
-const allItems = () => searchable ??= [...MT_ALL_ITEMS, ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
+const allItems = () => searchable ??= [...allMods(marketEverything()), ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
 const RACK_KEY = "axis_desk_browser_rack";
 const LEGAL_KEY = "axis_desk_browser_legal";
 // "Legal": could this module EVER go on this hull, whatever else is fitted? The phone's own fitting
