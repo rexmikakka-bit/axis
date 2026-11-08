@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Axis",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.rexmikakka.axis.desktop",
   "build": {
     "frontendDist": "../dist-desktop",

@@ -1250,17 +1250,7 @@ const SHIP_MISSILE_DMG={3024:['eliteBonusCovertOps1','exp',10],3026:['eliteBonus
 export const SHIP_MISSILE_DMG_IDS = () => Object.keys(SHIP_MISSILE_DMG).map(Number);
 const SUBSYS_MISSILE_DMG={4248:['subsystemBonusCaldariOffensive2','kin',['Light Missiles','Heavy Missiles','Heavy Assault Missiles']],};
 
-// Ship-hull missile RANGE bonuses (Pyfa filteredChargeBoost on maxVelocity / explosionDelay,
-// not data-driven). effectID -> [shipBonusAttr, 'vel'|'flight', filterSkillIdx | [idx...]]. Ship
-// bonuses are unpenalized. Generated from Pyfa eos/effects.py — but the generator kept only the
-// FIRST skill of an `requiresSkill(A) or requiresSkill(B)` filter, so seven entries are widened by
-// hand to the array form: a Golem's torpedoes, a Claymore's HAMs, a Pacifier's light missiles, an
-// Enforcer's HAMs and a Marshal's cruise missiles all read a third short against eos. Subsystem
-// effects (4331, 6923) live here too and are looked up on the fitted subsystems, not the hull.
-const SHIP_MR_SK=['Cruise Missiles','Heavy Assault Missiles','Heavy Missiles','Light Missiles','Missile Launcher Operation','Rockets','Torpedoes'];
-const SHIP_MISSILE_RANGE={784:['maxFlightTimeBonus','flight',4],891:['shipBonusCB3','vel',0],892:['shipBonusCB3','vel',6],1024:['shipBonusCC2','vel',2],1230:['shipBonusRole7','vel',4],1234:['shipBonusRole7','vel',3],1764:['speedFactor','vel',4],2561:['eliteBonusGunship1','vel',4],2809:['shipBonusCC2','vel',1],3355:['eliteBonusHeavyInterdictors1','vel',2],3356:['eliteBonusHeavyInterdictors1','vel',1],4331:['subsystemBonusCaldariOffensive3','vel',[1,2]],4377:['shipBonusGF2','vel',6],4378:['shipBonusMF2','vel',6],4379:['shipBonus2AF','vel',6],4380:['shipBonusCF2','vel',6],4384:['eliteBonusReconShip1','vel',2],4385:['eliteBonusReconShip1','vel',1],4413:['shipBonusGF','flight',6],4415:['shipBonusMF','flight',6],4416:['shipBonusCF','flight',6],4417:['shipBonusAF','flight',6],4637:['shipBonusCB3','vel',[0,6]],5080:['shipBonusCF','vel',4],5153:['shipBonusRole7','vel',5],5213:['rookieRocketVelocity','vel',5],5214:['rookieLightMissileVelocity','vel',3],5402:['shipBonusABC2','vel',1],5403:['shipBonusABC2','vel',2],5411:['shipBonusCD1','vel',4],5552:['eliteBonusHeavyGunship1','vel',2],5553:['eliteBonusHeavyGunship1','vel',1],5644:['shipBonusCC2','vel',1],5867:['shipBonusRole8','flight',4],6110:['missileVelocityBonus','vel',4],6111:['explosionDelayBonus','flight',4],6175:['roleBonusCBC','vel',4],6866:['shipBonusCF','flight',[3,5]],6874:['shipBonusCC2','flight',[1,2]],6881:['shipBonusCB','flight',[0,6]],6923:['subsystemBonusMinmatarOffensive','vel',[1,2]],8025:['hydraMissileFlightTimeBonus','flight',4],8070:['eliteBonusCommandShips2','vel',[1,2]]};
-
-// Missile APPLICATION (explosion velocity / radius). Unlike the range table above, this one is
+// Missile APPLICATION (explosion velocity / radius). Like missile range (collectRange), this is
 // DERIVED — CCP ships real modifierInfo for every source, the engine just never delivers it to a
 // loaded charge (see the application block in calcFitStats for why). AOE_SKILL_TIDS is every skill
 // carrying such a bonus (Target Navigation Prediction, Guided Missile Precision, Vorton Arc
@@ -3205,50 +3195,64 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
         exGated(exVel,    {kind:'skill', name:'Missile Projection',  level:sk.missileProjection ?? 0},  skillVel);
         exGated(exFlight, {kind:'skill', name:'Missile Bombardment', level:sk.missileBombardment ?? 0}, skillFlight);
 
-        // Build the shared penalized pools (MGC modules + rigs together).
+        // Every hull, subsystem and module source of velocity and flight time, read off the effects'
+        // own modifierInfo the way the application block below reads explosion velocity and radius.
+        // This used to be a list of known sources — the Guidance Computer and Enhancer groups, the
+        // two launcher rigs by effect ID, the Siege Module's attribute, and a hull table generated
+        // once from pyfa — and anything new fell through it silently: a Caldari Navy Synchronizer
+        // and the pre-release Naga Navy Issue's hull bonus raised the charge's engine velocity but
+        // not the range anyone saw, and a Bastion Module's +25% (pyfa Effect6658) and the Standup
+        // Missile Guidance Enhancer and missile rigs (6448/6403/6411) had never been listed at all.
+        //
+        // Filtered by the modifier's own skill or group against the charge, op 6 only (the T3D modes
+        // are PostDiv and live below), and visited ONCE per effect and attribute: an effect that
+        // names two skills (a Golem's torpedoes or cruise) is pyfa's `requiresSkill(A) or
+        // requiresSkill(B)`, one boost, not two.
+        const RANGE_ATTR = { 37: 'vel', 281: 'flight' };
+        const collectRange = (tid, ok, visit) => {
+          for (const eid of (TYPES[tid]?.e ?? [])) {
+            const mods = EFFECTS_DATA[eid]?.m;
+            if (!mods || (ok && !ok(eid))) continue;
+            const seen = new Set();
+            for (const m of mods) {
+              const which = RANGE_ATTR[m.modifiedAttributeID];
+              if (!which || m.operation !== 6 || seen.has(which)) continue;
+              if (m.func === 'OwnerRequiredSkillModifier' || m.func === 'LocationRequiredSkillModifier') {
+                const sn = m.skillTypeID != null ? TYPES[m.skillTypeID]?.n : null;
+                if (!sn || !chRs.includes(sn)) continue;
+              } else if (m.func === 'LocationGroupModifier') {
+                if (m.groupID !== TYPES[chTidR]?.g) continue;
+              } else continue;
+              const an = ATTR_META[m.modifyingAttributeID]?.n;
+              if (!an) continue;
+              seen.add(which);
+              visit(which, an);
+            }
+          }
+        };
+
+        // Modules and rigs share ONE stacking-penalised pool per attribute.
         const velPool = [], flightPool = [];
         for (const { slot: s2, fitItem: fi2 } of modItems) {
           if (!fi2) continue;
-          const g2 = fi2.groupName ?? '';
-          const isMGC = g2 === 'Missile Guidance Computer';
-          const isMGE = g2 === 'Missile Guidance Enhancer';
-          if (!isMGC && !isMGE) continue;
-          // A Computer activates (eos Effect6135 is type='active'); an Enhancer is passive (Effect6110,
-          // type='passive'). An Enhancer carries no duration, cap cost or heat damage, so `validStatesFor`
-          // never offers it anything above 'online' — testing isActive() on it dropped its bonus entirely.
-          if (!(isMGC ? isActive(s2.state) : isOnline(s2.state))) continue;
+          const src2 = {kind:'module', name:fi2.name};
+          // The effect's category decides the state it needs: a Guidance Computer or Siege Module
+          // activates (1), an Enhancer is online-only (4) and is never offered 'active', a rig is
+          // passive (0).
+          //
           // Engine-computed, NOT raw TYPES[...].attrs. Both the loaded script (×2 for Range, ×0 for
           // Precision, effects 6130/6131) and the overheat bonus (+15%, effect 6144) are ordinary
           // unpenalised boosts the engine already applies to these two attributes ON THE MODULE, and
           // pyfa reads them back the same way (getModifiedItemAttr). Reading the type data froze them
           // at the base 5.5, so a heated MGC changed nothing at all — issue #46.
-          const vB = fi2.get('missileVelocityBonus') ?? 0;
-          const fB = fi2.get('explosionDelayBonus') ?? 0;
-          const src2 = {kind:'module', name:fi2.name};
-          if (vB > 0) velPool.push({v:vB, src:src2});
-          if (fB > 0) flightPool.push({v:fB, src:src2});
+          collectRange(fi2.typeID, eid => EFFECTS_DATA[eid]?.c === 1 ? isActive(s2.state) : isOnline(s2.state),
+            (which, an) => {
+              const v = fi2.get(an) ?? 0;
+              if (v) (which === 'vel' ? velPool : flightPool).push({v, src:src2});
+            });
         }
-        for (const { slot: s3, fitItem: fi3 } of modItems) {
-          if (!fi3 || !isOnline(s3.state)) continue;
-          const a3 = TYPES[fi3.typeID]?.attrs ?? {};
-          const e3 = TYPES[fi3.typeID]?.e ?? [];
-          const src3 = {kind:'module', name:fi3.name};
-          if (e3.includes(1764) && a3.speedFactor)        velPool.push({v:a3.speedFactor, src:src3});        // Hydraulic Bay Thrusters → velocity
-          if (e3.includes(784)  && a3.maxFlightTimeBonus) flightPool.push({v:a3.maxFlightTimeBonus, src:src3}); // Rocket Fuel Cache → flight
-        }
-        // Siege module's siegeTorpedoVelocityBonus (+150%) targets charges requiring Torpedoes.
-        // Pyfa applies it with stackingPenalties=True (filteredChargeBoost on maxVelocity), so it
-        // shares the stacking pool with MGC/rig bonuses. Read from any active module that carries
-        // the attr (Siege Module I/II, Triage variants).
-        if (chRs.includes('Torpedoes')) {
-          for (const { slot: s4, fitItem: fi4 } of modItems) {
-            if (!fi4 || !isActive(s4.state)) continue;
-            const tvb = TYPES[fi4.typeID]?.attrs?.siegeTorpedoVelocityBonus;
-            if (tvb) velPool.push({v:tvb, src:{kind:'module', name:fi4.name}});
-          }
-        }
-        const poolVel    = penalize(velPool,    reqMLO ? exVel    : null);
-        const poolFlight = penalize(flightPool, reqMLO ? exFlight : null);
+        const poolVel    = penalize(velPool,    exVel);
+        const poolFlight = penalize(flightPool, exFlight);
 
         // Implants & boosters — unpenalized. Antipharmakon Toxot is a BOOSTER (category 20,
         // boosterDuration attr) giving +8% flight via maxFlightTimeBonus; other implants may give
@@ -3331,41 +3335,35 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
         const modeFlight = modeDiv(MODE_MISSILE_FLIGHT, exFlight);
 
         // T3 cruiser subsystem missile bonuses (Tengu Accelerated Ejection Bay, Loki Launcher
-        // Efficiency: +10%/+5% per level HM/HAM velocity). Same SHIP_MISSILE_RANGE table as the
-        // hull, read off the fitted subsystem's skill-scaled attribute, unpenalized. This used to
-        // hard-code the Loki's effect and gate it on MLO, so the Tengu's +50% never applied (a
-        // Tengu HML read 77.5 km against pyfa's 116) and a Loki's light missiles took the HM bonus.
+        // Efficiency: +10%/+5% per level HM/HAM velocity), read off the fitted subsystem's
+        // skill-scaled attribute, unpenalized. This once hard-coded the Loki's effect and gated it on
+        // MLO, so the Tengu's +50% never applied (a Tengu HML read 77.5 km against pyfa's 116) and a
+        // Loki's light missiles took the HM bonus.
         let subsysVel = 1, subsysFlight = 1;
         for (const ssItem of fit._subsystems ?? []) {
-          for (const eid of TYPES[ssItem.typeID]?.e ?? []) {
-            const spec = SHIP_MISSILE_RANGE[eid];
-            if (!spec || ![].concat(spec[2]).some(i => chRs.includes(SHIP_MR_SK[i]))) continue;
-            const bonus = ssItem.get(spec[0]) ?? 0;
-            if (bonus) {
-              const f = 1 + bonus / 100, src = {kind:'subsystem', name:ssItem.name};
-              if (spec[1] === 'vel') { subsysVel *= f; exPush(exVel, src, f); }
-              else { subsysFlight *= f; exPush(exFlight, src, f); }
-            }
-          }
+          const src = {kind:'subsystem', name:ssItem.name};
+          collectRange(ssItem.typeID, null, (which, an) => {
+            const bonus = ssItem.get(an) ?? 0;
+            if (!bonus) return;
+            const f = 1 + bonus / 100;
+            if (which === 'vel') { subsysVel *= f; exPush(exVel, src, f); }
+            else { subsysFlight *= f; exPush(exFlight, src, f); }
+          });
         }
 
         // Ship-hull missile range bonuses (e.g. Orthrus shipBonusRole7 +200% velocity and
-        // shipBonusRole8 −50% flight → ~1.5× range). Table-driven for ALL hulls, unpenalized,
-        // filtered by the charge's required missile skill.
+        // shipBonusRole8 −50% flight → ~1.5× range), unpenalized, filtered by the charge's
+        // required missile skill.
         let shipVel = 1, shipFlight = 1;
         {
-          const shipEffs = TYPES[fit.ship.typeID]?.e ?? TYPES[fit.ship.typeID]?.effectIDs ?? [];
-          for (const eid of shipEffs) {
-            const spec = SHIP_MISSILE_RANGE[eid];
-            if (!spec || ![].concat(spec[2]).some(i => chRs.includes(SHIP_MR_SK[i]))) continue;
-            const bonus = fit.ship.get(spec[0]) ?? 0;
-            if (bonus) {
-              const f = 1 + bonus / 100;
-              const hullSrc = {kind:'hull', name:fit.ship.name};
-              if (spec[1] === 'vel') { shipVel *= f; exPush(exVel, hullSrc, f); }
-              else { shipFlight *= f; exPush(exFlight, hullSrc, f); }
-            }
-          }
+          const hullSrc = {kind:'hull', name:fit.ship.name};
+          collectRange(fit.ship.typeID, null, (which, an) => {
+            const bonus = fit.ship.get(an) ?? 0;
+            if (!bonus) return;
+            const f = 1 + bonus / 100;
+            if (which === 'vel') { shipVel *= f; exPush(exVel, hullSrc, f); }
+            else { shipFlight *= f; exPush(exFlight, hullSrc, f); }
+          });
         }
 
         // ── Missile APPLICATION: explosion velocity and explosion radius ─────────────
@@ -3469,10 +3467,9 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
         }
 
         // ── The charge-skill gate ────────────────────────────────────────────────────
-        // EVERY personal missile range bonus — the Missile Projection / Missile Bombardment
-        // skills, Missile Guidance Computers/Enhancers, Hydraulic Bay Thruster and Rocket Fuel
-        // Cache rigs, Zainou 'Deadeye' implants, the Antipharmakon Toxot booster, and the Hydra
-        // implant set — is gated in eos on the CHARGE requiring "Missile Launcher Operation"
+        // The personal missile range bonuses — the Missile Projection / Missile Bombardment skills,
+        // Zainou 'Deadeye' implants, the Antipharmakon Toxot booster, and the Hydra implant set —
+        // are gated in eos on the CHARGE requiring "Missile Launcher Operation"
         // (`filteredChargeBoost(lambda mod: mod.charge.requiresSkill('Missile Launcher Operation'),
         // ...)`). Every single one of those handlers uses that identical predicate.
         //
@@ -3482,10 +3479,12 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
         // 15 km/s. We applied them unconditionally, which multiplied both velocity and flight
         // time by 1.5 and put the Azbel at 3195 km against pyfa's 1417.5 km.
         //
-        // modeVel / subsysVel / shipVel are already skill-filtered at their own sites.
+        // The module pool, modeVel, subsysVel and shipVel are filtered by each modifier's own skill or
+        // group at their own sites, so they need no gate. Gating the pool too zeroed the Standup
+        // Missile Guidance Enhancer and the structure missile rigs, which filter on the charge's GROUP.
         const gate = v => (reqMLO ? v : 1);
-        const velMult    = gate(skillVel)    * gate(poolVel)    * modeVel * gate(implVel)    * subsysVel * shipVel;
-        const flightMult = gate(skillFlight) * gate(poolFlight) * modeFlight * gate(implFlight) * subsysFlight * shipFlight;
+        const velMult    = gate(skillVel)    * poolVel    * modeVel * gate(implVel)    * subsysVel * shipVel;
+        const flightMult = gate(skillFlight) * poolFlight * modeFlight * gate(implFlight) * subsysFlight * shipFlight;
         let finalVel    = baseVel * velMult;
         let finalFlight = baseFlight * flightMult; // ms
         const aoeVelPre = baseAoeVel * penalize(aoeVelPool, exAoeVel) * aoeVelFlat;
