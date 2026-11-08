@@ -172,6 +172,8 @@ function niceTicks(max, n = 5) {
 }
 // The readout X value: one decimal, grouped, never abbreviated (the axis ticks keep `fmt`'s 1.5k).
 const fmtX = (v) => v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// The readout's Y values: in full too (1,412.3, not 1.4k); a small one keeps a second decimal.
+const fmtY = (v) => v.toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 10 ? 2 : 1 });
 const fmt = (v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1)}k` : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 
 // `xFixed` / `yFixed` are typed axis maximums (null = fit to the data). Lines past them are clipped.
@@ -244,14 +246,33 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pi
         <div style={{ position: "absolute", top: pad.t + 6, left: Math.max(pad.l, Math.min(X(tipX) + 12, W - 310)), pointerEvents: "none", background: `${C.surface}ee`,
                       border: `1px solid ${hx == null ? C.accent : C.borderStrong}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, lineHeight: 1.45, minWidth: 160, maxWidth: 300 }}>
           <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmtX(tipX)}</span></div>
-          {series.map(s => {
-            const y = interpCurveAt(s.pts, tipX);
-            const seg = s.segments?.find(g => tipX >= g.from - 1e-9 && tipX <= g.to + xMax / 200);
-            return y == null ? null : (
+          {/* Grouped as the legend is: each fit's name once, then a line per target with its value, so a
+              long fit name can only cut itself short, never the target's. With no targets, one line a fit. */}
+          {[...new Set(series.map(s => s.i))].map(i => {
+            const group = series.filter(s => s.i === i);
+            const rows = group.map(s => {
+              const y = interpCurveAt(s.pts, tipX);
+              const seg = s.segments?.find(g => tipX >= g.from - 1e-9 && tipX <= g.to + xMax / 200);
+              return y == null ? null : { s, y, seg };
+            }).filter(Boolean);
+            if (!rows.length) return null;
+            const value = (y) => <span style={{ color: C.text, fontVariantNumeric: "tabular-nums", flex: "none" }}>{fmtY(y)}</span>;
+            const name = (text, color = C.textMid) => <span title={text} style={{ color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{text}</span>;
+            const swatch = (s, seg) => <span style={{ width: 8, height: 8, borderRadius: 2, background: seg?.color ?? s.color, flex: "none" }} />;
+            if (!group[0].tgtName) return rows.map(({ s, y, seg }) => (
               <div key={s.key} style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: seg?.color ?? s.color, flex: "none" }} />
-                <span style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{s.short}{seg ? ` · ${seg.ammo}` : ""}</span>
-                <span style={{ color: C.text, fontVariantNumeric: "tabular-nums" }}>{fmt(y)}</span>
+                {swatch(s, seg)}{name(`${s.fitName}${seg ? ` · ${seg.ammo}` : ""}`)}{value(y)}
+              </div>
+            ));
+            return (
+              <div key={i} style={{ marginTop: 3 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>{swatch(group[0])}{name(group[0].fitName, C.text)}</div>
+                {rows.map(({ s, y, seg }) => (
+                  <div key={s.key} style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 14 }}>
+                    <svg width="14" height="6" style={{ flex: "none" }}><line x1="0" y1="3" x2="14" y2="3" stroke={seg?.color ?? s.color} strokeWidth="2" strokeDasharray={s.dash} /></svg>
+                    {name(`${s.tgtName}${seg ? ` · ${seg.ammo}` : ""}`)}{value(y)}
+                  </div>
+                ))}
               </div>
             );
           })}
@@ -391,7 +412,7 @@ export default function GraphsPanel({ s }) {
       if (hasTargets && !td) return;
       const r = curveTo(cat, y, x, curveParams(cat, sd.d, td, inp), scale.x);
       out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, natXMax: r.natXMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
-                 short: hasTargets ? `${fitLabel(sd.sc)} → ${td.label}` : fitLabel(sd.sc), i, j });
+                 short: hasTargets ? `${fitLabel(sd.sc)} → ${td.label}` : fitLabel(sd.sc), fitName: fitLabel(sd.sc), tgtName: hasTargets ? td.label : null, i, j });
     }); });
     return out;
   }, [cat, y, x, srcData, tgtData, inp, hasTargets, scale.x]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -409,7 +430,7 @@ export default function GraphsPanel({ s }) {
       const [sd, i, td, j] = jobs[k];
       const r = appProfile(s, sd.fit, sd.d, td, inp, y, meta, scale.x);
       // Round names only on each fit's first target: its other targets' curves run alongside and the labels pile up.
-      if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${fitLabel(sd.sc)} → ${td.label}` });
+      if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${fitLabel(sd.sc)} → ${td.label}`, fitName: fitLabel(sd.sc), tgtName: td.label });
       setTimeout(() => step(k + 1), 0);
     };
     setTimeout(() => step(0), 0);
@@ -544,8 +565,8 @@ export default function GraphsPanel({ s }) {
           right edge instead of wrapping under the rest. */}
       {showPanel && <div style={{ flex: "none", maxHeight: "50%", overflowY: "auto", padding: "0 12px 12px", borderTop: `1px solid ${C.border}`,
                                   display: "flex", gap: 22, alignItems: "flex-start" }}>
-      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", columnGap: 22, alignItems: "start" }}>
-        <div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", columnGap: 22, alignItems: "flex-start" }}>
+        <div style={{ flex: "0 1 240px", minWidth: 200 }}>
         <Label>{t("Graph")}</Label>
         <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle()} aria-label={t("Graph")}>
           {GRAPH_TYPES.map(g => <option key={g.key} value={g.key}>{g.label()}</option>)}
@@ -559,8 +580,27 @@ export default function GraphsPanel({ s }) {
               title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
           </div>
         ))}
+        {/* What the curve is run at: range, time window, the application profile's ammo. Under the axes,
+            in the same column, since they belong to the graph rather than to a fit or a target. */}
+        {(showRange || showWindow || cat === APP_PROFILE) && <div style={{ marginTop: 8 }}>
+        {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
+        {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
+        {cat === APP_PROFILE && <>
+          <Label>{t("Ammo")}</Label>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[["t1", "T1"], ["navy", t("Navy")], ["all", t("All")]].map(([k, l]) => (
+              <button key={k} type="button" aria-pressed={meta === k} onClick={() => setMeta(k)}
+                style={{ ...addBtn(), flex: 1, color: meta === k ? C.accent : C.textMid, borderColor: meta === k ? C.accent : C.borderStrong, background: meta === k ? C.accentLight : "transparent" }}>{l}</button>
+            ))}
+          </div>
+        </>}
+        </div>}
         </div>
 
+        {/* Fits, then Targets: a pair that stays in that order (pyfa's: what is shooting on the left, what
+            it shoots at on the right). The grid around them used to wrap them apart, which on a medium
+            window put Targets under Graph with Fits up on the right. */}
+        <div style={{ flex: "1 1 400px", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", columnGap: 22, alignItems: "start" }}>
         <div {...srcDrop.props} style={{ position: "relative" }}>
         <DropHint over={srcDrop.over} ok={srcDrop.ok} label={t("Graph this fit")} />
         <Label>{t("Fits")}</Label>
@@ -609,22 +649,8 @@ export default function GraphsPanel({ s }) {
               onClick={added(() => addTarget(cur.ship, cur.fitName))}>+ {t("Current fit")}</button>
           </div>
         </div>}
+        </div>
 
-        {/* No heading of its own (each slider names itself), so it drops by one to sit level with
-            the first row of the columns beside it. */}
-        {(showRange || showWindow || cat === APP_PROFILE) && <div style={{ paddingTop: showRange || showWindow ? 30 : 0 }}>
-        {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
-        {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
-        {cat === APP_PROFILE && <>
-          <Label>{t("Ammo")}</Label>
-          <div style={{ display: "flex", gap: 4 }}>
-            {[["t1", "T1"], ["navy", t("Navy")], ["all", t("All")]].map(([k, l]) => (
-              <button key={k} type="button" aria-pressed={meta === k} onClick={() => setMeta(k)}
-                style={{ ...addBtn(), flex: 1, color: meta === k ? C.accent : C.textMid, borderColor: meta === k ? C.accent : C.borderStrong, background: meta === k ? C.accentLight : "transparent" }}>{l}</button>
-            ))}
-          </div>
-        </>}
-        </div>}
       </div>
 
       {(hasTargets || cat === "damage") && <div style={{ flex: "none", width: 230 }}>
