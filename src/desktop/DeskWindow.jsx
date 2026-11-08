@@ -45,7 +45,7 @@ export function TitleButton({ label, onClick, children }) {
 // window's title bar to move it there); right-click for the same as a menu; × closes just that one.
 // Under Lock layout a tab still reorders — nothing moves or resizes — but it cannot be pulled out.
 const TEAR_PX = 8;
-function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide, onSlideEnd }) {
+function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide, onSlideEnd, live = false }) {
   const press = useRef(null);
   const [tearing, setTearing] = useState(false);
   const down = (e) => {
@@ -73,19 +73,22 @@ function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide,
     <div role="tab" data-tab data-tabid={id} aria-selected={on} title={locked ? `${title} · ${t("drag along the strip to reorder")}` : `${title} · ${t("drag to reorder, or out to separate")}`}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { press.current = null; setTearing(false); }}
       onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onMenu(e, id); }}
-      style={{ display: "flex", alignItems: "center", gap: 4, height: TITLE_H - 6, padding: "0 4px 0 9px", borderRadius: 5, minWidth: 0, flex: "0 1 auto",
+      style={{ position: "relative", display: "flex", alignItems: "center", gap: 4, height: TITLE_H - 6, padding: "0 4px 0 9px", borderRadius: 5, minWidth: 0, flex: "0 1 auto",
                cursor: locked ? "pointer" : tearing ? "grabbing" : "pointer", touchAction: "none",
                background: on ? C.surface : "transparent", border: `1px solid ${on ? C.borderStrong : "transparent"}`,
                outline: tearing ? `1px dashed ${C.accent}` : "none", opacity: tearing ? 0.7 : 1 }}>
       <span style={{ fontSize: 12, letterSpacing: ".04em", textTransform: "uppercase", color: on ? C.text : C.textMid,
                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+      {/* Something in this window is active on the fit (a booster on, a drone out, a link applied):
+          a short red line under the title, so a tab behind another still says so. */}
+      {live && <span aria-hidden="true" style={{ position: "absolute", left: 9, right: 22, bottom: 1, height: 2, borderRadius: 1, background: C.danger, pointerEvents: "none" }} />}
       <button type="button" aria-label={t("Close {title}", { title })} title={t("Close {title}", { title })} onClick={(e) => { e.stopPropagation(); onClose(id); }}
         style={{ width: 16, height: 16, padding: 0, border: "none", borderRadius: 3, background: "transparent", color: C.textMute, cursor: "pointer", fontSize: 12, lineHeight: 1 }}>×</button>
     </div>
   );
 }
 
-// `tabs` ([{id, title}], two or more) draws a tab strip in place of the title; `activeTab` is the one
+// `tabs` ([{id, title, live?}], two or more; `live` marks the tab as having something active) draws a tab strip in place of the title; `activeTab` is the one
 // shown. `collapsed` draws the title bar alone. `dropTarget` lights the title bar while another
 // window is dragged over it (dropping there combines the two).
 export default function DeskWindow({ id, title, rect, z, focused, locked, floating = false, onFocus, onDragStart, onDrag, onDragEnd,
@@ -177,7 +180,7 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, floati
         <Grip />
         {tabs?.length > 1
           ? <div ref={strip} role="tablist" style={{ position: "relative", display: "flex", alignItems: "center", gap: 2, minWidth: 0, overflow: "hidden", flex: "0 1 auto" }}>
-              {tabs.map(tb => <Tab key={tb.id} id={tb.id} title={tb.title} on={tb.id === activeTab} locked={locked}
+              {tabs.map(tb => <Tab key={tb.id} id={tb.id} title={tb.title} live={!!tb.live} on={tb.id === activeTab} locked={locked}
                 onSelect={onTab} onClose={onCloseTab} onOut={onTabOut} onMenu={onTabMenu} onSlide={slide} onSlideEnd={slideEnd} />)}
               {slot && <span aria-hidden="true" style={{ position: "absolute", left: Math.max(0, slot.x), top: 3, bottom: 3, width: 2, borderRadius: 1, background: C.accent }} />}
             </div>

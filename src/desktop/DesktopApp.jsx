@@ -375,6 +375,22 @@ function DesktopApp() {
   const insp = useInspectorState(s, { setLayoutState, post: sync.post, adderRef, remoteAdd });
   // Ship info is a floating window on the desktop (an inspector on the hull's type, which draws the
   // phone's Ship info sheet inside it), not the phone's full-screen sheet. One per hull.
+  // Which windows have something ACTIVE on the fit, for the red line on their tab when stacked: a
+  // link, projection or booster switched on, a system effect, an implant plugged in, a drone or
+  // fighter out. Something merely listed but switched off doesn't count.
+  const windowLive = (id) => {
+    if (!s.activeFit?.ship) return false;
+    const on = (x) => x && x.active !== false;
+    switch (id) {
+      case "command": return (s.cmdFits ?? []).some(on);
+      case "projected": return (s.projFits ?? []).some(on);
+      case "boosters": return (s.boosters ?? []).some(b => b?.active);
+      case "environment": return !!s.slots?.environment;
+      case "implants": return (s.implants ?? []).some(i => i?.name && i.name !== "[Empty]");
+      case "drones": return (s.drones ?? []).some(d => d?.active && (d.qty ?? 0) > 0) || (s.fighters ?? []).some(f => on(f) && (f.qty ?? 1) > 0);
+      default: return false;
+    }
+  };
   const openShipInfo = () => { if (s.activeFit?.ship) openWindow(setLayoutState, "shipinfo"); };
   // An empty module slot's double-click: the Browser, on Market, filtered to that rack, search focused.
   // What is picked there fits into the rack's first free slot (adderRef), as a Market double-click does.
@@ -591,7 +607,7 @@ function DesktopApp() {
           ]} />
         </header>
 
-        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra}
+        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra} windowLive={windowLive}
           backgroundItems={hasFit ? [{ heading: s.activeFit.ship }, { label: t("Ship info"), icon: eveIcon(tidByName(s.activeFit.ship), 32), onSelect: openShipInfo }] : null}
           onPopOut={popOut} onDock={dock} backdrop={<Backdrop url={bd.url} settings={bd.settings} />} />
       </div>
