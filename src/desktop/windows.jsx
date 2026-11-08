@@ -88,12 +88,12 @@ export function StatsWindow({ s, ship, sections, id }) {
   );
 }
 
-export function FittingWindow({ s, ship, adderRef, cols, setCols }) {
+export function FittingWindow({ s, ship, adderRef, cols, setCols, onBrowseRack }) {
   if (!ship) return <NoFit />;
   return (
     <FitTableConfig.Provider value={{ hub: s.priceHub, source: s.priceSource, cols, setCols }}>
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <FitTab TableView={FitTable} MenuFrame={DialogFrame} adderRef={adderRef} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
+      <FitTab TableView={FitTable} MenuFrame={DialogFrame} adderRef={adderRef} onBrowseRack={onBrowseRack} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
         skills={s.fitSkills} implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload}
         externalBursts={s.externalBursts} projectedEffects={s.projectedEffects} dmgProfile={s.dmgProfile} tgtProfile={s.tgtProfile}
         autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd} />

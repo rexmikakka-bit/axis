@@ -65,9 +65,9 @@ function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub,
 }
 
 // With an ✕ to clear it once there is something in it; Escape in the box clears it too.
-const SearchBox = ({ value, onChange, placeholder }) => (
+const SearchBox = ({ value, onChange, placeholder, inputRef }) => (
   <div style={{ position: "relative", margin: "8px 10px 6px", flex: "none" }}>
-    <input data-desk-search value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+    <input ref={inputRef} data-desk-search value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
       onKeyDown={e => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange(""); } }}
       style={{ height: 28, boxSizing: "border-box", width: "100%", padding: value ? "0 30px 0 10px" : "0 10px", borderRadius: 6, fontSize: 13.5,
                background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
@@ -184,7 +184,7 @@ function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind, headroom }
   );
 }
 
-function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
+function MarketPane({ s, ship, cs, adderRef, remoteAdd, rackRequest }) {
   const headroom = useHeadroom(s, ship, cs);
   const isStructure = (TYPES[ship?.typeID]?.c ?? TYPES[ship?.typeID]?.category) === 65;
   // null = no rack: everything. Remembered, like the window's other choices.
@@ -195,6 +195,18 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const insp = useInspect();
+  // An empty slot in the Fitting window asks for its rack ({rack, n}): that rack's tree, a fresh search,
+  // and the cursor in this pane's own search box. Focused from here, after this pane has rendered, and
+  // retried for a moment: the Ships pane's box was still the one on screen when the request arrived,
+  // and the double-click that sent it can still move focus as the Browser comes to the front.
+  const searchRef = useRef(null);
+  useEffect(() => {
+    if (!rackRequest?.rack) return;
+    setRack(rackRequest.rack); setSelected(null); setOpen(new Set()); setSearch("");
+    let tries = 0;
+    const id = setInterval(() => { const el = searchRef.current; if (el && document.activeElement !== el) el.focus(); if (++tries >= 6) clearInterval(id); }, 50);
+    return () => clearInterval(id);
+  }, [rackRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   // A market row opens as a type with its rack, so its Variations window can fit a variant.
   const setInfo = ({ typeID, tab }) => insp.inspect(typeTarget(typeID, rack && itemKind({ typeID }).kind === "module" ? rack : undefined), tab);
   const rs = useRowSelect();
@@ -293,7 +305,7 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
                    background: legal ? C.accentLight : "transparent", border: `1px solid ${legal ? C.accent : C.borderStrong}`,
                    color: legal ? C.accent : C.textMid }}>{t("Legal")}</button>}
       </div>
-      <SearchBox value={search} onChange={setSearch} placeholder={abyssal ? t("Search your rolls") : rack ? t("Search modules") : t("Search everything")} />
+      <SearchBox inputRef={searchRef} value={search} onChange={setSearch} placeholder={abyssal ? t("Search your rolls") : rack ? t("Search modules") : t("Search everything")} />
       {abyssal && <AbyssalPane s={s} ship={ship} search={search} rowProps={rs.rowProps} TreeRow={TreeRow} headroom={headroom}
         fit={(rk, mod) => { if (!ship) return; if (adderRef?.current) adderRef.current(rk, mod); else remoteAdd?.(rk, mod); }} />}
       {!abyssal && <>
@@ -437,14 +449,15 @@ function ShipsPane({ s }) {
 
 // `modeRequest` ({mode, n, focus}): switch to that mode now — the header's "+" asks for Ships,
 // Ctrl+Space for "toggle" (pyfa's ship/market switch) — and with `focus`, put the cursor in the
-// search box (Ctrl+F).
+// search box (Ctrl+F). With `rack`, the Market pane switches to that rack (an empty slot's double-click).
 export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequest }) {
   const [mode, setMode] = useState("ships");
   const rootRef = useRef(null);
   useEffect(() => {
     if (modeRequest?.mode === "toggle") setMode(m => (m === "ships" ? "market" : "ships"));
     else if (modeRequest?.mode) setMode(modeRequest.mode);
-    if (modeRequest?.focus) requestAnimationFrame(() => { const el = rootRef.current?.querySelector("[data-desk-search]"); el?.focus(); el?.select?.(); });
+    // Two frames: a request that also switches to Market has to wait for that pane to mount.
+    if (modeRequest?.focus) requestAnimationFrame(() => requestAnimationFrame(() => { const el = rootRef.current?.querySelector("[data-desk-search]"); el?.focus(); el?.select?.(); }));
   }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -455,7 +468,7 @@ export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequ
                      background: mode === id ? C.accentLight : "transparent", color: mode === id ? C.accent : C.textMid }}>{label}</button>
         ))}
       </div>
-      {mode === "market" ? <MarketPane s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} /> : <ShipsPane s={s} />}
+      {mode === "market" ? <MarketPane s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} rackRequest={modeRequest?.rack ? modeRequest : null} /> : <ShipsPane s={s} />}
     </div>
   );
 }

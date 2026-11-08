@@ -273,7 +273,9 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 // `TableView` (desktop only): a component that draws the racks in place of this tab's own rows and
 // resource strip. It gets `api` — the rows and every handler they need — while this tab keeps ALL
 // the logic, menus and sheets, so the desktop table edits a fit exactly as the phone does.
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null,MenuFrame=null}){
+// `onBrowseRack` (desktop only): (secKey, slotId) => void. An empty module slot asks for it instead of
+// opening the module picker sheet; the desktop answers with its Browser window, on that rack.
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,onBrowseRack=null,dense=false,TableView=null,MenuFrame=null}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
   // Memoised on its inputs: this tab re-renders for menus, gestures and every unrelated session
@@ -738,7 +740,9 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
         </div>
       )}
       {TableView?<TableView api={{SECS,getDisplayRows,slots,setSlots,ship,cs:_cs,engineStatsBySlotID,StateDot,gestureMemory,validStatesFor,
-          openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
+          openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),
+          // The desktop picks modules in its Browser window (onBrowseRack); subsystems, and the phone, keep the sheet.
+          openEmpty:(secKey,id)=>onBrowseRack&&secKey!=="subsystems"?onBrowseRack(secKey,id):setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
           openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
           setRowState,removeMod,duplicateMod,duplicateRoom,updateMod,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
           undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
