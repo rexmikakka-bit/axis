@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import KeysSettings from "./KeysSettings.jsx";
 import { createPortal } from "react-dom";
 import { C, THEMES, THEME_LABELS } from "../theme.js";
 import { availableLocales, t } from "../lib/i18n.js";
@@ -29,7 +30,7 @@ import { TYPE, WEIGHT } from "./kit.jsx";
 // second copy of those would be a second place for them to go wrong. Only the drawing is the desktop's.
 
 const SECTIONS = [
-  ["skills", "Skills"], ["interface", "Interface"], ["market", "Market"],
+  ["skills", "Skills"], ["interface", "Interface"], ["keyboard", "Keyboard"], ["market", "Market"],
   ["backup", "Backup"], ["esi", "ESI"], ["about", "About"],
 ];
 const SECTION_KEY = "axis_desk_settings_section";
@@ -602,6 +603,7 @@ export default function DeskSettings({ s, bd }) {
         <div style={{ maxWidth: 720 }}>
           {cur === "skills" && <SkillsSection s={s} />}
           {cur === "interface" && <InterfaceSection s={s} bd={bd} />}
+          {cur === "keyboard" && <KeysSettings />}
           {cur === "market" && <MarketSection s={s} />}
           {cur === "backup" && <BackupSection />}
           {cur === "esi" && <EsiSection s={s} />}
