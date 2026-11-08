@@ -24,7 +24,7 @@ import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
 import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, openInspector, Button, reopenClosed, CLOSED_EVENT } from "./Workspace.jsx";
 import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
-import { FirepowerPanel } from "./Firepower.jsx";
+import { FirepowerPanel, RemoteRepsPanel } from "./Firepower.jsx";
 import ExportDialog from "./ExportDialog.jsx";
 import CargoPanel from "./Cargo.jsx";
 import GraphsPanel from "./Graphs.jsx";
@@ -208,12 +208,15 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "defense": return <DefensePanel s={s} cs={cs} onPickProfile={() => openProfilePicker?.()} />;
       // Remote reps and mining sit under the firepower they belong with, only on fits that have them.
       case "firepower": return (
-        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-          <div style={{ flex: 1, minHeight: 0 }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>
-          {((cs?.remoteRepModules?.length ?? 0) > 0 || (cs?.mining?.totalM3S ?? 0) > 0) &&
-            <div style={{ flex: "none", maxHeight: "45%", overflowY: "auto", borderTop: `1px solid ${C.border}` }}>
-              <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS.repsmining} id="repsmining" />
-            </div>}
+        // Straight under the firepower figures, the window scrolling as one, rather than pinned to its
+        // bottom: on a logistics fit the firepower is all zeros and the reps are the point.
+        <div style={{ height: "100%", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+          {((cs?.remoteRepModules?.length ?? 0) > 0 || (cs?.mining?.totalM3S ?? 0) > 0) ? <>
+            <div style={{ flex: "none" }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>
+            <RemoteRepsPanel cs={cs} />
+            {(cs?.mining?.totalM3S ?? 0) > 0 && <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <StatsWindow s={s} ship={ship} sections={["mining"]} id="mining" /></div>}
+          </> : <div style={{ flex: 1, minHeight: 0 }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>}
         </div>
       );
       case "validation": return <ValidationPanel cs={cs} issues={issues} />;

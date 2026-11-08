@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
@@ -6,7 +6,8 @@ import { DMG, validStatesFor, NAVY_AMMO_PREFIXES } from "../lib/core.js";
 import { META_COLORS } from "../lib/meta.js";
 import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { TargetProfileSheet } from "../components/ui.jsx";
-import { KV, Empty, Dialog, TYPE, WEIGHT } from "./kit.jsx";
+import { KV, Empty, Dialog, SectionLabel, TYPE, WEIGHT } from "./kit.jsx";
+import { eveIcon } from "../lib/icons.js";
 
 // The desktop Firepower window: the phone's Firepower card (tabs.jsx StatsTab) figure for figure —
 // resist-weighted when a target profile is set, spool ranges, clip damage only for weapons that
@@ -25,6 +26,83 @@ function Toggle({ on, onClick, color, children, title }) {
                background: on ? `${color}1f` : "transparent", border: `1px solid ${on ? color : C.borderStrong}`, color: on ? color : C.textMid }}>
       <span style={{ width: 6, height: 6, borderRadius: 99, background: on ? color : C.textMid }} />{children}
     </button>
+  );
+}
+
+// ── Remote reps ──────────────────────────────────────────────────────────────────────────────
+// The phone's Remote Reps card (tabs.jsx StatsTab) for the desktop: the totals as label/value rows,
+// one per layer this fit actually reps, each with its efficiency spelled out (the phone hides it
+// behind a tap); then the modules behind them, one row per kind with a count, giving what each
+// lands per cycle, how often and how far. Same figures as the phone, from the same calcFitStats.
+const KIND = {
+  shield: { label: () => t("Shield"), unit: "HP/s", color: () => C.mid, total: "remoteShieldPS", gjPerHp: "remoteShieldGJPerHP" },
+  armor:  { label: () => t("Armor"),  unit: "HP/s", color: () => C.warning, total: "remoteArmorPS", gjPerHp: "remoteArmorGJPerHP" },
+  hull:   { label: () => t("Hull"),   unit: "HP/s", color: () => C.danger, total: "remoteHullPS", gjPerHp: "remoteHullGJPerHP" },
+  cap:    { label: () => t("Capacitor"), unit: "GJ/s", color: () => C.rig, total: "remoteCapPS" },
+};
+const fmt1 = (n) => n == null ? "—" : n >= 100 ? Math.round(n).toLocaleString() : (+n.toFixed(1)).toLocaleString();
+export function RemoteRepsPanel({ cs }) {
+  // Narrow, the table keeps the module, its rate and its range; per-cycle and cycle go to the tooltip.
+  const [width, setWidth] = useState(600);
+  const boxRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width)); ro.observe(el); return () => ro.disconnect();
+  }, [(cs?.remoteRepModules?.length ?? 0) > 0]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const narrow = width < 480;
+  const mods = cs?.remoteRepModules ?? [];
+  if (!mods.length) return null;
+  // A Mutadaptive remote armor repairer spools: its rate, and the armor total, are a range.
+  const spool = mods.find(m => (m.spoolFactor ?? 1) > 1);
+  const armorMax = spool ? (cs.remoteArmorPS ?? 0) - (spool.repPS ?? 0) + (spool.repPSMax ?? 0) : null;
+  const order = ["shield", "armor", "hull", "cap"];
+  const rows = order.filter(k => (cs[KIND[k].total] ?? 0) > 0).flatMap(k => {
+    const K = KIND[k], v = cs[K.total] ?? 0, gj = K.gjPerHp ? cs[K.gjPerHp] : null;
+    const rate = k === "armor" && spool ? `${fmt1(v)}–${fmt1(armorMax)} ${K.unit}` : `${fmt1(v)} ${K.unit}`;
+    return [
+      [K.label(), rate, { color: K.color(), weight: WEIGHT.strong }],
+      gj != null && [t("{layer} per GJ", { layer: K.label() }), gj === 0 ? t("Free") : `${fmt1(1 / gj)} HP`,
+        { title: t("Hit points repaired for each GJ of capacitor spent") }],
+    ];
+  });
+  // One row per module kind, in layer order, with a count.
+  const groups = [];
+  for (const k of order) for (const m of mods.filter(x => x.kind === k)) {
+    const g = groups.find(x => x.name === m.name);
+    if (g) { g.n++; g.repPS += m.repPS ?? 0; g.repPSMax += m.repPSMax ?? m.repPS ?? 0; } else groups.push({ ...m, n: 1, repPSMax: m.repPSMax ?? m.repPS ?? 0 });
+  }
+  const cols = narrow ? "18px minmax(0,1fr) auto auto" : "18px minmax(0,1fr) 78px 58px 86px 92px";
+  const head = { fontSize: TYPE.section, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid, textAlign: "right" };
+  const cell = { textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
+  return (
+    <div ref={boxRef} style={{ borderTop: `1px solid ${C.border}` }}>
+      <SectionLabel>{t("Remote Reps")}</SectionLabel>
+      <KV min={150} rows={rows} />
+      <div style={{ display: "grid", gridTemplateColumns: cols, columnGap: 10, alignItems: "center", padding: "4px 12px", borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}` }}>
+        <span /><span style={{ ...head, textAlign: "left" }}>{t("Module")}</span>
+        {!narrow && <><span style={head}>{t("Per cycle")}</span><span style={head}>{t("Cycle")}</span></>}<span style={head}>{t("Rate")}</span><span style={head}>{t("Range")}</span>
+      </div>
+      {groups.map(g => {
+        const K = KIND[g.kind];
+        const spools = (g.spoolFactor ?? 1) > 1;
+        const perCycle = `${(g.amount ?? 0).toLocaleString()} ${g.kind === "cap" ? "GJ" : "HP"}`, cycle = g.cycleMs ? `${+(g.cycleMs / 1000).toFixed(2)}s` : "—";
+        return (
+          <div key={g.name} title={narrow ? `${g.n > 1 ? `${g.n}× ` : ""}${g.name} · ${perCycle} / ${cycle}` : undefined} style={{ display: "grid", gridTemplateColumns: cols, columnGap: 10, alignItems: "center", minHeight: 28, padding: "0 12px",
+                                     fontSize: TYPE.label, borderBottom: `1px solid ${C.border}99` }}>
+            <img className="eve-icon" src={eveIcon(g.typeID, 32)} width={18} height={18} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />
+            <span title={g.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>
+              {g.n > 1 && <span style={{ color: C.textMid }}>{g.n}× </span>}{g.name}
+            </span>
+            {!narrow && <><span style={{ ...cell, color: C.text }}>{perCycle}</span><span style={{ ...cell, color: C.textMid }}>{cycle}</span></>}
+            <span style={{ ...cell, color: K.color() }} title={spools ? t("Spools up to {max} over {s}s", { max: fmt1(g.repPSMax), s: g.spoolTimeS ?? 0 }) : undefined}>
+              {spools ? `${fmt1(g.repPS)}–${fmt1(g.repPSMax)}` : fmt1(g.repPS)} {K.unit}
+            </span>
+            <span style={{ ...cell, color: C.rig }}>{g.optimal ? `${g.optimal}${g.falloff ? ` + ${g.falloff}` : ""} km` : "—"}</span>
+          </div>
+        );
+      })}
+      {spool && (spool.spoolTimeS ?? 0) > 0 && <KV min={150} rows={[[t("Spool-up time"), `${fmt1(spool.spoolTimeS)}s`]]} />}
+    </div>
   );
 }
 
