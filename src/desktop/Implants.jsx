@@ -133,16 +133,16 @@ export default function ImplantsPanel({ s }) {
                 return (
                   <div key={n} {...withRow(`s:${n}`, {
                     target: empty ? undefined : implantTarget(insp.fitRef, n, imp.typeID ?? tidByName(imp.name)),
-                    onOpen: () => empty ? setPicker({ slot: n, name: EMPTY }) : showDetail(imp, n, "info"),
+                    onOpen: () => empty ? setPicker({ slot: n, name: EMPTY }) : clearSlot(n),
                     items: () => empty
                       ? [{ label: t("Add implant…"), hint: t("Double-click"), onSelect: () => setPicker({ slot: n, name: EMPTY }) }]
                       : [
-                          { label: t("Show info"), hint: t("Double-click"), onSelect: () => showDetail(imp, n, "info") },
+                          { label: t("Show info"), onSelect: () => showDetail(imp, n, "info") },
                           { label: t("Variations"), onSelect: () => showDetail(imp, n, "variations") },
                           { label: t("Change implant…"), onSelect: () => setPicker({ slot: n, name: imp.name }) },
                           implantSetMembers(imp.name) && { label: t("+ {set} set", { set: implantSetMembers(imp.name).setName }), onSelect: () => fitSet(implantSetMembers(imp.name)) },
                           { divider: true },
-                          { label: t("Remove implant"), hint: "Del", danger: true, onSelect: () => clearSlot(n) },
+                          { label: t("Remove implant"), hint: t("double-click · Del"), danger: true, onSelect: () => clearSlot(n) },
                         ],
                   })}>
                     <span style={{ width: 22, fontSize: TYPE.small, color: C.textMid, textAlign: "right" }}>{n}</span>

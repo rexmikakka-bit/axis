@@ -289,7 +289,7 @@ const ListRow = ({ swatch, label, onRemove, children }) => (
     {onRemove && <button type="button" onClick={onRemove} aria-label={t("Remove")} style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
   </div>
 );
-const addBtn = () => ({ height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid });
+const addBtn = (disabled = false) => ({ height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: disabled ? "default" : "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid, opacity: disabled ? 0.45 : 1 });
 const fieldStyle = () => ({ width: 64, height: 24, boxSizing: "border-box", padding: "0 6px", borderRadius: 5, fontSize: 12.5, textAlign: "right",
                      fontVariantNumeric: "tabular-nums", background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" });
 
@@ -468,6 +468,17 @@ export default function GraphsPanel({ s }) {
     : showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
   const angularDeg = showTransversal ? calcAngularSpeed(selfSpeedNow, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtSpeedNow, inp.tgtAngle, 0) * 180 / Math.PI : NaN;
   const fmtAngular = v => !Number.isFinite(v) ? "--" : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
+  // Adding a fit, from the picker or "+ Current fit". One already on the graph is not added twice: two
+  // identical lines say nothing, and the pair is the line's identity (its React key and legend entry).
+  // The first explicit source keeps the auto-graphed open fit, so adding a second one compares them.
+  const addSource = (ship, fitName) => setSources(l => {
+    const base = l.length ? l : srcList.map(({ ship: a, fitName: b }) => ({ ship: a, fitName: b }));
+    return base.some(q => q.ship === ship && q.fitName === fitName) ? base : [...base, { ship, fitName }];
+  });
+  const addTarget = (ship, fitName) => setTargets(l => l.some(q => q.kind === "fit" && q.ship === ship && q.fitName === fitName) ? l : [...l, { kind: "fit", ship, fitName }]);
+  const cur = s.activeFit?.ship && s.activeFit?.fitName ? { ship: s.activeFit.ship, fitName: s.activeFit.fitName } : null;
+  const curIsSource = !!cur && srcList.some(q => q.ship === cur.ship && q.fitName === cur.fitName);
+  const curIsTarget = !!cur && targets.some(q => q.kind === "fit" && q.ship === cur.ship && q.fitName === cur.fitName);
   const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
   // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
   const addCustom = added(() => { const td = tgtData.find(Boolean);
@@ -554,7 +565,11 @@ export default function GraphsPanel({ s }) {
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
           onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
         {!srcList.length && <div style={{ fontSize: 12.5, color: C.textMid }}>{t("Open a fit, or add one.")}</div>}
-        <button type="button" style={{ ...addBtn(), marginTop: 4 }} onClick={() => setPicker("source")}>+ {t("Add fit")}</button>
+        <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <button type="button" style={addBtn()} onClick={() => setPicker("source")}>+ {t("Fit")}</button>
+          <button type="button" style={addBtn(!cur || curIsSource)} disabled={!cur || curIsSource} title={curIsSource ? t("Already on the graph") : undefined}
+            onClick={added(() => addSource(cur.ship, cur.fitName))}>+ {t("Current fit")}</button>
+        </div>
         </div>
 
         {hasTargets && <div>
@@ -587,6 +602,8 @@ export default function GraphsPanel({ s }) {
               label: TARGET_PROFILES[k].label(), onSelect: added(() => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }])) })).concat([
               { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
             <button type="button" style={addBtn()} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
+            <button type="button" style={addBtn(!cur || curIsTarget)} disabled={!cur || curIsTarget} title={curIsTarget ? t("Already on the graph") : undefined}
+              onClick={added(() => addTarget(cur.ship, cur.fitName))}>+ {t("Current fit")}</button>
           </div>
         </div>}
 
@@ -628,11 +645,7 @@ export default function GraphsPanel({ s }) {
         onSelect={added((ship, fit) => {
           // A fit already on the graph is not added twice: two identical lines say nothing, and the
           // pair is the line's identity (its React key and its legend entry).
-          if (picker === "source") setSources(l => {
-            const cur = l.length ? l : srcList.map(({ ship: a, fitName: b }) => ({ ship: a, fitName: b }));
-            return cur.some(x => x.ship === ship && x.fitName === fit.name) ? cur : [...cur, { ship, fitName: fit.name }];
-          });
-          else setTargets(l => l.some(x => x.kind === "fit" && x.ship === ship && x.fitName === fit.name) ? l : [...l, { kind: "fit", ship, fitName: fit.name }]);
+          if (picker === "source") addSource(ship, fit.name); else addTarget(ship, fit.name);
         })} onClose={() => setPicker(null)} />}
     </div>
   );

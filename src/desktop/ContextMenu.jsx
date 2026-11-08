@@ -95,7 +95,7 @@ export function useRowSelect() {
       className: "no-select",
       onClick: () => { setSel(key); if (target) select(target); },
       onDoubleClick: onOpen ? (e) => { if (!e.target.closest("input, button, select")) onOpen(); } : undefined,
-      onContextMenu: items ? (e) => { e.preventDefault(); setSel(key); if (target) select(target); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
+      onContextMenu: items ? (e) => { e.preventDefault(); e.stopPropagation(); setSel(key); if (target) select(target); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
       style: { cursor: "default", background: on ? C.accentLight : "transparent", boxShadow: on ? `inset 2px 0 0 ${C.accent}` : "none" },
       onMouseEnter: (e) => { if (!on) e.currentTarget.style.background = C.surfaceAlt; },
       onMouseLeave: (e) => { e.currentTarget.style.background = on ? C.accentLight : "transparent"; },

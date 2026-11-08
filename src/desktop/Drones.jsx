@@ -61,11 +61,11 @@ export default function DronesPanel({ s, stats }) {
       { label: d.active ? t("Recall to bay") : t("Launch"), onSelect: () => toggleActive(d.id) },
       { label: t("Add a flight (+{n})", { n: DRONE_FLIGHT }), onSelect: () => set(l => l.map(x => x.id === d.id ? { ...x, qty: x.qty + DRONE_FLIGHT } : x)) },
       { divider: true },
-      { label: t("Show info"), hint: t("Double-click"), onSelect: () => open(d, "info") },
+      { label: t("Show info"), onSelect: () => open(d, "info") },
       { label: t("Variations"), onSelect: () => open(d, "variations") },
       hasMuta && { label: t("Mutate"), onSelect: () => open(d, "mutate") },
       { divider: true },
-      { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(d.id) },
+      { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(d.id) },
     ];
   };
   return (
@@ -89,7 +89,7 @@ export default function DronesPanel({ s, stats }) {
           const i = info(d);
           const range = i.optimal > 0 ? `${km(i.optimal)}${i.falloff > 0 ? ` + ${km(i.falloff)}` : ""} km` : "—";
           const speed = i.velocity > 0 ? `${Math.round(i.velocity)} m/s` : "—", ehp = i.ehp > 0 ? Math.round(i.ehp).toLocaleString() : "—";
-          const rp = rs.rowProps(d.id, { onOpen: () => open(d, "info"), items: () => items(d), target: droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)) });
+          const rp = rs.rowProps(d.id, { onOpen: () => remove(d.id), items: () => items(d), target: droneTarget(insp.fitRef, d.id, d.typeID ?? tidByName(d.name)) });
           return (
             <div key={d.id} {...rp} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, rowGap: 2, alignItems: "center", minHeight: 30,
                                      padding: narrow ? "5px 12px" : "0 12px", borderBottom: `1px solid ${C.border}99`, opacity: d.active ? 1 : 0.65 }}>

@@ -78,15 +78,15 @@ export default function FightersPanel({ s, stats, shipFighter }) {
           const col = C[CLASSES.find(([c]) => c === cls)?.[2]] ?? C.textMid;
           const rp = rs.rowProps(f.id, {
             target: tid ? typeTarget(tid) : undefined,
-            onOpen: tid ? () => insp.inspect(typeTarget(tid), "info") : undefined,
+            onOpen: () => remove(f.id),
             items: [
               { label: on ? t("Return to the bay") : t("Launch"), onSelect: () => toggle(f.id) },
               { label: t("Add a squadron"), onSelect: () => setQty(f.id, (f.qty ?? 1) + 1) },
               { divider: true },
-              { label: t("Show info"), hint: t("Double-click"), disabled: !tid, onSelect: () => insp.inspect(typeTarget(tid), "info") },
+              { label: t("Show info"), disabled: !tid, onSelect: () => insp.inspect(typeTarget(tid), "info") },
               { label: t("Variations"), disabled: !tid, onSelect: () => insp.inspect(typeTarget(tid), "variations") },
               { divider: true },
-              { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(f.id) },
+              { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(f.id) },
             ],
           });
           return (

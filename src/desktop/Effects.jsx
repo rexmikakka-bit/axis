@@ -106,14 +106,14 @@ export function BoostersPanel({ s }) {
           const bonuses = known ? boosterBonuses(b) : [];
           const rp = rs.rowProps(b.id, {
             target: known ? bTarget(b) : undefined,
-            onOpen: known ? () => show(b, "info") : undefined,
+            onOpen: () => remove(b.id),
             items: () => [
               { label: b.active ? t("Deactivate") : t("Activate"), onSelect: () => toggle(b.id) },
               { divider: true },
-              { label: t("Show info"), hint: t("Double-click"), disabled: !known, onSelect: () => show(b, "info") },
+              { label: t("Show info"), disabled: !known, onSelect: () => show(b, "info") },
               { label: t("Variations"), disabled: !known, onSelect: () => show(b, "variations") },
               { divider: true },
-              { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(b.id) },
+              { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(b.id) },
             ],
           });
           return (
@@ -198,6 +198,7 @@ export function projectedLines(eff, rangeKm, assist, jamTarget, ewarResist) {
 export function ProjectedPanel({ s, jamTarget }) {
   const [picker, setPicker] = useState(false);
   const [modMenu, setModMenu] = useState(null);   // the Default effect menu, {x, y}
+  const rs = useRowSelect();
   // A fit dragged from the ship browser projects onto this one, as if picked from the list. Not the
   // fit being edited: a fit projecting onto itself is not an engagement.
   const fitOf = (ship, name) => s.fitsDB?.[ship]?.find(f => f.name === name);
@@ -206,6 +207,7 @@ export function ProjectedPanel({ s, jamTarget }) {
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = s.projFits ?? [];
   const update = (i, patch) => s.setProjFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, ...patch } : p));
+  const removeAt = (i) => s.setProjFits(prev => (prev ?? []).filter((_, j) => j !== i));
   // The phone's default range: the shortest optimal of anything on the source that projects.
   const defaultRange = (ship, fit, fallback) => {
     const eff = projectedFitEffects(ship, fit, s.fitsDB, s.sourceSkills);
@@ -227,7 +229,7 @@ export function ProjectedPanel({ s, jamTarget }) {
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setModMenu({ x: r.left, y: r.bottom + 4 }); }}>+ {t("Default effect")} ▾</button>
         <button type="button" style={btn()} onClick={() => setPicker(true)}>+ {t("Fit")}</button>
       </div>
-      <Body>
+      <Body list={rs.listProps({ onDelete: removeAt })}>
         {!list.length && <None>{t("No projected fits or effects applied")}</None>}
         {list.map((f, i) => {
           const generic = isProjectedModule(f);
@@ -236,8 +238,15 @@ export function ProjectedPanel({ s, jamTarget }) {
           const range = f.rangeKm ?? 30;
           const lines = src ? projectedLines(projectedFitEffects(src.ship, src.fit, s.fitsDB, s.sourceSkills), range, s.projectedEffects?.assist, jamTarget, s.projectedEffects?.ewarResist) : [];
           const qty = clampQty(f.qty), scripts = generic ? scriptsFor(f.module) : null;
+          // The same row model as every other list: click selects, double-click or Del removes, right-click for the rest.
+          const rp = rs.rowProps(i, { onOpen: () => removeAt(i), items: () => [
+            { label: on ? t("Ignore") : t("Apply"), onSelect: () => update(i, { active: !on }) },
+            !generic && src && { label: t("Open this fit in a new tab"), onSelect: () => s.openFitInNewTab(f.ship, f.fitName) },
+            { divider: true },
+            { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => removeAt(i) },
+          ] });
           return (
-            <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
+            <div key={i} {...rp} style={{ ...rp.style, borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
               <div style={{ ...rowStyle(), borderBottom: "none" }}>
                 <Check on={on} onClick={() => update(i, { active: !on })} title={on ? t("Applied to this fit") : t("Ignored")} />
                 {generic ? <>
@@ -252,7 +261,7 @@ export function ProjectedPanel({ s, jamTarget }) {
                   </div>
                   {src && <button type="button" style={smallBtn()} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
                 </>}
-                <Remove onClick={() => s.setProjFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
+                <Remove onClick={() => removeAt(i)} label={t("Remove")} />
               </div>
               {/* A default effect's count, as a plain stepper, and its script — on their own line, so
                   the module's name keeps the header however narrow the window. */}
@@ -290,6 +299,7 @@ export function ProjectedPanel({ s, jamTarget }) {
       {picker && <FitPickerSheet title={t("Project a Fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={(ship, fit) => add(ship, fit)} onClose={() => setPicker(false)} />}
       {modMenu && <ContextMenu x={modMenu.x} y={modMenu.y} items={moduleMenu()} onClose={() => setModMenu(null)} />}
+      {rs.view}
     </Shell>
   );
 }
@@ -315,6 +325,7 @@ function linkMenuItems(onAdd) {
 export function CommandPanel({ s }) {
   const [picker, setPicker] = useState(false);
   const [linkMenu, setLinkMenu] = useState(null);   // {x, y, items}
+  const rs = useRowSelect();
   const addLink = (l) => s.setCmdFits(prev => [...(prev ?? []), l]);
   const setAt = (i, patch) => s.setCmdFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, ...patch } : p));
   // Right-click anywhere in the window: add a fit, or a generic link — pyfa's command view menu.
@@ -328,6 +339,13 @@ export function CommandPanel({ s }) {
                           (ship, name) => s.setCmdFits(prev => [...(prev ?? []), { ship, fitName: name }]));
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = s.cmdFits ?? [];
+  const removeAt = (i) => s.setCmdFits(prev => (prev ?? []).filter((_, j) => j !== i));
+  const rowFor = (i, on, f, src) => rs.rowProps(i, { onOpen: () => removeAt(i), items: () => [
+    { label: on ? t("Ignore") : t("Apply"), onSelect: () => setAt(i, { active: !on }) },
+    src && { label: t("Open this fit in a new tab"), onSelect: () => s.openFitInNewTab(f.ship, f.fitName) },
+    { divider: true },
+    { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => removeAt(i) },
+  ] });
   return (
     <Shell drop={drop} dropLabel={t("Add command links")}>
       <div onContextMenu={openMenu} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
@@ -337,14 +355,14 @@ export function CommandPanel({ s }) {
           + {t("Generic links")} ▾</button>
         <button type="button" style={btn()} onClick={() => setPicker(true)}>+ {t("Fit")}</button>
       </div>
-      <Body>
+      <Body list={rs.listProps({ onDelete: removeAt })}>
         {!list.length && <None>{t("No command links applied. Add a fleet support fit, or generic links (right-click works too).")}</None>}
         {list.map((f, i) => {
           if (isLink(f)) {
             // A generic link: its strength and mindlink edited in place, a line per buff it applies.
-            const on = f.active !== false;
+            const on = f.active !== false, rp = rowFor(i, on, f, null);
             return (
-              <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
+              <div key={i} {...rp} style={{ ...rp.style, borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
                 <div style={{ ...rowStyle(), borderBottom: "none" }}>
                   <Check on={on} onClick={() => setAt(i, { active: !on })} title={on ? t("Applied to this fit") : t("Ignored")} />
                   <div style={{ flex: 1, minWidth: 0, fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={linkLabel(f)}>
@@ -357,7 +375,7 @@ export function CommandPanel({ s }) {
                   <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, color: C.textMid, whiteSpace: "nowrap" }} title={t("A warfare mindlink: +25% strength")}>
                     <input type="checkbox" checked={!!f.mindlink} onChange={() => setAt(i, { mindlink: !f.mindlink })} style={{ accentColor: C.accent }} />{t("Mindlink")}
                   </label>
-                  <Remove onClick={() => s.setCmdFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
+                  <Remove onClick={() => removeAt(i)} label={t("Remove")} />
                 </div>
                 <div style={{ padding: "0 12px 6px 38px" }}>
                   {linkBursts(f).map((b, j) => (
@@ -372,9 +390,9 @@ export function CommandPanel({ s }) {
           }
           const src = s.fitsDB?.[f.ship]?.find(x => x.name === f.fitName);
           const bursts = src ? computeCommandBursts({ name: f.ship, typeID: tidByName(f.ship) }, src.slots, s.sourceSkills(src), { implants: src.implants, boosters: src.boosters }) : [];
-          const on = f.active !== false;
+          const on = f.active !== false, rp = rowFor(i, on, f, src);
           return (
-            <div key={i} style={{ borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
+            <div key={i} {...rp} style={{ ...rp.style, borderBottom: `1px solid ${C.border}`, opacity: on ? 1 : 0.55 }}>
               <div style={{ ...rowStyle(), borderBottom: "none" }}>
                 <Check on={on} onClick={() => s.setCmdFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, active: !on } : p))} title={on ? t("Applied to this fit") : t("Ignored")} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -382,7 +400,7 @@ export function CommandPanel({ s }) {
                   <span style={{ fontSize: TYPE.label, color: C.textMid }}> · {f.fitName}</span>
                 </div>
                 {src && <button type="button" style={smallBtn()} onClick={() => s.openFitInNewTab(f.ship, f.fitName)} title={t("Open this fit in a new tab")}>{t("Open")}</button>}
-                <Remove onClick={() => s.setCmdFits(prev => (prev ?? []).filter((_, j) => j !== i))} label={t("Remove")} />
+                <Remove onClick={() => removeAt(i)} label={t("Remove")} />
               </div>
               <div style={{ padding: "0 12px 6px 38px" }}>
                 {!bursts.length && <div style={{ fontSize: TYPE.small, color: C.textMid }}>{t("No active command bursts on this fit")}</div>}
@@ -399,6 +417,7 @@ export function CommandPanel({ s }) {
       </Body>
       </div>
       {linkMenu && <ContextMenu x={linkMenu.x} y={linkMenu.y} items={linkMenu.items} onClose={() => setLinkMenu(null)} />}
+      {rs.view}
       {picker && <FitPickerSheet title={t("Select Command Ship Fit")} fitsDB={s.fitsDB} filterFn={hasCommandBursts} pinned={tabFits(s.openFitTabs, s.fitsDB, hasCommandBursts)}
         onSelect={(ship, fit) => s.setCmdFits(prev => [...(prev ?? []), { ship, fitName: fit.name }])} onClose={() => setPicker(false)} />}
     </Shell>

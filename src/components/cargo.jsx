@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDeskSheet } from "../lib/sheet-frame.js";
 import marketTreeData from "../data/market-tree.json";
 import { C } from "../theme.js";
 import { eveIcon } from "../lib/icons.js";
@@ -118,6 +119,16 @@ export function CargoBrowserSheet({onAdd,onClose,slots,justAdded}){
     setPath(p=>{const out=[...p];while(out.length&&!MT_CHARGE_GROUPS.has(out[out.length-1]))out.pop();return out;});
   };
 
+  // The desktop has no on-screen keyboard, and its other pickers search from the top: the search goes
+  // in the header there, under the filters. The phone keeps it in the footer (see footerExtra below).
+  const searchOnTop=useDeskSheet();
+  const searchRow=(
+    <div style={{padding:"8px 14px",...(searchOnTop?{borderBottom:`1px solid ${C.border}`}:{borderTop:`1px solid ${C.border}`})}}>
+      <SheetSearchBar value={search} onChange={setSearch} placeholder={t("Search market...")}
+        inputRef={searchInputRef} onDismiss={searchFocused&&!searchOnTop?()=>searchInputRef.current?.blur():null}
+        inputProps={{onFocus:()=>setSearchFocused(true),onBlur:()=>setSearchFocused(false)}}/>
+    </div>
+  );
   // 100vh rather than 86vh, for the same reason the module browser uses it: with fillHeight the
   // box is min(height,100%) where 100% is the keyboard-shrunk frame, so at 86vh the sheet rests
   // with a peek gap below the status bar and then snaps its TOP upward the instant the keyboard
@@ -127,6 +138,7 @@ export function CargoBrowserSheet({onAdd,onClose,slots,justAdded}){
       // In the header, not the scroller, so the filters stay reachable at any depth and through a
       // search — the button they replace was only rendered at the root.
       <>
+        {searchOnTop&&searchRow}
         <div style={{display:"flex",gap:8,padding:"8px 12px",borderBottom:`1px solid ${C.border}`,background:C.surfaceAlt}}>
           <FilterCheck on={chargesOnly} label={t("Charges only")}
             onClick={()=>{haptic("light");applyChargesOnly(!chargesOnly);}}/>
@@ -148,11 +160,7 @@ export function CargoBrowserSheet({onAdd,onClose,slots,justAdded}){
       // spares — so the keyboard is up while you are reading results, and a top search box wastes
       // the whole tall half of the sheet above a short result list. Drone and fighter browsers
       // close on the first pick and deliberately keep their search at the top instead.
-      <div style={{padding:"8px 14px",borderTop:`1px solid ${C.border}`}}>
-        <SheetSearchBar value={search} onChange={setSearch} placeholder={t("Search market...")}
-          inputRef={searchInputRef} onDismiss={searchFocused?()=>searchInputRef.current?.blur():null}
-          inputProps={{onFocus:()=>setSearchFocused(true),onBlur:()=>setSearchFocused(false)}}/>
-      </div>
+      searchOnTop?undefined:searchRow
     }>
     {/* The whole body, so the back-swipe is available over the list and the breadcrumb alike rather
         than only where a row happens to be. */}

@@ -57,10 +57,10 @@ export default function CargoPanel({ s, capacity }) {
         {items.map(e => {
           const tid = e.typeID ?? tidByName(e.name);
           const vol = (e.vol ?? TYPES[tid]?.attrs?.volume ?? 0) * (e.qty ?? 0);
-          const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: tid ? () => setInfo(tid) : undefined, items: [
-            { label: t("Show info"), hint: t("Double-click"), disabled: !tid, onSelect: () => setInfo(tid) },
+          const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: () => remove(e.id), items: [
+            { label: t("Show info"), disabled: !tid, onSelect: () => setInfo(tid) },
             { divider: true },
-            { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(e.id) },
+            { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(e.id) },
           ] });
           return (
             <div key={e.id} {...rp} title={`${e.name} · ${vol.toLocaleString(undefined, { maximumFractionDigits: 1 })} m³`} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 28, padding: "0 12px", borderBottom: `1px solid ${C.border}99` }}>
