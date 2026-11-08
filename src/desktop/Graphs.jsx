@@ -436,9 +436,12 @@ export default function GraphsPanel({ s }) {
       </div>
 
       {/* The controls, as columns that wrap: one row on a wide window, two or more on a narrow one.
-          Capped at half the window and scrolled past that, so the plot always keeps its share. */}
+          Capped at half the window and scrolled past that, so the plot always keeps its share. The
+          flight-vector wheels are the tallest control, so they sit in their own column pinned to the
+          right edge instead of wrapping under the rest. */}
       {showPanel && <div style={{ flex: "none", maxHeight: "50%", overflowY: "auto", padding: "0 12px 12px", borderTop: `1px solid ${C.border}`,
-                                  display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", columnGap: 22, alignItems: "start" }}>
+                                  display: "flex", gap: 22, alignItems: "flex-start" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", columnGap: 22, alignItems: "start" }}>
         <div>
         <Label>{t("Graph")}</Label>
         <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle()} aria-label={t("Graph")}>
@@ -503,21 +506,9 @@ export default function GraphsPanel({ s }) {
           </div>
         </div>}
 
-        {(hasTargets || cat === "damage" || showRange || showWindow || cat === APP_PROFILE) && <div>
-        {(hasTargets || cat === "damage") && <>
-          <Label>{t("Engagement")}</Label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-            <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
-            <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
-          </div>
-          {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range). */}
-          <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-            <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
-            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
-              {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
-          </button>
-        </>}
+        {/* No heading of its own (each slider names itself), so it drops by one to sit level with
+            the first row of the columns beside it. */}
+        {(showRange || showWindow || cat === APP_PROFILE) && <div style={{ paddingTop: showRange || showWindow ? 30 : 0 }}>
         {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
         {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
         {cat === APP_PROFILE && <>
@@ -530,6 +521,22 @@ export default function GraphsPanel({ s }) {
           </div>
         </>}
         </div>}
+      </div>
+
+      {(hasTargets || cat === "damage") && <div style={{ flex: "none", width: 230 }}>
+        <Label>{t("Engagement")}</Label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+          <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
+          <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
+        </div>
+        {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range). */}
+        <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+          <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
+          <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
+            {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
+        </button>
+      </div>}
       </div>}
 
       {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
