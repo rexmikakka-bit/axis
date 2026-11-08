@@ -1520,7 +1520,7 @@ function check(group, label, actual, expected, tol = 0.005) {
 // ─────────────────────────────────────────────────────────────────────────────
 // 12b2. HULL / SUBSYSTEM MISSILE BONUSES THAT NAME TWO SKILLS, AND BOMBER BOMB DAMAGE.
 //
-// SHIP_MISSILE_RANGE was generated keeping only the FIRST skill of pyfa's
+// SHIP_MISSILE_RANGE (a hull table since replaced by collectRange, 12b3) was generated keeping only the FIRST skill of pyfa's
 // `requiresSkill(A) or requiresSkill(B)` filters, so the second missile size lost the bonus: Golem
 // and Widow torpedoes, Claymore/Enforcer/Cobra HAMs, Pacifier/Sidewinder light missiles,
 // Marshal/Python cruise missiles. The subsystem copies (Tengu 4331, Loki 6923) were only ever
@@ -1566,6 +1566,42 @@ function check(group, label, actual, expected, tol = 0.005) {
     ['Purifier', 'Electron Bomb', 7250], ['Purifier', 'Shrapnel Bomb', 5800],
     ['Manticore', 'Concussion Bomb', 7250], ['Hound', 'Shrapnel Bomb', 7250], ['Nemesis', 'Scorch Bomb', 7250],
   ]) check('twoskill', `${ship} ${bomb} volley`, one(ship, 'Bomb Launcher I', bomb).weaponVolley.total, eos, 1e-6);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 12b3. MISSILE RANGE SOURCES ARE READ OFF THE EFFECTS, NOT A LIST.
+//
+// Velocity and flight time were rebuilt from a list of known sources (Guidance Computer/Enhancer
+// groups, two launcher rigs by effect ID, the Siege Module's attribute, a hull table). Everything
+// else fell through: a Bastion Module's +25% torpedo/cruise/HM velocity (pyfa Effect6658), the
+// Standup Missile Guidance Enhancer and missile rigs (6448/6403, which filter on the charge GROUP
+// and were also zeroed by the MLO gate), the Caldari Navy Synchronizer and the pre-release Naga
+// Navy Issue hull bonus. A Naga NI's torpedoes flew 5659 m/s whatever was fitted.
+//
+// eos: getModifiedChargeAttr('maxVelocity' / 'explosionDelay'), all-V, nullsec (structure rigs).
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  console.log('\nMISSILE RANGE SOURCES');
+  // fittedChargeStats is keyed by slot id, which M() leaves unset.
+  const ids = rack => (rack ?? []).map((m, i) => ({ ...m, id: `${i}` }));
+  const charge = (ship, slots) => [...calcFitStats({ typeID: tid(ship), name: ship },
+    { ...EMPTY, services: [], ...slots, high: ids(slots.high) }, [], null, { systemSecurity: 'nullsec' }).fittedChargeStats.values()][0];
+  const torps = n => Array.from({ length: n }, () => M('Torpedo Launcher II', 'active', 'Scourge Torpedo'));
+  check('mrange', 'Golem, Bastion: torpedo velocity', charge('Golem', { high: [...torps(4), M('Bastion Module I', 'active')] }).maxVelocity, 5062.5, 1e-6);
+  check('mrange', 'Golem, Bastion + MGE + Hydraulic: one stacking pool', charge('Golem', {
+    high: [...torps(4), M('Bastion Module I', 'active')], low: [M('Missile Guidance Enhancer II', 'online')],
+    rigs: [M('Large Hydraulic Bay Thrusters II', 'online')] }).maxVelocity, 6145.92485195376, 1e-6);
+  const fort = charge('Fortizar', { high: [M('Standup Anticapital Missile Launcher I', 'active', 'Standup XL Cruise Missile')],
+    low: [M('Standup Missile Guidance Enhancer II', 'online')], rigs: [M('Standup XL-Set Missile Fire Control Computer II', 'online')] });
+  check('mrange', 'Fortizar, Standup MGE + rig: velocity', fort.maxVelocity, 14440.72030418913, 1e-6);
+  check('mrange', 'Fortizar, Standup MGE: flight time', fort.explosionDelay, 106000, 1e-6);
+
+  // Pre-release, so by hand rather than eos: Scourge Javelin 2700 m/s × Missile Projection V (1.5) ×
+  // the Naga NI's +10%/level hull bonus (1.5), then the Synchronizer's 5% (no faction modules) as the
+  // only member of the stacking pool.
+  const naga = slots => charge('Naga Navy Issue', { high: [M('Torpedo Launcher II', 'active', 'Scourge Javelin Torpedo')], ...slots }).maxVelocity;
+  check('mrange', 'Naga Navy Issue: hull torpedo velocity bonus', naga({}), 6075, 1e-6);
+  check('mrange', 'Naga Navy Issue + Caldari Navy Synchronizer: +5% velocity', naga({ rigs: [M('Medium Caldari Navy Synchronizer', 'online')] }), 6378.75, 1e-6);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
