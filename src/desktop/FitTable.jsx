@@ -486,7 +486,7 @@ export function FitTable({ api }) {
                         {/* Which roll: the mutaplasmid's grade (Decayed, Gravid, Unstable…), quiet beside
                             the name; the full mutaplasmid in its tooltip. */}
                         {row.mutaplasmid && <span title={t("Abyssal: {muta}", { muta: mutaplasmidName(row.mutaplasmid) ?? t("mutated module") })}
-                          style={{ fontSize: 12, color: C.danger, opacity: 0.85, whiteSpace: "nowrap", flex: "none" }}>{abyssalGrade(row.mutaplasmid)}</span>}
+                          style={{ fontSize: 12, color: resourceColor("pg"), whiteSpace: "nowrap", flex: "none" }}>{abyssalGrade(row.mutaplasmid)}</span>}
                         {row.state === "overheated" && <span style={{ fontSize: 11, fontWeight: 500, color: C.overheat, flex: "none" }}>{t("OH")}</span>}
                         {charge && !chargeRows && <span title={`${charge} · ${row.charges}/${row.maxCharges}`} style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1000 auto", minWidth: 24 }}>· {charge}</span>}
                         {charge && !chargeRows && <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")}

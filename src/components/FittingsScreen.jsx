@@ -634,8 +634,16 @@ export function ShipInfoSheet({ship, cs, onClose, embedded = false}) {
                          opacity:1-collapse,height:(1-collapse)*(embedded?17:14),overflow:'hidden',
                          whiteSpace:'nowrap',textOverflow:'ellipsis'}}>
               {[ship?.race, ship?.hullClass ?? ship?.groupName].filter(Boolean).join(' • ')}
-              {isPrereleaseShip(ship?.typeID)&&<span style={{color:C.warning}}> • {t("Pre-release")}</span>}
+              {!embedded&&isPrereleaseShip(ship?.typeID)&&<span style={{color:C.warning}}> • {t("Pre-release")}</span>}
             </div>
+            {/* The desktop window can be narrow enough to cut a trailing tag off the line above, so there
+                Pre-release gets its own line, collapsing with it. */}
+            {embedded&&isPrereleaseShip(ship?.typeID)&&(
+              <div style={{fontSize:12,lineHeight:'17px',letterSpacing:'.08em',fontWeight:600,textTransform:'uppercase',color:C.warning,
+                           textShadow:'0 1px 3px rgba(0,0,0,.8)',opacity:1-collapse,height:(1-collapse)*17,overflow:'hidden',whiteSpace:'nowrap'}}>
+                {t("Pre-release")}
+              </div>
+            )}
             {/* Shrinks toward a header-bar-sized title rather than scrolling away, so the collapsed
                 hero still says which ship you are reading about. */}
             <div style={{...DISPLAY,fontSize:(embedded?30:26)-collapse*(embedded?12:9),fontWeight:600,letterSpacing:'-.01em',lineHeight:1.1,
