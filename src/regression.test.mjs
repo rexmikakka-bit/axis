@@ -8831,7 +8831,7 @@ Nanofiber Internal Structure II
 }
 
 // ─── 24.02 FRACTURED SKIES, PRE-RELEASE ───────────────────────────────────────────────────────────
-// data/prerelease-balance.js and data/prerelease-modules.js, from CCP's expansion notes (2026-11-06).
+// data/prerelease-balance.js, from CCP's expansion notes (2026-11-06), and the Aberrant modules from SiSi (data/sisi-patch.js).
 // NOT pyfa-validated: pyfa has none of it yet. Each expected value is the notes' figure applied to an
 // eos-validated baseline. The first check pins every change as APPLIED; the day CCP's data carries
 // them, it fails and lists the groups to delete from prerelease-balance.js.
@@ -8848,8 +8848,7 @@ Nanofiber Internal Structure II
   check('2402', 'Imperial Navy Templar shield / attack damage', `${A('Imperial Navy Templar', 'shieldCapacity')}/${A('Imperial Navy Templar', 'fighterAbilityAttackMissileDamageEM')}`, '7260/108');
   check('2402', 'Ametat II now requires Amarr Fighter Specialization', (TYPES[tid('Ametat II')].rs ?? []).includes('Amarr Fighter Specialization') ? 1 : 0, 1, 0);
   check('2402', 'Oracle Navy Issue locks 7, per the notes', A('Oracle Navy Issue', 'maxLockedTargets'), 7, 0);
-  check('2402', 'Synchronizers: one per ship', A('Medium Dark Blood Synchronizer', 'maxGroupFitted'), 1, 0);
-
+  
   // Missile hulls, against eos's 24.01 figures for the same four-launcher fits (Rocket Launcher II,
   // all V): 120.8243 rocket DPS for the Hawk and the Vengeance alike, any damage type. The Vengeance's
   // damage is untouched by 24.02, so it pins the 24.01 fix that put its bonus (and the Hawk's) on the
@@ -8881,30 +8880,32 @@ Nanofiber Internal Structure II
   check('2402', 'ISA active: light fighter explosion velocity x1.2', on.explosionVelocity / off.explosionVelocity, 1.2, 1e-9);
   check('2402', 'ISA active: light fighter explosion radius x0.9', on.explosionRadius / off.explosionRadius, 0.9, 1e-9);
 
-  // Aberrant modules: the passive figure while online, the active one while running.
-  const rifterSpeed = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Overdrive Injector System"), state); f.calculate(); return f.ship.get('maxVelocity'); };
+  // 'Vigilant' Vital (Aberrant) modules, from SiSi (data/sisi-patch.js): the passive bonus while online,
+  // and a SEPARATE active modifier on the same attribute while running. CCP's data makes them two
+  // modifiers from one module, so where the attribute is stacking-penalised the two penalise each
+  // other: the expansion notes' "8% + 15% = 23%" is 1.15 x (1 + 8% x 0.86912) = 1.229959 in the data.
+  const PEN2 = Math.exp(-1 / 7.1289);
+  const rifterSpeed = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("'Vigilant' Vital Overdrive Injector System"), state); f.calculate(); return f.ship.get('maxVelocity'); };
   const bare = (() => { const f = new Fit(tid('Rifter')); f.calculate(); return f.ship.get('maxVelocity'); })();
   check('2402', 'Aberrant Overdrive online: +8%', rifterSpeed('online') / bare, 1.08, 1e-9);
-  // Active ADDS to passive (CCP, later word): 8% + 15% = 23% while it runs.
-  check('2402', 'Aberrant Overdrive active: 8% + 15% = +23%', rifterSpeed('active') / bare, 1.23, 1e-9);
-  const capRech = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("Vigilant 'Vital' Cap Recharger"), state); f.calculate(); return f.ship.get('rechargeRate'); };
-  check('2402', 'Aberrant Cap Recharger: 0.88 online, 0.63 active (12% + 25%)', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.6300');
-  // Shield Boost Amplifier on a fitted booster: 24% online, 24% + 43.2% = 67.2% active.
-  const boost = (state) => { const f = new Fit(tid('Rifter')); const sb = f.addModule(tid('Small Shield Booster I'), 'active'); if (state) f.addModule(tid("Vigilant 'Vital' Shield Boost Amplifier"), state); f.calculate(); return sb.get('shieldBonus'); };
-  check('2402', 'Aberrant Shield Boost Amplifier: x1.24 online, x1.672 active', `${(boost('online') / boost(null)).toFixed(4)}/${(boost('active') / boost(null)).toFixed(4)}`, '1.2400/1.6720');
-  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
-  let refused = 0;
-  try { slotsToEsiFitting(tid('Rifter'), 'x', { high: [], mid: [], low: [M("Vigilant 'Vital' Overdrive Injector System", 'active')], rigs: [] }, [], [], []); } catch { refused = 1; }
-  check('2402', 'an Aberrant module is never exported to ESI (placeholder typeID)', refused, 1, 0);
+  check('2402', 'Aberrant Overdrive active: 15%, then 8% penalised', rifterSpeed('active') / bare, 1.15 * (1 + 0.08 * PEN2), 1e-9);
+  // Capacitor rechargers are not stacking-penalised (rechargeRate), so 0.88 x 0.75.
+  const capRech = (state) => { const f = new Fit(tid('Rifter')); f.addModule(tid("'Vigilant' Vital Cap Recharger"), state); f.calculate(); return f.ship.get('rechargeRate'); };
+  check('2402', 'Aberrant Cap Recharger: x0.88 online, x0.88 x 0.75 active', `${(capRech('online') / A('Rifter', 'rechargeRate')).toFixed(4)}/${(capRech('active') / A('Rifter', 'rechargeRate')).toFixed(4)}`, '0.8800/0.6600');
+  const boost = (state) => { const f = new Fit(tid('Rifter')); const sb = f.addModule(tid('Small Shield Booster I'), 'active'); if (state) f.addModule(tid("'Vigilant' Vital Shield Boost Amplifier"), state); f.calculate(); return sb.get('shieldBonus'); };
+  check('2402', 'Aberrant Shield Boost Amplifier: x1.24 online, 43.2% then 24% penalised active',
+    `${(boost('online') / boost(null)).toFixed(4)}/${(boost('active') / boost(null)).toFixed(4)}`, `1.2400/${(1.432 * (1 + 0.24 * PEN2)).toFixed(4)}`);
+  check('2402', 'Aberrant modules carry the 20 s / 2 min cycle', `${A("'Vigilant' Vital Cap Recharger", 'duration')}/${A("'Vigilant' Vital Cap Recharger", 'moduleReactivationDelay')}`, '20000/120000');
   // Each Aberrant module is a variation of its Tech I module's family, both ways round.
   {
     const { variantsOf } = await import('./lib/core.js');
     const names = (n) => variantsOf(tid(n)).map(v => v.name);
-    check('2402', 'Shield Boost Amplifier II lists the Aberrant one', names('Shield Boost Amplifier II').includes("Vigilant 'Vital' Shield Boost Amplifier") ? 1 : 0, 1, 0);
-    check('2402', 'and the Aberrant one lists the family', names("Vigilant 'Vital' Shield Boost Amplifier").includes('Shield Boost Amplifier II') ? 1 : 0, 1, 0);
+    check('2402', 'Shield Boost Amplifier II lists the Aberrant one', names('Shield Boost Amplifier II').includes("'Vigilant' Vital Shield Boost Amplifier") ? 1 : 0, 1, 0);
+    check('2402', 'and the Aberrant one lists the family', names("'Vigilant' Vital Shield Boost Amplifier").includes('Shield Boost Amplifier II') ? 1 : 0, 1, 0);
     check('2402', 'every Aberrant module joined a family',
-      ["Vigilant 'Vital' Overdrive Injector System", "Vigilant 'Vital' Shield Boost Amplifier", "Vigilant 'Vital' Drone Navigation Computer", "Vigilant 'Vital' Cap Recharger"]
+      ["'Vigilant' Vital Overdrive Injector System", "'Vigilant' Vital Shield Boost Amplifier", "'Vigilant' Vital Drone Navigation Computer", "'Vigilant' Vital Cap Recharger"]
         .filter(n => names(n).length > 1).length, 4, 0);
+    check('2402', 'Imperial Navy Stasis Webifier joined the web family', names('Stasis Webifier II').includes('Imperial Navy Stasis Webifier') ? 1 : 0, 1, 0);
   }
 
   // Trait text follows the live changes, line by line.
@@ -8914,18 +8915,25 @@ Nanofiber Internal Structure II
   check('2402', 'Hawk traits name the kinetic split', traits[tid('Hawk')].skills.find(s => s.header.startsWith('Caldari Frigate')).bonuses.map(b => b.number).join(','), '10%,5%,5%');
 }
 
-// ─── PRE-RELEASE SYNCHRONIZER RIGS ────────────────────────────────────────────────────────────────
-// The nine Synchronizer rigs (data/prerelease-rigs.js), built from preview screenshots. NOT
-// pyfa-validated: pyfa has no such rigs. Every expected value is the screenshot's percentage applied
-// by hand to the base attribute, so these pin Owen's reading of the text rather than CCP's numbers:
-// +1 point per fitted faction module on the four bonuses only, abyssal modules never counted, and
-// the rumoured skill taking 10% per level off the penalty. Delete with the file when CCP ships them.
+// ─── PRE-RELEASE: FRACTURED SKIES ITEMS FROM SISI ───────────────────────────────────────────────
+// data/sisi-patch.js: the Synchronizer rigs, their skill and implant, the navy attack battlecruisers,
+// the Imperial Navy web/scram/disruptor and the SARO boosters, from CCP's test-server data (SiSi build
+// 3682781, through Hoboleaks). NOT pyfa-validated: pyfa has none of it yet. Each expected value is
+// CCP's own SiSi figure applied by hand to an eos-validated base attribute. Delete with the patch.
+//
+// How a Synchronizer works in CCP's data: each fitted faction module carries rigSet<Faction>Module = 1,
+// which its own effect adds to the rig's rigSet<Faction>Bonus; the rig adds that to each of its four
+// bonuses (never the penalty), so one module is one point. Damage goes through a hidden multiplier on
+// the rig, which joins the weapon's ordinary damage-module stacking pool.
 {
-  console.log('\nPRE-RELEASE SYNCHRONIZER RIGS');
+  console.log('\nPRE-RELEASE: FRACTURED SKIES ITEMS (SiSi)');
   const { Fit } = await import('./dogma-engine-init.js');
-  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
-  const { isPrereleaseRig, prereleaseSkillApplies } = await import('./data/prerelease-rigs.js');
-  // A raw Fit sets no skills, so the drawback skill never runs and the penalty is at full size.
+  const { isPrereleaseType, isPrereleaseShip, SISI_BUILD } = await import('./data/sisi-patch.js');
+  const PEN2 = Math.exp(-1 / 7.1289);
+  const A = (n, attr) => TYPES[tid(n)]?.attrs?.[attr];
+  check('sync', 'built from SiSi 3682781', SISI_BUILD, '3682781');
+  check('sync', 'real typeIDs (Medium Dark Blood Synchronizer is 96559)', tid('Medium Dark Blood Synchronizer'), 96559, 0);
+  // A raw Fit sets no skills, so the drawback skill never runs and the CPU penalty is at full size.
   const raw = (hull, mods, rig) => {
     const f = new Fit(tid(hull));
     const items = mods.map(([n, s = 'active', mut]) => f.addModule(tid(n), s, mut));
@@ -8933,8 +8941,9 @@ Nanofiber Internal Structure II
     f.calculate();
     return { ship: f.ship, items, rig: r };
   };
-  const bonuses = r => ['synchronizerBonus1', 'synchronizerBonus2', 'synchronizerBonus3', 'synchronizerBonus4'].map(n => r.get(n)).join('/');
   const DB = 'Dark Blood Heat Sink', NEUT = 'Heavy Energy Neutralizer II', RIG = 'Medium Dark Blood Synchronizer';
+  const dbBonuses = r => ['rigNosferatuNeutralizerDrainAmount', 'rigNosferatuNeutralizerDrainAmountOverheatingBonus', 'rigNosferatuNeutralizerOptimalRange',
+    'rigNosferatuNeutralizerFalloffRange', 'rigEnergyTurretDamageBonus'].map(n => r.get(n)).join('/');
 
   // The market tree the desktop Browser's everything view and the cargo picker read (market-tree.json,
   // patched by core.js), not only the per-rack module tree: missing there, the rigs could not be found
@@ -8943,21 +8952,26 @@ Nanofiber Internal Structure II
   const MT = (await import('./data/market-tree.json', { with: { type: 'json' } })).default;
   const mtRow = MT.t[String(tid(RIG))];
   check('sync', 'in the market tree: Rigs > Synchronizer Rigs > Medium', mtRow ? `${MT.g[MT.g[MT.g[mtRow[0]].p].p].n} > ${MT.g[MT.g[mtRow[0]].p].n} > ${MT.g[mtRow[0]].n}` : 'missing',
-    'Rigs > Synchronizer Rigs (Pre-release) > Medium Synchronizer Rigs');
+    'Rigs > Synchronizer Rigs > Medium Synchronizer Rigs');
   check('sync', 'all 27 in the market tree', Object.values(MT.t).filter(r => / Synchronizer$/.test(r[1])).length, 27, 0);
 
   const none = raw('Omen', [[NEUT]], RIG);
-  check('sync', 'no Dark Blood modules: the screenshot numbers', bonuses(none.rig), '10/10/5/5');
+  check('sync', 'no Dark Blood modules: the base figures', dbBonuses(none.rig), '10/10/5/5/5');
   check('sync', 'neut drain +10% (600 GJ)', none.items[0].get('energyNeutralizerAmount'), 660);
   const two = raw('Omen', [[NEUT], [DB, 'online'], [DB, 'online']], RIG);
-  check('sync', 'two Dark Blood modules: +1 point each', bonuses(two.rig), '12/12/7/7');
+  check('sync', 'two Dark Blood modules: +1 point each', dbBonuses(two.rig), '12/12/7/7/7');
   check('sync', 'neut drain at 12%', two.items[0].get('energyNeutralizerAmount'), 672);
   check('sync', 'neut optimal at 7% (20 km)', two.items[0].get('maxRange'), 21400);
   check('sync', 'an abyssal Dark Blood module does not count',
-    bonuses(raw('Omen', [[NEUT], [DB, 'online'], [DB, 'online', { damageMultiplier: 1.1 }]], RIG).rig), '11/11/6/6');
-  check('sync', 'an offline Dark Blood module counts (fitted)',
-    bonuses(raw('Omen', [[NEUT], [DB, 'offline']], RIG).rig), '11/11/6/6');
+    dbBonuses(raw('Omen', [[NEUT], [DB, 'online'], [DB, 'online', { damageMultiplier: 1.1 }]], RIG).rig), '11/11/6/6/6');
+  // The marker effect is category 0 (passive: applies while fitted), not 4 (online).
+  check('sync', 'an offline Dark Blood module counts (fitted)', dbBonuses(raw('Omen', [[NEUT], [DB, 'offline']], RIG).rig), '11/11/6/6/6');
   check('sync', 'the penalty does not grow with the count (200% on the unskilled 565 s)', two.ship.get('rechargeRate'), 1695000);
+  check('sync', 'only one Synchronizer fits a ship', A('Medium Dark Blood Synchronizer', 'maxGroupFitted'), 1, 0);
+  // Turret damage: a hidden multiplier (1.06 with one module) applied as op 4, in the same stacking
+  // pool as the Heat Sink's 1.1, so it is penalised second.
+  const laser = (rig) => raw('Omen', [['Heavy Pulse Laser II'], [DB, 'online']], rig).items[0].get('damageMultiplier');
+  check('sync', 'Dark Blood: energy turret damage, penalised with the heat sink', laser(RIG) / laser(null), 1 + 0.06 * PEN2, 1e-9);
 
   const dom = raw('Hurricane', [['Domination Gyrostabilizer', 'online'], ['425mm AutoCannon II']], 'Medium Domination Synchronizer');
   check('sync', 'Domination: -30% shield HP', dom.ship.get('shieldCapacity'), 3150);
@@ -8977,72 +8991,76 @@ Nanofiber Internal Structure II
   check('sync', 'Sansha: +11% afterburner velocity bonus', san.items[1].get('speedFactor'), 149.85);
   check('sync', 'Sansha: a microwarpdrive is not an afterburner', san.items[2].get('capacitorNeed'), 160);
 
-  // The empire navy four: four bonuses, no penalty. One faction module fitted, so every bonus reads 6%.
+  // The empire navy four: four bonuses, no faction penalty. One faction module fitted: every bonus 6%.
   const rf = raw('Maelstrom', [['Republic Fleet Gyrostabilizer', 'online'], ['Large Shield Booster II'], ['Large Ancillary Shield Booster']], 'Large Republic Fleet Synchronizer');
-  check('sync', 'Republic Fleet: one module, no penalty slot', bonuses(rf.rig) + ' ' + rf.rig.get('synchronizerDrawback'), '6/6/-6/6 0');
   check('sync', 'Republic Fleet: -6% shield booster cycle time', rf.items[1].get('duration'), 3760);
   check('sync', 'Republic Fleet: ancillary boosters count as shield boosters', rf.items[2].get('duration'), 3760);
   check('sync', 'Republic Fleet: +6% velocity', rf.ship.get('maxVelocity'), 127.2);
   const fn = raw('Megathron', [['Federation Navy Magnetic Field Stabilizer', 'online'], ['Large Armor Repairer II']], 'Large Federation Navy Synchronizer');
   check('sync', 'Federation Navy: +6% armor repair amount', fn.items[1].get('armorDamageAmount'), 975.2);
   check('sync', 'Federation Navy: +6% structure HP', fn.ship.get('hp'), 8745);
-  const cn = (() => {
-    const f = new Fit(tid('Raven'));
-    f.addModule(tid('Caldari Navy Ballistic Control System'), 'online');
-    const l = f.addModule(tid('Cruise Missile Launcher II'), 'active');
-    f.setCharge(l, tid('Scourge Cruise Missile'));
-    f.addModule(tid('Large Caldari Navy Synchronizer'), 'online');
-    f.calculate();
-    return { ship: f.ship, charge: l._charge };
-  })();
-  check('sync', 'Caldari Navy: +6% missile damage, on the loaded charge', cn.charge.get('kineticDamage'), 397.5);
-  check('sync', 'Caldari Navy: +6% missile velocity', cn.charge.get('maxVelocity'), 4982);
-  check('sync', 'Caldari Navy: +6% shield HP', cn.ship.get('shieldCapacity'), 8162);
-  check('sync', 'Caldari Navy: +6% lock range', cn.ship.get('maxTargetRange'), 95400);
   const inav = raw('Apocalypse', [['Imperial Navy Heat Sink', 'online'], ['Mega Pulse Laser II']], 'Large Imperial Navy Synchronizer');
   check('sync', 'Imperial Navy: -6% energy turret activation cost', inav.items[1].get('capacitorNeed'), 30.456);
   check('sync', 'Imperial Navy: +6% capacitor', inav.ship.get('capacitorCapacity'), 7420);
   check('sync', 'Imperial Navy: +6% armor HP', inav.ship.get('armorHP'), 8162);
-  // Every Synchronizer carries the CPU drawback the skill reduces, navy ones included.
-  check('sync', 'the skill control shows on every Synchronizer',
-    [RIG, 'Large Imperial Navy Synchronizer'].map(n => prereleaseSkillApplies(tid(n)) ? 1 : 0).join(''), '11');
+  // Caldari Navy: missile damage is a PreMul on the character's missileDamageMultiplier — the BCS's
+  // own pool, so it is penalised behind the BCS — and velocity is an owner bonus on the charge. Both
+  // are calc.js's (the engine reaches neither), so they are read through calcFitStats.
+  const raven = (rig) => {
+    const cs = calcFitStats({ typeID: tid('Raven'), name: 'Raven' }, { ...EMPTY, high: [M('Cruise Missile Launcher II', 'active', 'Scourge Cruise Missile')],
+      low: [M('Caldari Navy Ballistic Control System', 'online')], rigs: rig ? [M(rig, 'online')] : [] }, [], SKILLS_ALL_V, {});
+    return { dps: cs.weaponDps.total, vel: [...cs.slotEngineStats.values()].find(s => s.isMissile)?.velocity, cs };
+  };
+  const cn = raven('Large Caldari Navy Synchronizer'), cn0 = raven(null);
+  check('sync', 'Caldari Navy: missile damage +6%, penalised behind the BCS', cn.dps / cn0.dps, 1 + 0.06 * PEN2, 1e-6);
+  check('sync', 'Caldari Navy: +6% missile velocity', cn.vel / cn0.vel, 1.06, 2e-4);   // velocity is published rounded to 1 m/s
+  check('sync', 'Caldari Navy: +6% shield HP', cn.cs.shieldHP / cn0.cs.shieldHP, 1.06, 1e-6);
 
-  // The skill, through calcFitStats the way the app runs it. Later word (2026-11-07): it reduces only
-  // the CPU drawback, never the faction penalty — the Dark Blood's 200% recharge penalty stays whole.
-  const omen = (lv, rig = RIG) => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: rig ? [{ typeID: tid(rig), state: 'online' }] : [] },
-    [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, {});
-  check('sync', 'skill at 0: full 200% penalty', omen(0).capRechargeMs, 1271250);
-  check('sync', 'skill at V: the faction penalty is NOT reduced', omen(5).capRechargeMs, 1271250);
-  // The CPU drawback: 10% on every Synchronizer, 50% less at skill V (Owen, 2026-11-07).
+  // The new Imperial Navy modules carry the marker too.
+  const inWeb = raw('Punisher', [['Imperial Navy Stasis Webifier']], 'Small Imperial Navy Synchronizer');
+  check('sync', 'Imperial Navy Stasis Webifier: -55%, 15 km (SiSi)', `${A('Imperial Navy Stasis Webifier', 'speedFactor')}/${A('Imperial Navy Stasis Webifier', 'maxRange')}`, '-55/15000');
+  check('sync', 'and it counts toward an Imperial Navy Synchronizer', inWeb.rig.get('rigSetAmarrNavyBonus'), 1, 0);
+
+  // The CPU drawback (10%, `drawback` = -10 on every Synchronizer) and what reduces it: the skill
+  // (-10% per level) and the 'Xyston' SY-1020 implant (-20%). Skill and implant multiply.
+  const omen = (lv, rig = RIG, implants = []) => calcFitStats({ typeID: tid('Omen'), name: 'Omen' }, { ...EMPTY, rigs: rig ? [{ typeID: tid(rig), state: 'online' }] : [] },
+    [], { ...SKILLS_ALL_V, synchronizationRigging: lv }, { implants: implants.map(name => ({ name })) });
   const bareCpu = omen(0, null).cpuTotal;
   check('sync', 'CPU drawback, skill at 0: the full 10%', omen(0).cpuTotal / bareCpu, 0.9, 1e-4);   // cpuTotal is published to 0.01 tf
   check('sync', 'CPU drawback, skill at V: halved to 5%', omen(5).cpuTotal / bareCpu, 0.95, 1e-4);
   check('sync', 'a navy rig carries it too', omen(0, 'Medium Imperial Navy Synchronizer').cpuTotal / bareCpu, 0.9, 1e-4);
-  check('sync', 'skill is in the catalog under Rigging', SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.group ?? '', 'Rigging');
+  const SY = "Vigilant Tyrannos 'Xyston' Synchronization Rigging SY-1020";
+  check('sync', 'Xyston SY-1020, skill at 0: 8%', omen(0, RIG, [SY]).cpuTotal / bareCpu, 0.92, 1e-4);
+  check('sync', 'Xyston SY-1020, skill at V: 4%', omen(5, RIG, [SY]).cpuTotal / bareCpu, 0.96, 1e-4);
+  check('sync', 'the skill does NOT reduce the faction penalty', `${omen(0).capRechargeMs}/${omen(5).capRechargeMs}`, '1271250/1271250');
+  check('sync', 'skill is in the catalog under Rigging, real typeID', `${SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.group}/${SKILL_CATALOG.find(e => e.key === 'synchronizationRigging')?.typeID}`, 'Rigging/96100');
+  check('sync', 'the ten Xyston implants are in the slot 10 picker', [...IMPLANT_NAME_TO_SLOT].filter(([n, s]) => /'Xyston'/.test(n) && s === 10).length, 10, 0);
+  const AR = "Vigilant Tyrannos 'Xyston' Armor Rigging AR-1020";
+  check('sync', 'Xyston AR-1020: armor rig drawback -20%', (() => {
+    const f = new Fit(tid('Omen')); const r = f.addModule(tid('Medium Trimark Armor Pump I'), 'online'); f.addImplant(tid(AR)); f.calculate(); return r.get('drawback') / A('Medium Trimark Armor Pump I', 'drawback'); })(), 0.8, 1e-9);
+
   const rigNode = REAL_MODULE_BROWSER.rigs.find(n => n.id === 990900);
   check('sync', 'browser: three sizes under Rigs', (rigNode?.children ?? []).map(c => c.mods.length).join('/'), '9/9/9');
   check('sync', 'calibration 250 on every size', [...new Set(rigNode.children.flatMap(c => c.mods.map(m => m.calib)))].join(','), '250');
-  check('sync', 'every rig is flagged pre-release', rigNode.children.every(c => c.mods.every(m => isPrereleaseRig(m.typeID))) ? 1 : 0, 1, 0);
-  let refused = 0;
-  try { slotsToEsiFitting(tid('Omen'), 'T', { ...EMPTY, rigs: [{ typeID: tid(RIG) }], services: [] }, [], [], []); } catch { refused = 1; }
-  check('sync', 'export to EVE refuses a pre-release rig', refused, 1, 0);
-}
-// ─── PRE-RELEASE NAVY ATTACK BATTLECRUISERS ─────────────────────────────────────────────────────
-// Oracle/Talos/Naga Navy Issue and Tornado Fleet Issue (data/prerelease-ships.js), from CCP's
-// "Fractured Skies in focus" stat cards plus the stats Owen passed on. NOT pyfa-validated: pyfa has no
-// such hulls. Each expected value is the card's bonus applied by hand at V to the base hull's number:
-// six guns at 1 + 15%x5 = 1.75 against the base's eight at 1.25 is 1.05x the DPS; the Tornado's six at
-// 1/(1 - 50%) against eight at 1/(1 - 25%) is 1.125x. Delete with the file when CCP ships them.
-{
-  console.log('\nPRE-RELEASE NAVY ATTACK BATTLECRUISERS');
-  const { Fit } = await import('./dogma-engine-init.js');
-  const { slotsToEsiFitting } = await import('./lib/esi-fits.js');
-  const { isPrereleaseShip } = await import('./data/prerelease-ships.js');
+  check('sync', 'every rig is flagged pre-release', rigNode.children.every(c => c.mods.every(m => isPrereleaseType(m.typeID))) ? 1 : 0, 1, 0);
+
+  // SARO boosters. Enforcement: +5% turret damage and optimal; the engine applies it once and calc
+  // must not add it again on the weapon side.
+  const rifle = (b) => calcFitStats({ typeID: tid('Rifter'), name: 'Rifter' }, { ...EMPTY, high: [M('200mm AutoCannon II', 'active', 'EMP S')] }, [], SKILLS_ALL_V,
+    { boosters: b ? [{ name: b }] : [] }).weaponDps.total;
+  check('sync', 'SARO Enforcement: +5% turret damage, once', rifle('SARO Enforcement Booster') / rifle(null), 1.05, 1e-6);
+  const mwd = (b) => { const f = new Fit(tid('Rifter')); const m = f.addModule(tid('5MN Microwarpdrive II'), 'online'); if (b) f.addBooster(tid(b)); f.calculate(); return m.get('overloadSpeedFactorBonus'); };
+  check('sync', 'SARO Pursuit: +20% MWD overheat benefit', mwd('SARO Pursuit Booster') / mwd(null), 1.2, 1e-9);
+
+  // The navy attack battlecruisers. Each hull's DPS against its base hull's at V: six guns at
+  // 1 + 15% x 5 = 1.75 against eight at 1.25 is 1.05x; the Tornado's six at 1/(1 - 50%) against eight
+  // at 1/(1 - 25%) is 1.125x.
   const P = (name, state = 'active', ammo) => ({ typeID: tid(name), state, ammo });
   const run = (ship, slots) => calcFitStats({ typeID: tid(ship), name: ship }, { ...EMPTY, ...slots }, [], SKILLS_ALL_V, {});
   const guns = (ship, n, gun, ammo) => run(ship, { high: Array.from({ length: n }, () => P(gun, 'active', ammo)) });
   const dpsRatio = (base, navy, gun, ammo) => guns(navy, 6, gun, ammo).weaponDps.total / guns(base, 8, gun, ammo).weaponDps.total;
-
+  check('navyabc', 'real typeIDs (Oracle 95629, Naga 95630, Talos 95631, Tornado 95632)',
+    ['Oracle Navy Issue', 'Naga Navy Issue', 'Talos Navy Issue', 'Tornado Fleet Issue'].map(tid).join(','), '95629,95630,95631,95632');
   check('navyabc', 'Oracle NI: 6 guns at 15%/lvl vs 8 at 5%', dpsRatio('Oracle', 'Oracle Navy Issue', 'Mega Pulse Laser II', 'Multifrequency L'), 1.05, 1e-4);
   check('navyabc', 'Talos NI: 6 guns at 15%/lvl vs 8 at 5%', dpsRatio('Talos', 'Talos Navy Issue', 'Neutron Blaster Cannon II', 'Antimatter Charge L'), 1.05, 1e-4);
   check('navyabc', 'Tornado FI: 6 guns at 10% ROF/lvl vs 8 at 5%', dpsRatio('Tornado', 'Tornado Fleet Issue', '1400mm Howitzer Artillery II', 'Republic Fleet EMP L'), 1.125, 1e-4);
@@ -9050,13 +9068,7 @@ Nanofiber Internal Structure II
   check('navyabc', 'Oracle NI: 1200 MW grid at V', oni.pgTotal, 1500);
   check('navyabc', 'Oracle NI: 225 m/s at V', oni.maxVelocity, 281);
   check('navyabc', 'Oracle NI: 70 km lock at V', oni.targetRange, 87.5);
-  const engine = (ship, skill, mod, charge) => {
-    const f = new Fit(tid(ship)); f.setSkill(skill, 5);
-    const m = f.addModule(tid(mod), 'online');
-    if (charge) f.setCharge(m, tid(charge));
-    f.calculate();
-    return m;
-  };
+  const engine = (ship, skill, mod) => { const f = new Fit(tid(ship)); f.setSkill(skill, 5); const m = f.addModule(tid(mod), 'online'); f.calculate(); return m; };
   check('navyabc', 'Oracle NI: +37.5% large energy optimal',
     engine('Oracle Navy Issue', 'Amarr Battlecruiser', 'Mega Pulse Laser II').get('maxRange') / engine('Oracle', 'Amarr Battlecruiser', 'Mega Pulse Laser II').get('maxRange'), 1.375, 1e-4);
   check('navyabc', 'Talos NI: +37.5% large hybrid falloff',
@@ -9065,19 +9077,24 @@ Nanofiber Internal Structure II
     engine('Talos Navy Issue', 'Gallente Battlecruiser', 'Neutron Blaster Cannon II').get('trackingSpeed') / engine('Talos', 'Gallente Battlecruiser', 'Neutron Blaster Cannon II').get('trackingSpeed'), 1 / 1.375, 1e-4);
   check('navyabc', 'Talos NI: -75% armor plate mass', engine('Talos Navy Issue', 'Gallente Battlecruiser', '1600mm Steel Plates II').get('massAddition'), 937500);
   check('navyabc', 'Tornado FI: -75% MWD signature penalty', engine('Tornado Fleet Issue', 'Minmatar Battlecruiser', '50MN Microwarpdrive II').get('signatureRadiusBonus'), 118.75);
-  const torp = engine('Naga Navy Issue', 'Caldari Battlecruiser', 'Torpedo Launcher II', 'Inferno Torpedo')._charge;
-  check('navyabc', 'Naga NI: +25% torpedo thermal damage', torp.get('thermalDamage'), 562.5);
-  check('navyabc', 'Naga NI: +50% torpedo velocity', torp.get('maxVelocity'), 2700);
-  const cruise = engine('Naga Navy Issue', 'Caldari Battlecruiser', 'Cruise Missile Launcher II', 'Scourge Cruise Missile');
-  check('navyabc', 'Naga NI: +50% cruise kinetic damage', cruise._charge.get('kineticDamage'), 562.5);
-  check('navyabc', 'Naga NI: launchers at 5% grid', cruise.get('power'), 75.65);
+  // The Naga NI's missile bonuses are owner bonuses on the CHARGE (effects 12934-12936), which only
+  // calc.js reaches. Scourge and Inferno torpedoes share a base damage, so the 50% kinetic and 25%
+  // thermal bonuses read straight off their ratio; velocity against the plain Naga, which has none.
+  const torp = (ship, ammo) => { const cs = run(ship, { high: [P('Torpedo Launcher II', 'active', ammo)] }); return { dps: cs.weaponDps.total, vel: [...cs.slotEngineStats.values()].find(s => s.isMissile)?.velocity }; };
+  check('navyabc', 'Naga NI: torpedo kinetic 50% vs thermal 25%', torp('Naga Navy Issue', 'Scourge Torpedo').dps / torp('Naga Navy Issue', 'Inferno Torpedo').dps, 1.5 / 1.25, 1e-6);
+  check('navyabc', 'Naga NI: +50% torpedo velocity', torp('Naga Navy Issue', 'Inferno Torpedo').vel / torp('Naga', 'Inferno Torpedo').vel, 1.5, 2e-4);
+  check('navyabc', 'Naga NI: launchers at 5% grid', engine('Naga Navy Issue', 'Caldari Battlecruiser', 'Cruise Missile Launcher II').get('power'), 75.65);
   const naga = run('Naga Navy Issue', { high: Array.from({ length: 6 }, () => P('Cruise Missile Launcher II', 'active', 'Scourge Cruise Missile')) });
   check('navyabc', 'Naga NI: six cruise launchers fit (650 MW)', naga.pgUsed <= naga.pgTotal ? 1 : 0, 1, 0);
   check('navyabc', 'all four flagged pre-release',
     ['Oracle Navy Issue', 'Talos Navy Issue', 'Naga Navy Issue', 'Tornado Fleet Issue'].every(n => isPrereleaseShip(tid(n)) && isPrereleaseShip(n)) ? 1 : 0, 1, 0);
-  let refused = 0;
-  try { slotsToEsiFitting(tid('Naga Navy Issue'), 'T', { ...EMPTY, high: [P('Cruise Missile Launcher II')], services: [] }, [], [], []); } catch { refused = 1; }
-  check('navyabc', 'export to EVE refuses a pre-release hull', refused, 1, 0);
+
+  // Saved fits from before the switch: placeholder typeIDs and the old Aberrant names move over.
+  const { runMigrations } = await import('./lib/storage-migrate.js');
+  const old = { 'pyfa-fitsdb': JSON.stringify({ 'Naga Navy Issue': [{ id: 'a', slots: { rigs: [{ typeID: 990902, name: 'Medium Dark Blood Synchronizer' }],
+    low: [{ typeID: '991201', name: "Vigilant 'Vital' Overdrive Injector System" }] } }] }) };
+  const mig = JSON.parse(runMigrations(old, { from: 3 })['pyfa-fitsdb'])['Naga Navy Issue'][0].slots;
+  check('sync', 'migration v4: placeholder IDs and old names move to the real ones', `${mig.rigs[0].typeID}|${mig.low[0].typeID}|${mig.low[0].name}`, "96559|97974|'Vigilant' Vital Overdrive Injector System");
 }
 
 // -----------------------------------------------------------------------------

@@ -12,7 +12,7 @@ export function SourceBadge({label,color=C.success}){
   return <span style={{...BADGE_STYLE,color,background:`${color}1f`,border:`1px solid ${color}55`}}>{label}</span>;
 }
 
-// A hull CCP has shown but not shipped (data/prerelease-ships.js).
+// A hull CCP has shown but not shipped (data/sisi-patch.js).
 export function PrereleaseBadge(){
   return <SourceBadge label={t('Pre-release')} color={C.warning}/>;
 }

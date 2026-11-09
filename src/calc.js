@@ -1245,7 +1245,9 @@ const SHIP_MISSILE_DMG={3024:['eliteBonusCovertOps1','exp',10],3026:['eliteBonus
   // 87.9 rocket DPS against eos's 120.8 — and the suite only checked the patch's wiring.
   13025:['shipBonusCF','all',4],13027:['shipBonusAF','all',4],
   // The 24.02 pre-release bonuses (data/prerelease-balance.js).
-  991101:['shipBonusCC3','kin',4],991102:['shipBonusCF',['em','th','exp'],4],991103:['shipBonus3CF','kin',4]};
+  991101:['shipBonusCC3','kin',4],991102:['shipBonusCF',['em','th','exp'],4],991103:['shipBonus3CF','kin',4],
+  // Fractured Skies' Naga Navy Issue (data/sisi-patch.js): cruise missiles and torpedoes.
+  12934:['shipBonusCBC1','kin',[0,6]],12935:['shipBonusCBC2',['em','th','exp'],[0,6]]};
 // Exported for the regression suite, which checks every hull missile-damage effect is listed.
 export const SHIP_MISSILE_DMG_IDS = () => Object.keys(SHIP_MISSILE_DMG).map(Number);
 const SUBSYS_MISSILE_DMG={4248:['subsystemBonusCaldariOffensive2','kin',['Light Missiles','Heavy Missiles','Heavy Assault Missiles']],};
@@ -2963,6 +2965,15 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
           // The entry carries its module alongside its value rather than in a parallel array, because
           // the sort below reorders it and would tear any such array apart. Same reason as `penalize`.
           if (b && b !== 1) bcsFactors.push({v:b, src:{kind:'module', name:fi2.name}});
+          // Anything else writing the character's missileDamageMultiplier the way a BCS does (charID,
+          // PreMul) shares its stacking pool: a Caldari Navy Synchronizer's hidden multiplier, which the
+          // engine has already grown by its set count (effect 13073).
+          else for (const eid of (TYPES[fi2.typeID]?.e ?? [])) {
+            const m = EFFECTS_DATA[eid]?.m?.find(x => x.domain === 'charID' && x.func === 'ItemModifier' && x.modifiedAttributeID === 212 && x.operation === 0);
+            const an = m && ATTR_META[m.modifyingAttributeID]?.n;
+            const v = an ? fi2.get?.(an) : null;
+            if (v && v !== 1) { bcsFactors.push({v, src:{kind:'module', name:fi2.name}}); break; }
+          }
         }
         const bcsMult = stackingPenalty
           ? bcsFactors.sort((a,b)=>b.v-a.v).reduce((f,e,i)=>{
@@ -4048,9 +4059,11 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
     const dncVals = [];
     for (const { slot: s2, fitItem: fi2 } of modItems) {
       if (!fi2 || !isOnline(s2.state)) continue;
-      // The engine's value, not the type's: an Aberrant computer (data/prerelease-modules.js) carries
-      // a stronger speedFactor while it is active.
-      if (TYPES[fi2.typeID]?.gn === 'Drone Navigation Computer') { const sf = fi2.get?.('speedFactor') ?? TYPES[fi2.typeID]?.attrs?.speedFactor; if (sf) dncVals.push(sf); }
+      if (TYPES[fi2.typeID]?.gn !== 'Drone Navigation Computer') continue;
+      const sf = fi2.get?.('speedFactor') ?? TYPES[fi2.typeID]?.attrs?.speedFactor; if (sf) dncVals.push(sf);
+      // An Aberrant computer ('Vigilant' Vital) adds a second, active-only bonus of its own (effect
+      // 13050), stacking-penalised with the rest as the engine does it for drones.
+      if (isActive(s2.state)) { const ab = fi2.get?.('moduleAberrantDroneNavigationComputerBonusEffect'); if (ab) dncVals.push(ab); }
     }
     const dncMult = stackMult(dncVals);
     // An ACTIVE Integrated Sensor Array (24.02, data/prerelease-balance.js): light fighters' attack

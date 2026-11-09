@@ -15,7 +15,6 @@ import { readAbyssals, saveAbyssalScan } from "../lib/abyssal-store.js";
 import { scanAbyssals, importAbyssals } from "../lib/abyssal-import.js";
 import { requireOnline } from "../lib/network-request.js";
 import { EsiSkillAlignPanel, useEsiCharacters, friendlyError, esiPermissions, grantEsiScopes } from "../components/esi-ui.jsx";
-import { PrereleaseSkillControl } from "../components/prerelease-skill.jsx";
 import { BackdropControls } from "./Backdrop.jsx";
 import { TYPE, WEIGHT } from "./kit.jsx";
 
@@ -213,7 +212,6 @@ function SkillsSection({ s }) {
       </Choices>
       <Note>{t("Unset skills count as level V. Alpha is CCP's own clone ceiling, from the game data. A fit can fly a different pilot from its Pilot button.")}</Note>
       <div style={{ marginTop: 12 }}><EsiSkillAlignPanel setSkills={setSkills} /></div>
-      <PrereleaseSkillControl />
 
       <Heading>{t("Skill profiles")}</Heading>
       {profiles.map(p => (

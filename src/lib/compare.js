@@ -83,6 +83,13 @@ const ID_VALUED_RE = /^(canFitShipType\d+|canFitShipGroup\d+|chargeGroup\d+|fits
 const NPC_FACING_RE = /^entityCapacitorLevel/;
 
 /**
+ * The Synchronizer set marker (rigSet<Faction>Module = 1 on every faction module, Fractured Skies).
+ * Present on the faction variants and absent on the rest, so it scores the maximum possible spread
+ * and pushed a webifier's range off the list. It says which rig the module feeds, not what it does.
+ */
+const SET_MARKER_RE = /^rigSet.+Module$/;
+
+/**
  * SUBSYSTEMS are compared only on what they do to the fit's capacity.
  *
  * A T3 cruiser subsystem carries ~97 attributes, and the ones that actually vary between siblings
@@ -141,7 +148,7 @@ export function differingAttributes(typeIDs, { limit = 6, extraAttrs = null } = 
   const keys = new Set();
   for (const m of maps) for (const k of Object.keys(m)) {
     if (subsystemMode) { if (SUBSYSTEM_FITTING_ATTRS.has(k)) keys.add(k); continue; }
-    if (IGNORED.has(k) || ID_VALUED_RE.test(k) || NPC_FACING_RE.test(k) || /^(meta|tech)Level/i.test(k)) continue;
+    if (IGNORED.has(k) || ID_VALUED_RE.test(k) || NPC_FACING_RE.test(k) || SET_MARKER_RE.test(k) || /^(meta|tech)Level/i.test(k)) continue;
     if (typeof m[k] === 'number' && Number.isFinite(m[k])) keys.add(k);
   }
   const scored = [];

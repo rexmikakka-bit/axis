@@ -65,6 +65,11 @@ export function initEngine(types, effects, attrs, systemEffects) {
   // Build name→ID and name→typeID lookups
   for (const [id, meta] of Object.entries(ATTRS)) if (meta.n) AID[meta.n] = Number(id);
   for (const [tid, t] of Object.entries(TYPES)) if (t.n) TYPE_BY_NAME[t.n] = Number(tid);
+  RIG_SET_EFFECTS.clear();
+  for (const [eid, eff] of Object.entries(EFFECTS)) {
+    const ms = eff?.m ?? [];
+    if (ms.length && ms.every(mod => /^rigSet.+Bonus$/.test(ATTRS[mod.modifiedAttributeID]?.n ?? ''))) RIG_SET_EFFECTS.add(Number(eid));
+  }
 
   // Drop byte-identical duplicate modifiers within one effect. A single source applying the SAME
   // modifier twice is never correct dogma — eos hand-codes each effect and applies each bonus once —
@@ -554,6 +559,8 @@ export class DogmaItem {
 // other two, deliberately NOT here: 6737 is charge-side and calc.js already reads warfare buffs off
 // the charge directly, and 11714 only sets activationBlocked, which we do not model.
 const OFFLINE_STATE_EFFECTS = new Set([854, 3046]);
+// Effects that write a Synchronizer's set count (rigSet*Bonus); see Fit._applyRigSetMarkers. Built in initEngine().
+const RIG_SET_EFFECTS = new Set();
 
 // ─── Effect category → active state mapping ───────────────────────────────────
 // effectCategory: 0=passive, 1=activation(always?), 2=target, 4=online, 5=active, 6=overheat
@@ -827,10 +834,10 @@ export class Fit {
     //     rather than combines. See _amplifyImplantSets.
     this._amplifyImplantSets();
 
-    // 2f. SYNCHRONIZER rigs (pre-release, data/prerelease-rigs.js): each bonus grows by one point
-    //     per fitted module of the rig's faction. Same reason as 2e for running here: the rig's own
-    //     effects carry the bonus to the ship in step 3, so it must be final before they read it.
-    this._synchronizeRigs();
+    // 2f. SYNCHRONIZER set markers: every fitted faction module adds its rigSet*Module (1) to the
+    //     rig's rigSet*Bonus. Same reason as 2e for running here: the rig's own effects then add that
+    //     count to each bonus and carry the bonuses to the ship in step 3, so it must be final first.
+    this._applyRigSetMarkers();
 
     // 3. Run effects for all non-ship items (modules read skill-modified attrs) (implants, boosters, modules, drones)
     //    The ship runs AFTER skills so skill-scaled ship attrs are ready.
@@ -911,11 +918,19 @@ export class Fit {
       // carries Effect2670 (propagates maxTargetRangeBonus → ship maxTargetRange) at effectID index
       // 2 and the overload Effect5757 (+15% to that same maxTargetRangeBonus) at index 3, so the
       // ship captured the un-boosted 30 and lock range came out ~5.6% low. Self-first fixes it.
-      const orderedEffectIDs = [...item.effectIDs].sort((a, b) => {
-        const selfA = (EFFECTS[a]?.m ?? []).every(mod => mod.domain === 'itemID' || mod.domain === 'self' || mod.domain == null);
-        const selfB = (EFFECTS[b]?.m ?? []).every(mod => mod.domain === 'itemID' || mod.domain === 'self' || mod.domain == null);
-        return (selfA === selfB) ? 0 : (selfA ? -1 : 1);
-      });
+      //
+      // Between the two come effects that reach the item through its OWN group (a group modifier on
+      // the group it is in). A Synchronizer works in three steps: a self effect adds the set count to
+      // its damage bonus, a group-5140 effect turns that bonus into its hidden damage multiplier, and
+      // only then does a ship effect carry the multiplier to the turrets. Effect IDs happen to run in
+      // that order today; this keeps it so if CCP renumbers.
+      const rank = (eid) => {
+        const ms = EFFECTS[eid]?.m ?? [];
+        if (ms.every(mod => mod.domain === 'itemID' || mod.domain === 'self' || mod.domain == null)) return 0;
+        if (ms.length && ms.every(mod => mod.func === 'LocationGroupModifier' && Number(mod.groupID) === Number(item.groupID))) return 1;
+        return 2;
+      };
+      const orderedEffectIDs = [...item.effectIDs].sort((a, b) => rank(a) - rank(b));
       for (const eid of orderedEffectIDs) {
         if (isBooster && Fit.BOOSTER_PENALTY_EFFECTS.has(eid)) continue;
         // Skip Effect1395 for Crystal Alpha-Epsilon (any grade) — custom handler applies full set-boosted value
@@ -923,6 +938,8 @@ export class Fit {
         // Skip Effect2716 (drawback → signatureRadius) — handled post-skill-pass in custom handlers
         // so that Shield Rigging V's drawback reduction (via LocationGroupModifier) is applied first.
         if (eid === 2716) continue;
+        // Synchronizer set markers ran in step 2f.
+        if (RIG_SET_EFFECTS.has(eid)) continue;
         // Gate by effectCategory vs module state:
         //   cat=1 (active) → only fire when active/overheated
         //   cat=5 (overload) → only fire when overheated
@@ -968,25 +985,24 @@ export class Fit {
   // Getting the ORDER right is the whole point. A Genolution CA-2 is +1.5% CPU with a set product of
   // 3.276, so pyfa gives one +4.914% bonus; applying +1.5% and then +3.414% separately instead yields
   // 1.015 x 1.03414, and a Curse read 498.58 tf of CPU output against pyfa's 498.34.
-  // A synchronizer carries `sync: '<faction>'` on its type and its bonuses in synchronizerBonus1..4.
-  // "+1% for every Dark Blood module fitted" is read as one percentage point per module, away from
-  // zero (a -10% signature reduction becomes -11%), on the bonuses and never the penalty. Abyssal
-  // modules never count, even when the base type is a faction module: a mutated module is the one
-  // with `_mutations`. Offline modules do count, because the rig text says "fitted". Other
-  // synchronizers don't count; their names start with the size, not the faction.
-  _synchronizeRigs() {
-    for (const rig of this._modules) {
-      const faction = rig._td?.sync;
-      if (!faction || rig.state === 'offline') continue;
-      const count = this._modules.filter(m => m !== rig && !m._mutations && (m._td?.c ?? 7) === 7
-        && m._td?.n?.startsWith(faction + ' ')).length;
-      if (!count) continue;
-      const source = _trace ? { name: `${faction} modules fitted (${count})`, kind: 'module' } : null;
-      for (const name of ['synchronizerBonus1', 'synchronizerBonus2', 'synchronizerBonus3', 'synchronizerBonus4']) {
-        const base = rig._td.a?.[name];
-        if (!base || AID[name] == null) continue;
-        rig.attrs.applyMod(AID[name], 2, Math.sign(base) * count, true, null, source);
-      }
+  // A Synchronizer's bonuses grow by one point per fitted module of its faction. CCP does this in
+  // data (SiSi build 3682781): each faction module carries rigSet<Faction>Module = 1 and an effect
+  // that adds it to the rig's rigSet<Faction>Bonus (LocationGroupModifier on group 5140, op 2); the
+  // rig's own effects then add that bonus to each of its bonus attributes. RIG_SET_EFFECTS are those
+  // marker effects, found by the attribute they write, and they run here, before any module's own
+  // effects, so the count is complete when the rig reads it. Step 3 skips them.
+  //
+  // An OFFLINE module counts. The marker effects are effectCategory 0 (passive), which in CCP's model
+  // applies whenever the item is fitted; "only while online" would be category 4. eos runs passive
+  // effects from ONLINE up, so pyfa may disagree once it implements these — that is eos's convention,
+  // not the data (and it matches what CCP has said: "fitted"). _applyEffect's state gate is bypassed
+  // for them for the same reason. A mutated (abyssal) module never counts even when its base type is
+  // a faction module: in game it is a different type, which carries no marker.
+  _applyRigSetMarkers() {
+    if (!RIG_SET_EFFECTS.size) return;
+    for (const m of this._modules) {
+      if (m._mutations) continue;
+      for (const eid of m.effectIDs) if (RIG_SET_EFFECTS.has(eid)) this._applyEffect(eid, m, null, true);
     }
   }
 
@@ -1099,7 +1115,7 @@ export class Fit {
 
     // Check if effect is active for this item's state. OFFLINE_STATE_EFFECTS are exempt: eos runs
     // them whenever the module is FITTED, at any state (see the set's definition).
-    if (!OFFLINE_STATE_EFFECTS.has(eid) && !effectActiveForState(edata.c, src.state)) return;
+    if (!OFFLINE_STATE_EFFECTS.has(eid) && !RIG_SET_EFFECTS.has(eid) && !effectActiveForState(edata.c, src.state)) return;
 
     const level = skillLevel ?? src.level ?? 0;
     // domain='structureID' is the Structure-category equivalent of domain='shipID' — CCP's dogma
@@ -1279,7 +1295,9 @@ export class Fit {
           // bonuses to it (Ishtar 1084, Griffin Navy Issue 8102, Penitence 13045) land here. Skills
           // and Drone Link Augmentors also write it through charID, but the drone-control-range
           // block in calculate() already adds those, so only the ship's own effects are routed.
-          if (src === this.ship && dstAttr === (AID.droneControlDistance ?? 458)) {
+          // A rig's or module's PERCENTAGE change to it (the Dread Guristas Synchronizer's -60%) lands
+          // here too; their op-2 additions (Drone Link Augmentors) are the block's, so they are not.
+          if (dstAttr === (AID.droneControlDistance ?? 458) && (src === this.ship || (skillLevel == null && op !== 2))) {
             this.ship.attrs.applyMod(dstAttr, op, rawVal, effectiveDirect, pg, source);
           }
         } else if (domain === 'otherID') {
