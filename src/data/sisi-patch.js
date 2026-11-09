@@ -59,6 +59,8 @@ const RIG_ICON = { 'Dark Blood': 3203, Domination: 3201, 'Dread Guristas': 3200,
 const SYNC_RE = /^(Small|Medium|Large) (.+) Synchronizer$/;
 const RIG_SIZE = { Small: 1, Medium: 2, Large: 3 };
 const MG_RIGS = 1111, MG_SYNC = 990900;   // the Synchronizers' parent group: a placeholder, its real ID is not in the diff
+// The rigging implants' parent under Skill Hardwiring (531): a placeholder too.
+const MG_SKILL_HARDWIRING = 531, MG_RIGGING_IMPLANTS = 990901;
 // CCP's SiSi data gives the 'Vigilant' Vital Cap Recharger metaGroupID 0 where its three siblings carry
 // 63, the new Aberrant group. Display only (lib/meta.js); the dogma is untouched.
 const MG_ABERRANT = 63;
@@ -159,9 +161,23 @@ export function applyPrereleaseRecords(modulesData, marketGroups, typeIcons, mar
     // The patch's own copy: its attributes are still keyed by ID (initEngine renamed the bundle's).
     const t = PATCH.types[id], info = PATCH.info?.[id] ?? {}, a = t.a ?? {};
     if (info.icon != null) typeIcons[id] ??= info.icon;
-    if (t.c === 20 && t.g !== 303 && info.slot && implantTable) {
-      const fam = ((implantTable[info.slot] ??= {})['Rigging Implants'] ??= []);
-      if (!fam.includes(t.n)) fam.push(t.n);
+    // Implants and boosters: the phone's pickers read the implant table and the booster groups (core.js
+    // BOOSTER_DATA, built from the types), the desktop Browser reads the market tree. Boosters go in
+    // their existing Booster Slot group; the rigging implants' group is new, so it gets a "Rigging
+    // Implants" parent under Skill Hardwiring, the shape of Armor Implants > Implant Slot 10.
+    if (t.c === 20) {
+      if (t.g !== 303 && info.slot && implantTable) {
+        const fam = ((implantTable[info.slot] ??= {})['Rigging Implants'] ??= []);
+        if (!fam.includes(t.n)) fam.push(t.n);
+      }
+      const mg = info.market?.[0];
+      if (marketTree && mg != null) {
+        if (!marketTree.g[mg] && t.g !== 303) {
+          marketTree.g[MG_RIGGING_IMPLANTS] ??= { n: 'Rigging Implants', p: MG_SKILL_HARDWIRING, i: Number(id) };
+          marketTree.g[mg] = { n: info.market[1], p: MG_RIGGING_IMPLANTS, i: Number(id) };
+        }
+        if (marketTree.g[mg]) marketTree.t[id] ??= [mg, t.n, a[161] ?? 0];
+      }
       continue;
     }
     if (t.c !== 7) continue;

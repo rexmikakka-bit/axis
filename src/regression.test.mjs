@@ -8954,6 +8954,9 @@ Nanofiber Internal Structure II
   check('sync', 'in the market tree: Rigs > Synchronizer Rigs > Medium', mtRow ? `${MT.g[MT.g[MT.g[mtRow[0]].p].p].n} > ${MT.g[MT.g[mtRow[0]].p].n} > ${MT.g[mtRow[0]].n}` : 'missing',
     'Rigs > Synchronizer Rigs > Medium Synchronizer Rigs');
   check('sync', 'all 27 in the market tree', Object.values(MT.t).filter(r => / Synchronizer$/.test(r[1])).length, 27, 0);
+  // The desktop Browser finds implants and boosters through the market tree too, not the phone's pickers.
+  check('sync', 'the four SARO boosters and ten Xyston implants in the market tree',
+    `${Object.values(MT.t).filter(r => /^SARO .+ Booster$/.test(r[1])).length}/${Object.values(MT.t).filter(r => /'Xyston'/.test(r[1])).length}`, '4/10');
 
   const none = raw('Omen', [[NEUT]], RIG);
   check('sync', 'no Dark Blood modules: the base figures', dbBonuses(none.rig), '10/10/5/5/5');
