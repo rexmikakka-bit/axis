@@ -144,6 +144,12 @@ const SectionLabel = ({ children }) => (
 // `backdrop` (optional) is drawn behind the workspace and does not scroll with it — the user's
 // background picture (Backdrop.jsx).
 // `backgroundItems` (optional): the right-click menu on bare workspace (DesktopApp: the hull's info).
+// Window and layout titles are translated by name — t(WINDOWS[i].title), t(PRESETS[i].title) — which
+// scripts/check-i18n.mjs cannot see. These are the titles no other literal t() call already names, so
+// their catalog entries count as used (and an edited title is caught as an orphan, as a literal is).
+export const windowTitleKeys = () => [t("Environment"), t("Resources"), t("Defense"), t("Targeting and mobility"), t("Fit price"),
+  t("Mutaplasmid"), t("Standard"), t("Mirrored"), t("Focus")];
+
 export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, windowLive, onPopOut, onDock, backdrop, backgroundItems }) {
   const layout = state.windows;
   // `extra` rides along only when the windows actually changed, so a pointer move that snaps to the
