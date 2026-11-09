@@ -1598,4 +1598,15 @@ export default {
   "Standard": "표준",
   "Mirrored": "좌우 반전",
   "Focus": "집중",
+  // ── Desktop and newer screens (added 2026-11-09) ──
+  "Axis {version} is out": "Axis {version} 출시",
+  "Check for updates": "업데이트 확인",
+  "Checking…": "확인 중…",
+  "Couldn't reach GitHub. Try again later.": "GitHub에 연결할 수 없습니다. 나중에 다시 시도하세요.",
+  "Download": "다운로드",
+  "Later": "나중에",
+  "Skip this version": "이 버전 건너뛰기",
+  "Version {version}": "버전 {version}",
+  "You have {version}. The download page has what changed.": "현재 {version}입니다. 바뀐 내용은 다운로드 페이지에 있습니다.",
+  "You're up to date": "최신 버전입니다",
 };

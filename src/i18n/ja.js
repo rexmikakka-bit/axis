@@ -1599,4 +1599,15 @@ export default {
   "Standard": "標準",
   "Mirrored": "左右反転",
   "Focus": "フォーカス",
+  // ── Desktop and newer screens (added 2026-11-09) ──
+  "Axis {version} is out": "Axis {version} が公開されました",
+  "Check for updates": "アップデートを確認",
+  "Checking…": "確認中…",
+  "Couldn't reach GitHub. Try again later.": "GitHub に接続できませんでした。しばらくしてからもう一度お試しください。",
+  "Download": "ダウンロード",
+  "Later": "後で",
+  "Skip this version": "このバージョンをスキップ",
+  "Version {version}": "バージョン {version}",
+  "You have {version}. The download page has what changed.": "現在は {version} です。変更内容はダウンロードページにあります。",
+  "You're up to date": "最新の状態です",
 };

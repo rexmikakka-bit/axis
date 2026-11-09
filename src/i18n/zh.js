@@ -1593,4 +1593,15 @@ export default {
   "Standard": "标准",
   "Mirrored": "镜像",
   "Focus": "专注",
+  // ── Desktop and newer screens (added 2026-11-09) ──
+  "Axis {version} is out": "Axis {version} 已发布",
+  "Check for updates": "检查更新",
+  "Checking…": "检查中…",
+  "Couldn't reach GitHub. Try again later.": "无法连接 GitHub，请稍后再试。",
+  "Download": "下载",
+  "Later": "稍后",
+  "Skip this version": "跳过此版本",
+  "Version {version}": "版本 {version}",
+  "You have {version}. The download page has what changed.": "你当前是 {version}。下载页面列出了更新内容。",
+  "You're up to date": "已是最新版本",
 };

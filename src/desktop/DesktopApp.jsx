@@ -42,6 +42,7 @@ import { InspectorView, inspectorTitle } from "./Inspector.jsx";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
+import { UpdateBanner } from "./update-check.jsx";
 import { ACTIONS as KEY_ACTIONS, GROUPS as KEY_GROUPS, FIXED as KEY_FIXED, keysFor, keysText, actionFor, onKeymapChange } from "./keymap.js";
 import { ResourcesPanel, CapacitorPanel, TargetingPanel, DefensePanel, ValidationPanel, ValidityBadge, fitIssues, useFitStats } from "./stat-panels.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, BrowserWindow,
@@ -593,6 +594,8 @@ function DesktopApp() {
       </div>
 
       {banner.view}
+      {/* A newer desktop release on GitHub: a card in the corner (update-check.jsx). Main window only. */}
+      <UpdateBanner />
 
       {/* "EFT" and "EVE" stay as they are — one is a file format's name, the other the game's. */}
       {sheet === "shortcuts" && <ShortcutsSheet onClose={close} />}

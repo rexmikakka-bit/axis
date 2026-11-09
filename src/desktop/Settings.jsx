@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import KeysSettings from "./KeysSettings.jsx";
+import { UpdateCheckRow } from "./update-check.jsx";
 import { createPortal } from "react-dom";
 import { C, THEMES, THEME_LABELS } from "../theme.js";
 import { availableLocales, t } from "../lib/i18n.js";
@@ -568,6 +569,7 @@ function AboutSection() {
   return (
     <>
       <Heading first>{t("About Axis")}</Heading>
+      <UpdateCheckRow />
       <div style={{ fontSize: TYPE.label, color: C.text, lineHeight: 1.5 }}>{before}<a href="https://github.com/pyfa-org/Pyfa" target="_blank" rel="noreferrer" style={{ color: C.accent }}>pyfa</a>{after}</div>
       <Note>{t("Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.")}</Note>
     </>

@@ -1600,4 +1600,15 @@ export default {
   "Standard": "Стандарт",
   "Mirrored": "Зеркальная",
   "Focus": "Фокус",
+  // ── Desktop and newer screens (added 2026-11-09) ──
+  "Axis {version} is out": "Вышла Axis {version}",
+  "Check for updates": "Проверить обновления",
+  "Checking…": "Проверка…",
+  "Couldn't reach GitHub. Try again later.": "Не удалось связаться с GitHub. Попробуйте позже.",
+  "Download": "Скачать",
+  "Later": "Позже",
+  "Skip this version": "Пропустить эту версию",
+  "Version {version}": "Версия {version}",
+  "You have {version}. The download page has what changed.": "У вас {version}. Что изменилось — на странице загрузки.",
+  "You're up to date": "У вас последняя версия",
 };

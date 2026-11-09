@@ -1648,4 +1648,15 @@ export default {
   "Standard": "Standard",
   "Mirrored": "Gespiegelt",
   "Focus": "Fokus",
+  // ── Desktop and newer screens (added 2026-11-09) ──
+  "Axis {version} is out": "Axis {version} ist da",
+  "Check for updates": "Nach Updates suchen",
+  "Checking…": "Wird geprüft …",
+  "Couldn't reach GitHub. Try again later.": "GitHub ist nicht erreichbar. Versuch es später noch einmal.",
+  "Download": "Herunterladen",
+  "Later": "Später",
+  "Skip this version": "Diese Version überspringen",
+  "Version {version}": "Version {version}",
+  "You have {version}. The download page has what changed.": "Du hast {version}. Was sich geändert hat, steht auf der Download-Seite.",
+  "You're up to date": "Du bist auf dem neuesten Stand",
 };

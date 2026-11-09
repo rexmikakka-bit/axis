@@ -1664,4 +1664,15 @@ export default {
   "Standard": "Standard",
   "Mirrored": "En miroir",
   "Focus": "Focus",
+  // ── Desktop and newer screens (added 2026-11-09) ──
+  "Axis {version} is out": "Axis {version} est disponible",
+  "Check for updates": "Rechercher des mises à jour",
+  "Checking…": "Vérification…",
+  "Couldn't reach GitHub. Try again later.": "Impossible de joindre GitHub. Réessayez plus tard.",
+  "Download": "Télécharger",
+  "Later": "Plus tard",
+  "Skip this version": "Ignorer cette version",
+  "Version {version}": "Version {version}",
+  "You have {version}. The download page has what changed.": "Vous avez la {version}. Les nouveautés sont sur la page de téléchargement.",
+  "You're up to date": "Vous êtes à jour",
 };
