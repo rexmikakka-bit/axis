@@ -136,7 +136,10 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
   const charges = getCompatibleCharges(first).filter(c => chargeDamage(c.typeID) > 0).filter(c => {
     if (meta === "all") return true;
     const m = metaOf(c.typeID, "T1");
-    return meta === "navy" ? (m === "T1" || isNavy(c.name) || m === "Faction") : (m === "T1" && !isNavy(c.name));
+    // Navy is T1 plus the empire navy rounds (Imperial Navy, Republic Fleet, Caldari Navy, Federation
+    // Navy). Their meta group is "Faction", but so is every pirate round (Arch Angel, Shadow, Sansha…),
+    // which is why testing for Faction here let pirate ammo win the profile.
+    return meta === "navy" ? (m === "T1" || isNavy(c.name)) : (m === "T1" && !isNavy(c.name));
   });
   const curves = [];
   for (const c of charges) {

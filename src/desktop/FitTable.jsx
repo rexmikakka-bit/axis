@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
@@ -86,6 +86,9 @@ const PER_CYCLE_KEY = "axis_desk_info_percycle";
 // A copied roll leaves its abyssalItemId behind: the one rolled item cannot be fitted twice, but its
 // roll can.
 let deskClip = null;   // { text, secKey, slot }
+// The module groups whose Info cell shows the DPS they add (damage mods, turret and launcher alike).
+const DPS_GROUPS = new Set(["Gyrostabilizer", "Heat Sink", "Magnetic Field Stabilizer", "Ballistic Control System", "Entropic Radiation Sink",
+                            "Drone Damage Modules", "Vorton Projector Upgrade"]);
 function infoOf(e, perCycle) {
   if (!e) return null;
   if (e.strengthText && e.strengthCycleS) {
@@ -178,7 +181,21 @@ export function FitTable({ api }) {
     const { SECS, getDisplayRows, slots, setSlots, ship, cs, engineStatsBySlotID, validStatesFor,
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
             removeMod, duplicateMod, duplicateRoom, updateMod, hardpointRoom, fillHardpoints,
-            undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
+            undo, redo, undoDepth, redoDepth, grouped, setGrouped, dpsWithout } = api;
+  // What each damage module adds to the fit's total DPS: the total against the total with that row
+  // switched off (a grouped row: the whole group), so stacking penalties are in it. One extra fit
+  // calculation per damage-module row, redone when the fit changes.
+  const dpsShare = useMemo(() => {
+    const out = new Map();
+    const total = cs?.totalDps?.total ?? 0;
+    if (!dpsWithout || !(total > 0)) return out;
+    for (const sec of ["high", "mid", "low"]) for (const row of getDisplayRows(sec) ?? []) {
+      if (row.type === "empty" || !DPS_GROUPS.has(TYPES[row.typeID ?? tidByName(row.name)]?.gn) || !(row.state === "online" || row.state === "active" || row.state === "overheated")) continue;
+      const without = dpsWithout(row.groupIds?.length ? row.groupIds : [row.id]);
+      if (without != null && without > 0) out.set(row.id, total / without - 1);
+    }
+    return out;
+  }, [slots, cs, grouped]);   // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Desktop mouse model: left click SELECTS (ctrl/cmd adds or removes one, shift extends within the
     // rack), double click UNFITS it (one module of a grouped row per double-click, so it can be repeated;
@@ -438,7 +455,9 @@ export function FitTable({ api }) {
                   const capNeed = it?.get?.("capacitorNeed"), dur = it?.get?.("duration") || it?.get?.("speed");
                   const running = row.state === "active" || row.state === "overheated";
                   const capS = running && capNeed > 0 && dur > 0 ? capNeed / (dur / 1000) : null;
-                  const rng = rangeOf(e, row), info = infoOf(e, perCycle);
+                  const share = dpsShare.get(row.id);
+                  const rng = rangeOf(e, row), info = infoOf(e, perCycle) ?? (share > 0.0005 ? { text: `+${(share * 100).toFixed(1)}% DPS`, color: C.accent,
+                    title: row.count > 1 ? t("These {n} add {pct}% to the fit's total DPS", { n: row.count, pct: (share * 100).toFixed(1) }) : t("Adds {pct}% to the fit's total DPS", { pct: (share * 100).toFixed(1) }) } : null);
                   const price = row.mutaplasmid ? null : priceOf(row.typeID);
                   const isDragSrc = dragUI?.secKey === sec.key && dragUI?.fromIdx === rowIdx;
                   const isDragOver = dragUI?.secKey === sec.key && dragUI?.overIdx === rowIdx && dragUI?.fromIdx !== rowIdx;

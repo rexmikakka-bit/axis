@@ -113,9 +113,6 @@ function InterfaceSection({ s, bd }) {
       <Row label={t("Auto-fill hardpoints")} note={t("On: picking a turret or launcher from the browser fills every free matching hardpoint, not just the slot you tapped. Off: it fills only that one slot — use Fill Hardpoints on an existing module to fill the rest by hand.")}>
         <Switch on={s.autoFillHardpoints ?? true} onChange={s.setAutoFillHardpoints} label={t("Auto-fill hardpoints")} />
       </Row>
-      <Row label={t("Close the module picker after adding one module")} note={t("On: the picker for an empty slot closes as soon as you pick something. Off: it stays open and moves to the next empty slot in the rack.")}>
-        <Switch on={!!s.closeBrowserOnAdd} onChange={s.setCloseBrowserOnAdd} label={t("Close the module picker after adding one module")} />
-      </Row>
     </>
   );
 }

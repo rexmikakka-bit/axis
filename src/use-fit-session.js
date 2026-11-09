@@ -263,7 +263,9 @@ export function useFitSession({ onFitOpened, notify } = {}) {
     setActiveFit({ship,fitName});
     // Every route into a fit goes through here, so this is the one place that sees an "open".
     if(fit) setRecentFits(prev=>{
-      const rest=(prev??[]).filter(r=>!(r.ship===ship&&(r.id!=null&&fit.id!=null?r.id===fit.id:r.name===fitName)));
+      // The same fit by id OR by name: an entry saved before fits had ids, or under an id since reused,
+      // must not survive beside the new one as a second row for one fit.
+      const rest=(prev??[]).filter(r=>!(r.ship===ship&&((r.id!=null&&fit.id!=null&&r.id===fit.id)||r.name===fitName)));
       return [{ship,id:fit.id,name:fitName},...rest].slice(0,8);
     });
     // Opening a fit raises its tab if it already has one; otherwise it either REPLACES the current
@@ -430,7 +432,8 @@ export function useFitSession({ onFitOpened, notify } = {}) {
   // change fits, but every one of these buttons is reached by asking what some other ship is
   // carrying — and answering that with the graph or stats page you happened to leave open is
   // answering a question nobody asked.
-  const openFitInNewTab=(ship,fitName)=>{wantNewTab.current=true;setFitSubTab("Fit");loadFit(ship,fitName);};
+  // `fitOverride`: the fit itself, for one just created whose save has not reached fitsDB yet.
+  const openFitInNewTab=(ship,fitName,fitOverride)=>{wantNewTab.current=true;setFitSubTab("Fit");loadFit(ship,fitName,fitOverride);};
   // Closing the tab you are looking at moves to its neighbour, the way a browser does; closing any
   // other tab leaves the current fit alone. Closing the last tab just empties the strip -- the fit
   // stays loaded, since the strip is a shortcut rather than the thing holding the fit open.

@@ -437,6 +437,9 @@ function ShipsPane({ s }) {
     while (taken.has(name)) name = `${base} ${n++}`;
     const copy = { ...structuredClone(fit), id: nextFitId(fitsDB), name };
     s.setFitsDB(prev => ({ ...prev, [ship]: [...(prev[ship] || []), copy] }));
+    // Opened straight away, in a new tab, so the copy is what you edit next. Handed over whole: the
+    // library has not taken the copy yet, and looking it up there would open an empty fit.
+    s.openFitInNewTab(ship, name, copy);
   };
   const rename = (ship, id, name) => {
     name = name.trim(); setRenaming(null);
@@ -514,7 +517,7 @@ function ShipsPane({ s }) {
   const [showRecent, setShowRecent] = useState(() => { try { return localStorage.getItem(RECENT_KEY) !== "0"; } catch { return true; } });
   const flipRecent = () => setShowRecent(v => { try { localStorage.setItem(RECENT_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
   const recent = (s.recentFits ?? []).map(r => ({ ship: r.ship, fit: (fitsDB[r.ship] ?? []).find(f => (r.id != null && f.id === r.id) || f.name === r.name) }))
-    .filter(r => r.fit);
+    .filter((r, i, all) => r.fit && all.findIndex(o => o.fit && o.ship === r.ship && o.fit === r.fit) === i);
   return (
     <>
       <SearchBox value={search} onChange={setSearch} placeholder={t("Search ships and fits")} />
