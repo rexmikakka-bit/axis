@@ -101,7 +101,9 @@ function infoOf(e, perCycle) {
   if (e.strengthText) return { text: e.strengthText, color: C.warning };
   if (e.isASB) return e.hasCharges ? { text: `${k(e.totalEHP ?? e.totalHP)} / ${e.totalS}s`, color: C.high } : { text: `${k(e.ehpS)} EHP/s`, color: C.textMid };
   if (e.isAAR) return e.hasPaste ? { text: `${k(e.totalEHP ?? e.totalHP)} / ${e.totalS}s`, color: C.high } : { text: `${k(e.ehpS ?? 0)} EHP/s`, color: C.textMid };
-  if (e.isRAH && e.rahResistPct) return { node: e.rahResistPct.map((v, i) => <span key={i} style={{ color: [DMG.em.color, DMG.th.color, DMG.kin.color, DMG.exp.color][i] }}>{i ? " " : ""}{Number(v.toFixed(0))}</span>) };
+  // EM / TH / KIN / EXP, slash-separated as the phone shows them; the slashes stay muted.
+  if (e.isRAH && e.rahResistPct) return { node: e.rahResistPct.map((v, i) => <span key={i}>{i ? <span style={{ color: C.textMute }}>/</span> : null}<span style={{ color: [DMG.em.color, DMG.th.color, DMG.kin.color, DMG.exp.color][i] }}>{Number(v.toFixed(0))}</span></span>),
+    title: `EM / TH / KIN / EXP: ${e.rahResistPct.map(v => `${Number(v.toFixed(1))}%`).join(" / ")}` };
   if (e.isBreacher && !e.noPod) return { text: `${k(e.totalAbs)} / ${Math.round(e.totalPct)}%`, color: C.danger };
   return null;
 }
