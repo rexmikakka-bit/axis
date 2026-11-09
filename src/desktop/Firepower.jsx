@@ -329,10 +329,11 @@ export function FirepowerPanel({ s, ship, cs }) {
       </div>
       <div style={{ flex: "none" }}>
         <KV min={150} rows={[
-          [t("Weapon DPS"), rangeOf(w.total ?? 0, (tgt ? eff.weaponDpsMax : cs.weaponDpsMax) ?? 0), { color: C.accent }],
-          [t("Drone DPS"), fmtDps((d?.total ?? 0) + (f?.total ?? 0))],
-          [t("Total DPS"), rangeOf(tot.total ?? 0, (tgt ? eff.totalDpsMax : cs.totalDpsMax) ?? 0), { color: C.text, weight: 600 }],
+          // Total and volley first, total the highlighted figure; what it is made of beneath.
+          [t("Total DPS"), rangeOf(tot.total ?? 0, (tgt ? eff.totalDpsMax : cs.totalDpsMax) ?? 0), { color: C.accent, weight: 600 }],
           [t("Volley"), spool ? `${fmtDps(vol.total ?? 0)}–${fmtDps((tgt ? eff.totalVolleyMax : cs.totalVolleyMax) ?? 0)}` : fmtDps(vol.total ?? 0)],
+          [t("Weapon DPS"), rangeOf(w.total ?? 0, (tgt ? eff.weaponDpsMax : cs.weaponDpsMax) ?? 0)],
+          [t("Drone DPS"), fmtDps((d?.total ?? 0) + (f?.total ?? 0))],
           hasClip && [t("Clip Dmg"), fmtN(clip.total ?? 0), { title: (clip.total ?? 0).toLocaleString() }],
           hasClip && (cs.clipSeconds ?? 0) > 0 && [t("Clip Duration"), `${Math.round(cs.clipSeconds)}s${(cs.clipReloadSeconds ?? 0) > 0 ? ` (+${Math.round(cs.clipReloadSeconds)}s)` : ""}`],
           spool && (cs.weaponSpoolTimeS ?? 0) > 0 && [t("Spool-up time"), `${cs.weaponSpoolTimeS.toFixed(1)}s`],
