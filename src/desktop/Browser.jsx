@@ -7,7 +7,8 @@ import { eveIcon } from "../lib/icons.js";
 import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS,
          generateEmptySlots, lookupShip } from "../lib/core.js";
 import marketTreeData from "../data/market-tree.json";
-import { jargonSearch } from "../lib/jargon.js";
+import { jargonSearch, nameMatchesQuery, searchScore } from "../lib/jargon.js";
+import { tagsOf } from "../lib/fit-tags.js";
 import { metaOf, META_COLORS, compareForBrowser } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
@@ -506,12 +507,15 @@ function ShipsPane({ s }) {
     );
   };
 
+  // The phone's search (FittingsScreen): hulls through nameMatchesQuery, so initialisms work (BNI is
+  // the Brutix Navy Issue, ONI both Navy Issue hulls), and fits by name or tag. Each list is ranked
+  // with searchScore, so "raven" leads with the Raven rather than Raven Navy Issue.
   const q = search.trim().toLowerCase();
-  const hits = q ? Object.entries(fitsDB).flatMap(([ship, fits]) => [
-    ...(ship.toLowerCase().includes(q) ? [{ ship, fit: null }] : []),
-    ...fits.filter(f => f.name.toLowerCase().includes(q)).map(fit => ({ ship, fit })),
-  ]) : [];
-  const shipHits = q ? tree.flatMap(n => shipsUnder(n)).filter(sh => sh.name.toLowerCase().includes(q)).slice(0, 60) : [];
+  const ranked = (rows, nameOf) => rows.map((r, i) => ({ r, i, sc: searchScore(nameOf(r), search) }))
+    .sort((a, b) => b.sc - a.sc || nameOf(a.r).length - nameOf(b.r).length || a.i - b.i).map(x => x.r);
+  const hits = q ? ranked(Object.entries(fitsDB).flatMap(([ship, fits]) =>
+    fits.filter(f => f.name.toLowerCase().includes(q) || tagsOf(f).some(tag => tag.toLowerCase().includes(q))).map(fit => ({ ship, fit }))), h => h.fit.name) : [];
+  const shipHits = q ? ranked(tree.flatMap(n => shipsUnder(n)).filter(sh => nameMatchesQuery(sh.name, search)), sh => sh.name).slice(0, 60) : [];
   // The fits you opened last (the session's recentFits, newest first), above the tree; a toggle hides
   // them and is remembered. Each is a normal fit row, labelled with its hull since it sits outside it.
   const [showRecent, setShowRecent] = useState(() => { try { return localStorage.getItem(RECENT_KEY) !== "0"; } catch { return true; } });
@@ -530,7 +534,7 @@ function ShipsPane({ s }) {
           </div>
         )}
         {q
-          ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.filter(h => h.fit).map(h => fitRow(h.ship, h.fit, 0))}
+          ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.map(h => fitRow(h.ship, h.fit, 0))}
               {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
           : tree.map(n => nodeRow(n, 0))}
       </div>

@@ -5000,8 +5000,8 @@ Republic Fleet Command Mindlink`;
   check('search', 'ONI finds both Navy Issue hulls', shipHits('oni').slice(0, 2).join('|'), 'Omen Navy Issue|Osprey Navy Issue', 0);
   check('search', 'RSI finds the Raven State Issue', shipHits('rsi')[0], 'Raven State Issue', 0);
   check('search', 'VNI finds the Vexor Navy Issue', shipHits('vni')[0], 'Vexor Navy Issue', 0);
-  // Five since the pre-release Tornado Fleet Issue (data/prerelease-ships.js) joined the Tempest,
-  // Typhoon, Thrasher and Talwar; back to 4 if that file is deleted without CCP shipping it.
+  // Five since the pre-release Tornado Fleet Issue (data/sisi-patch.js) joined the Tempest,
+  // Typhoon, Thrasher and Talwar.
   check('search', 'TFI covers all five Fleet Issue hulls', shipHits('tfi').filter((n) => /Fleet Issue$/.test(n)).length, 5, 0);
   // A full name must still beat the longer hull that contains it — "raven" is not Raven Navy Issue.
   check('search', 'an exact hull name outranks its variants', shipHits('raven')[0], 'Raven', 0);
