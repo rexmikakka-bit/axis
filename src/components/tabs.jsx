@@ -284,13 +284,6 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
   const _csOpts=(sl)=>({implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:sl?.pilotSec,systemSecurity:sl?.systemSecurity});
   const _cs=useMemo(()=>(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,_csOpts(slots))??{}:{},
     [ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);   // eslint-disable-line react-hooks/exhaustive-deps
-  // Desktop: the fit's total DPS with these slots switched off, for the share a damage module adds.
-  const dpsWithout=(ids)=>{
-    if(!ship||!slots)return null;
-    const off=new Set(ids),sl={...slots};
-    for(const k of ["high","mid","low"])if(Array.isArray(slots[k]))sl[k]=slots[k].map(m=>off.has(m.id)?{...m,state:"offline"}:m);
-    return calcFitStats(ship,sl,drones??[],skills,_csOpts(sl))?.totalDps?.total??null;
-  };
   // Keyed by SLOT id, not typeID: two slots holding the same module can have genuinely different
   // stats. A missile launcher's range comes entirely from its charge (velocity x flight time), so an
   // unloaded launcher has no range at all — keying by typeID let a loaded launcher's range bleed onto
@@ -753,7 +746,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
           openEmpty:(secKey,id)=>onBrowseRack&&secKey!=="subsystems"?onBrowseRack(secKey,id):setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
           openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
           setRowState,removeMod,duplicateMod,duplicateRoom,updateMod,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
-          undo,redo,undoDepth,redoDepth,grouped,setGrouped,dpsWithout}}/>:
+          undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
       /* Dense sets a relative line height: the root's 145% is a fixed 26px by the time it gets here
           (see InlineFrame in ui.jsx), taller than a whole dense row. */
       <div style={{flex:1,padding:dense?"0 0 8px":"0 10px 12px",lineHeight:dense?1.3:undefined}}>
