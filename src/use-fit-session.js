@@ -13,8 +13,6 @@ import { buildExternalBursts, buildProjectedEffects } from "./lib/projection.js"
 import { resetScrollMemory } from "./lib/use-scroll-memory.js";
 import { LOCALE_KEY, LOCALES, applyLocale, loadLocale, t } from "./lib/i18n.js";
 import * as esi from "./lib/esi.js";
-import { useSyncSkillLevel } from "./lib/prerelease-skill.js";
-import { PRERELEASE_SKILL_KEY } from "./data/prerelease-rigs.js";
 
 // The fit session: everything about the open fit and the app's preferences that is the SAME on the
 // phone and on the desktop — the fit library, the fit being edited, its pilot and the links and
@@ -178,23 +176,20 @@ export function useFitSession({ onFitOpened, notify } = {}) {
   useEffect(()=>esi.onCharactersChanged(()=>setEsiSkills(esi.getAllCharacterSkills())),[]);
   // The sheet THIS fit is flown with. A fit can name its pilot (`slots.pilot`); with none named it
   // falls back to the app-wide sheet, which is what every fit did before pilots existed.
-  // The pre-release Synchronization Rigging level (lib/prerelease-skill.js) is laid over every pilot:
-  // no character has the skill yet, so this is the only place its level can come from.
-  const syncSkill=useSyncSkillLevel();
   // A fit that names no pilot is flown at All Skills V — on the phone and the desktop alike (Owen,
   // 2026-11-05). The app-wide sheet (Settings › Skills) applies only to a fit that chose it ("me",
   // "Your Skills" in the pilot sheet), so a pilot picked on one fit stays that fit's alone.
   const unassigned=SKILL_DEFAULTS;
   const pilotSkills=useMemo(()=>resolvePilotSkills(slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:unassigned}),
                           [slots?.pilot,skills,esiSkills,skillProfiles,unassigned]);
-  const fitSkills=useMemo(()=>({...pilotSkills,[PRERELEASE_SKILL_KEY]:syncSkill}),[pilotSkills,syncSkill]);
+  const fitSkills=pilotSkills;
   // The sheet a SOURCE fit (projected / command) is flown with. Resolved exactly like `fitSkills`,
   // so a saved fit reads the same whether you are editing it or projecting it — the skills it was
   // last edited under are the skills it keeps. Shared with the Effects tab, which renders a card for
   // each of these: the card and the applied value have to resolve identically or they disagree, and
   // that has happened before (see the burst comment below).
-  const sourceSkills=useMemo(()=>(fit)=>({...resolvePilotSkills(fit?.slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:unassigned}),[PRERELEASE_SKILL_KEY]:syncSkill}),
-                             [skills,esiSkills,skillProfiles,syncSkill,unassigned]);
+  const sourceSkills=useMemo(()=>(fit)=>resolvePilotSkills(fit?.slots?.pilot,{appSkills:skills,esiSkills,profiles:skillProfiles,fallback:unassigned}),
+                             [skills,esiSkills,skillProfiles,unassigned]);
   // What the RESOLVED sheet is, in words, for the snapshot card's footer. Derived from the sheet
   // rather than from `slots.pilot`, so a fit with no pilot named still says whether the app-wide
   // sheet it fell back to is all V or someone's actual character.

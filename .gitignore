@@ -91,3 +91,6 @@ node
 
 # Guide capture scratch (browser profiles, raw video): docs/capture/README.md
 docs/capture/.work/
+
+# Hoboleaks downloads and parsed output (regenerated each patch)
+scripts/hoboleaks/_*
