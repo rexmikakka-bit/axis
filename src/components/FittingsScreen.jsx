@@ -16,7 +16,7 @@ import { InfoButton, ItemPrice, ModifierBreakdown, ResistBars, SheetSearchBar, T
 import { GraphTab } from "./GraphTab.jsx";
 import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS, dismissKeyboardOnScroll } from "../lib/use-sheet-drag.jsx";
 import { BACK_SCREEN } from "../lib/back-button.js";
-import { isPrereleaseShip } from "../data/prerelease-ships.js";
+import { isPrereleaseShip } from "../data/sisi-patch.js";
 import { PrereleaseBadge } from "./source-badge.jsx";
 import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeGesture } from "../lib/use-swipe-back.js";

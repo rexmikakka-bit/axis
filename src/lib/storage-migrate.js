@@ -8,7 +8,7 @@
 //
 // Pure core (`runMigrations`) is React- and DOM-free so the regression suite can exercise it in Node.
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const SCHEMA_KEY = "pyfa-schema-version";
 // Saved fits are `pyfa-*`; app preferences, ESI tokens and graph state were `visviva_*` before the
 // rename to Axis and are `axis_*` after it. All three prefixes must be snapshotted, or migration v1
@@ -61,6 +61,43 @@ export const MIGRATIONS = [
       for (const f of fits) if (f && typeof f === "object" && !Array.isArray(f.tags)) f.tags = [];
     }
     store["pyfa-fitsdb"] = JSON.stringify(db);
+  },
+
+  // (v3 -> v4) Fractured Skies' pre-release items move to their real typeIDs (data/sisi-patch.js).
+  // Until 2026-11-09 the navy attack battlecruisers, Synchronizer rigs, their skill and the Aberrant
+  // modules were hand-built under placeholder typeIDs (990001+, 990901+, 990940, 991201+), and the
+  // Aberrant ones under a placeholder name. A saved slot holding a placeholder ID would load as an
+  // unknown module. Any `typeID` (number or string) in the table is rewritten, and an old Aberrant
+  // name renamed, in every data key that mentions one — the library, open tabs and recent fits alike.
+  // The table is history and never changes.
+  (store) => {
+    const ID = {990001:95629,990002:95631,990003:95630,990004:95632,990901:96541,990902:96559,990903:96564,
+      990904:96723,990905:96725,990906:96726,990907:96696,990908:96719,990909:96720,990910:96625,990911:96640,
+      990912:96641,990913:96587,990914:96594,990915:96595,990916:96136,990917:96137,990918:96138,990919:95809,
+      990920:96128,990921:96129,990922:96139,990923:96144,990924:96145,990925:96130,990926:96131,990927:96132,
+      990940:96100,991201:97974,991202:97975,991203:97976,991204:97982};
+    const NAME = {
+      "Vigilant 'Vital' Overdrive Injector System": "'Vigilant' Vital Overdrive Injector System",
+      "Vigilant 'Vital' Shield Boost Amplifier": "'Vigilant' Vital Shield Boost Amplifier",
+      "Vigilant 'Vital' Drone Navigation Computer": "'Vigilant' Vital Drone Navigation Computer",
+      "Vigilant 'Vital' Cap Recharger": "'Vigilant' Vital Cap Recharger",
+    };
+    const hit = /99(0\d{3}|1201|1202|1203|1204)|Vigilant 'Vital'/;
+    const walk = (v) => {
+      if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) v[i] = walk(v[i]); return v; }
+      if (typeof v === "string") return NAME[v] ?? v;
+      if (!v || typeof v !== "object") return v;
+      for (const k of Object.keys(v)) {
+        if (k === "typeID" && ID[v[k]] != null) v[k] = typeof v[k] === "string" ? String(ID[v[k]]) : ID[v[k]];
+        else v[k] = walk(v[k]);
+      }
+      return v;
+    };
+    for (const k of Object.keys(store)) {
+      const raw = store[k];
+      if (k === SCHEMA_KEY || typeof raw !== "string" || !hit.test(raw)) continue;
+      try { store[k] = JSON.stringify(walk(JSON.parse(raw))); } catch {}
+    }
   },
 ];
 

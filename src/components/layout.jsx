@@ -11,7 +11,7 @@ import { useBackHandler } from "../lib/use-back-handler.js";
 import { t } from "../lib/i18n.js";
 import { MenuGlyph, IconPlus, IconImport, IconExport, IconSnapshot, IconPrice, IconBasket, IconFeedback, IconSettings } from "./glyphs.jsx";
 import * as esi from "../lib/esi.js";
-import { isPrereleaseShip } from "../data/prerelease-ships.js";
+import { isPrereleaseShip } from "../data/sisi-patch.js";
 // The one copy of the app mark. Generated from assets/icon-only.png by scripts/build-icons.mjs, as
 // is the favicon, so the header, the browser tab and the installed app icon cannot drift apart.
 import appMark from "../assets/app-mark.png";
