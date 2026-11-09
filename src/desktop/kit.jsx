@@ -49,7 +49,7 @@ export function KV({ rows, min = 190, cols }) {
  * `onToggle` makes the bar the switch between them, as tapping the phone's strip is.
  */
 export function UsageBar({ label, labelColor, used, total, unit = "", fmt = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 }), color,
-                           showPct = false, remaining = false, margin = false, onToggle }) {
+                           showPct = false, remaining = false, margin = false, onToggle, pips = false }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
   const over = total >= 0 && used > total + 1e-6;
   const rem = (total ?? 0) - (used ?? 0);
@@ -71,9 +71,20 @@ export function UsageBar({ label, labelColor, used, total, unit = "", fmt = (n) 
               {fmt(used)} <span style={{ color: C.textMid, fontWeight: WEIGHT.text }}>/ {fmt(total)}{unit ? ` ${unit}` : ""}</span>
             </span>}
       </div>
-      <div style={{ height: 4, borderRadius: 2, background: C.border, marginTop: 5, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: over ? C.danger : (color ?? labelColor ?? C.textMid) }} />
-      </div>
+      {/* `pips`: a count (hardpoints) as one segment per unit — filled when used, outlined when free,
+          red past the total — so "how many are left" reads at a glance where a bar only says "most". */}
+      {pips && total > 0 && total <= 16
+        ? <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
+            {Array.from({ length: Math.max(total, Math.ceil(used)) }, (_, i) => {
+              const on = i < used, extra = i >= total;
+              return <span key={i} style={{ flex: "0 1 14px", minWidth: 5, height: 6, borderRadius: 2, boxSizing: "border-box",
+                background: on ? (extra ? C.danger : (color ?? labelColor ?? C.text)) : "transparent",
+                border: `1px solid ${on ? (extra ? C.danger : (color ?? labelColor ?? C.text)) : C.borderStrong}` }} />;
+            })}
+          </div>
+        : <div style={{ height: 4, borderRadius: 2, background: C.border, marginTop: 5, overflow: "hidden" }}>
+            <div style={{ width: `${pct}%`, height: "100%", background: over ? C.danger : (color ?? labelColor ?? C.textMid) }} />
+          </div>}
     </div>
   );
 }

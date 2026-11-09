@@ -69,8 +69,8 @@ export function ResourcesPanel({ s, ship, cs }) {
       <UsageBar {...bar} label={t("Drone bay")} used={d.bay} total={cs.droneBay ?? 0} unit="m³" fmt={int} />
       <UsageBar {...bar} label={t("Bandwidth")} used={d.bandwidth} total={cs.droneBandwidth ?? 0} unit="Mbit/s" fmt={int} />
       <UsageBar {...bar} label={t("Active drones")} used={d.inSpace} total={cs.maxActiveDrones ?? 0} fmt={int} />
-      <UsageBar {...bar} label={t("Turrets")} used={hard.turrets} total={ship.turrets ?? 0} fmt={int} />
-      <UsageBar {...bar} label={t("Launchers")} used={hard.launchers} total={ship.launchers ?? 0} fmt={int} />
+      <UsageBar {...bar} pips label={t("Turrets")} used={hard.turrets} total={ship.turrets ?? 0} fmt={int} />
+      <UsageBar {...bar} pips label={t("Launchers")} used={hard.launchers} total={ship.launchers ?? 0} fmt={int} />
     </div>
   );
 }
