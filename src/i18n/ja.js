@@ -735,6 +735,7 @@ export default {
   "Unload charge": "チャージを取り出す",
   "Unload charge from all {n}": "{n} 個すべてからチャージを取り出す",
   "Unnamed Fit": "名前のないフィット",
+  "Newest Android build on GitHub": "最新の Android ビルド（GitHub）",
   "Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.": "非公式のファン制作ツールです。Fenris Creations との提携、推奨、スポンサー関係はありません。EVE Online および関連する全ての素材は限定的な許諾のもとで使用しており、知的財産権は全て Fenris Creations に帰属します。",
   "Unstable": "不安定",
   "Unstable - depleted in {dur}": "不安定 - {dur} で枯渇",

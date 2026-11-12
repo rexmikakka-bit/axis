@@ -733,6 +733,7 @@ export default {
   "Unload charge": "卸下弹药",
   "Unload charge from all {n}": "卸下全部 {n} 件的弹药",
   "Unnamed Fit": "未命名装配",
+  "Newest Android build on GitHub": "GitHub 上的最新 Android 版本",
   "Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.": "非官方的玩家自制工具 — 与 Fenris Creations 无隶属关系，亦未获其认可或赞助。EVE Online 及全部相关素材在有限授权下使用，所有知识产权归 Fenris Creations 所有。",
   "Unstable": "不稳定",
   "Unstable - depleted in {dur}": "不稳定 — {dur} 后耗尽",

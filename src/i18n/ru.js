@@ -736,6 +736,7 @@ export default {
   "Unload charge": "Извлечь заряд",
   "Unload charge from all {n}": "Извлечь заряд из всех ({n})",
   "Unnamed Fit": "Фиттинг без названия",
+  "Newest Android build on GitHub": "Свежая сборка для Android на GitHub",
   "Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.": "Неофициальный фанатский инструмент — не связан с Fenris Creations, не одобрен и не спонсируется ею. EVE Online и все связанные материалы используются с ограниченного разрешения; вся интеллектуальная собственность принадлежит Fenris Creations.",
   "Unstable": "Нестабилен",
   "Unstable - depleted in {dur}": "Нестабилен — иссякнет через {dur}",

@@ -783,6 +783,7 @@ export default {
   "Unload charge": "Décharger la charge",
   "Unload charge from all {n}": "Décharger la charge des {n}",
   "Unnamed Fit": "Fitting sans nom",
+  "Newest Android build on GitHub": "Dernière version Android sur GitHub",
   "Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.":
     "Outil non officiel créé par un fan — sans affiliation avec Fenris Creations, ni approbation ni parrainage de leur part. EVE Online et tous les éléments associés sont utilisés avec une permission limitée ; l'ensemble de la propriété intellectuelle appartient à Fenris Creations.",
   "Unstable": "Instable",

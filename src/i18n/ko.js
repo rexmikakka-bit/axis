@@ -734,6 +734,7 @@ export default {
   "Unload charge": "차지 내리기",
   "Unload charge from all {n}": "{n}개 전부에서 차지 내리기",
   "Unnamed Fit": "이름 없는 피팅",
+  "Newest Android build on GitHub": "GitHub에서 최신 Android 빌드",
   "Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.": "비공식 팬 제작 도구이며 Fenris Creations와 제휴·승인·후원 관계가 없습니다. EVE Online 및 관련 자료는 제한적 허가 하에 사용되며, 모든 지적 재산권은 Fenris Creations에 있습니다.",
   "Unstable": "불안정",
   "Unstable - depleted in {dur}": "불안정 - {dur} 후 고갈",
