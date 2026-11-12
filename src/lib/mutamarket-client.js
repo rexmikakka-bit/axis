@@ -35,7 +35,8 @@ let nativeFetch=null;
 export function setMutaMarketFetch(fetcher){nativeFetch=typeof fetcher==='function'?fetcher:null;}
 function apiBase(){
   if(nativeFetch)return MUTAMARKET_API;
-  return (import.meta.env?.DEV&&typeof window!=='undefined'&&!window.Capacitor?.isNativePlatform?.())?DEV_PROXY:MUTAMARKET_API;
+  // The hosted browser build (`--mode web`) has the same prefix, proxied by Netlify (netlify.toml).
+  return ((import.meta.env?.DEV||import.meta.env?.MODE==='web')&&typeof window!=='undefined'&&!window.Capacitor?.isNativePlatform?.())?DEV_PROXY:MUTAMARKET_API;
 }
 
 async function fetchPage(path,signal){

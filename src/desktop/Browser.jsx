@@ -26,6 +26,8 @@ import { typeTarget } from "./inspect.js";
 import { useItems } from "./items-context.jsx";
 import { itemKind, defaultAction, dragProps, fitDragProps } from "./items.js";
 import AbyssalPane from "./AbyssalPane.jsx";
+import { IS_WEB } from "./os-window.js";
+import { DesktopAppNote } from "./update-check.jsx";
 
 // The desktop Browser (docs/desktop-handoff.md, "Browser"): one window, Market and Ships, as in
 // pyfa. Both are trees that EXPAND IN PLACE — a caret per category, children indented beneath it —
@@ -152,6 +154,7 @@ function pruneTree(nodes, ok) {
   return out;
 }
 const RECENT_KEY = "axis_desk_recent_shown";
+const WEB_NOTE_KEY = "axis_web_note_hidden";   // the browser build's desktop-app note, dismissed
 // How many saved fits a Ships search lists before it says how many more matched.
 const FIT_HIT_CAP = 100;
 const KIND_LABEL = { module: "Module", charge: "Charge", drone: "Drone", fighter: "Fighter", implant: "Implant", booster: "Booster", ship: "Ship" };
@@ -625,6 +628,8 @@ function ShipsPane({ s }) {
   // them and is remembered. Each is a normal fit row, labelled with its hull since it sits outside it.
   const [showRecent, setShowRecent] = useState(() => { try { return localStorage.getItem(RECENT_KEY) !== "0"; } catch { return true; } });
   const flipRecent = () => setShowRecent(v => { try { localStorage.setItem(RECENT_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
+  const [webNoteHidden, setWebNoteHidden] = useState(() => { try { return localStorage.getItem(WEB_NOTE_KEY) === "1"; } catch { return false; } });
+  const hideWebNote = () => { setWebNoteHidden(true); try { localStorage.setItem(WEB_NOTE_KEY, "1"); } catch { /* private mode */ } };
   const recent = (s.recentFits ?? []).map(r => ({ ship: r.ship, fit: (fitsDB[r.ship] ?? []).find(f => (r.id != null && f.id === r.id) || f.name === r.name) }))
     .filter((r, i, all) => r.fit && all.findIndex(o => o.fit && o.ship === r.ship && o.fit === r.fit) === i);
   return (
@@ -647,6 +652,14 @@ function ShipsPane({ s }) {
               {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
           : tree.map(n => nodeRow(n, 0))}
       </div>
+      {/* The browser build only: one quiet line under the tree pointing at the installed app, until dismissed. */}
+      {IS_WEB && !webNoteHidden && (
+        <div style={{ flex: "none", display: "flex", alignItems: "flex-start", gap: 6, padding: "6px 8px 6px 12px", borderTop: `1px solid ${C.border}` }}>
+          <DesktopAppNote style={{ flex: 1 }}>{t("Axis in your browser. The desktop app adds EVE character login.")}</DesktopAppNote>
+          <button type="button" onClick={hideWebNote} aria-label={t("Dismiss")} title={t("Dismiss")}
+            style={{ flex: "none", width: 18, height: 18, padding: 0, border: "none", background: "transparent", color: C.textMute, cursor: "pointer", fontSize: 12, lineHeight: "18px" }}>✕</button>
+        </div>
+      )}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
       {tagDialogs}
     </>

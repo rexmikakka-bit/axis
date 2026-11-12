@@ -40,9 +40,9 @@ import { ItemsContext } from "./items-context.jsx";
 import { addItem, accepts as itemAccepts } from "./items.js";
 import { InspectorView, inspectorTitle } from "./Inspector.jsx";
 import { useSessionSync } from "./sync.js";
-import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
+import { IS_TAURI, IS_WEB, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
-import { UpdateBanner } from "./update-check.jsx";
+import { UpdateBanner, openDesktopDownload } from "./update-check.jsx";
 import { ACTIONS as KEY_ACTIONS, GROUPS as KEY_GROUPS, FIXED as KEY_FIXED, keysFor, keysText, actionFor, onKeymapChange } from "./keymap.js";
 import { ResourcesPanel, CapacitorPanel, TargetingPanel, DefensePanel, ValidationPanel, ValidityBadge, fitIssues, useFitStats } from "./stat-panels.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, BrowserWindow,
@@ -299,7 +299,9 @@ function DesktopApp() {
   useEffect(() => {
     const said = (e) => {
       const names = (e.detail?.ids ?? []).map(id => t(WINDOWS.find(w => w.id === id)?.title ?? "Info"));
-      if (names.length) flash("none", t("Closed {names} · Ctrl+Shift+T reopens it", { names: names.join(", ") }), 3500);
+      // The key as bound now (the web build's default differs, and it can be rebound).
+      const key = keysFor("reopenWindow")[0];
+      if (names.length) flash("none", key ? t("Closed {names} · {key} reopens it", { names: names.join(", "), key }) : t("Closed {names}", { names: names.join(", ") }), 3500);
     };
     window.addEventListener(CLOSED_EVENT, said);
     return () => window.removeEventListener(CLOSED_EVENT, said);
@@ -407,7 +409,8 @@ function DesktopApp() {
   // typing — except Ctrl+F, whose whole point is to get to the Browser's search from anywhere. Ctrl+C
   // also stands down while text on the page is selected. Ctrl+Z / Ctrl+Y (and Ctrl+Shift+Z) are the
   // session's own (use-fit-session.js). Ctrl+T, Ctrl+W and Ctrl+Tab are the browser's own in
-  // `npm run dev`; they work in the installed app, which has no browser chrome to claim them.
+  // `npm run dev`; they work in the installed app, which has no browser chrome to claim them, and the
+  // web build defaults those actions to Alt instead (keymap.js).
   const keysRef = useRef(null);
   const [, keymapTick] = useState(0);
   useEffect(() => onKeymapChange(() => keymapTick(x => x + 1)), []);
@@ -436,8 +439,8 @@ function DesktopApp() {
         copyEft: () => setSheet("exporteft"),
         importFit: () => setSheet("import"),
         exportFit: () => setSheet("export"),
-        esiImport: () => setSheet("esiimport"),
-        esiExport: () => setSheet("esiexport"),
+        esiImport: IS_WEB ? null : () => setSheet("esiimport"),
+        esiExport: IS_WEB ? null : () => setSheet("esiexport"),
         optimizePrice: () => cur.optimizeFitPrice(),
         pickPilot: () => setSheet("pilot"),
         browserSearch: () => { openWindow(setLayoutState, "browser"); setBrowserMode({ n: Date.now(), focus: true }); },
@@ -621,11 +624,14 @@ function DesktopApp() {
       {sheet === "shortcuts" && <ShortcutsSheet onClose={close} />}
       {sheet === "import" && <ChooserSheet title={t("Import Fit")} onClose={close} options={[
         { icon: IconClipboard, label: t("From EFT"), sub: t("Paste from clipboard"), onSelect: importFromClipboard },
-        { icon: IconCharacter, label: t("From EVE Character"), sub: t("A saved fitting or a ship in your hangar"), onSelect: () => setSheet("esiimport") },
+        // The browser build has no character login: the row stays, pointing at the desktop app.
+        IS_WEB ? { icon: IconCharacter, label: t("From EVE Character"), sub: t("Needs the desktop app"), onSelect: () => { close(); openDesktopDownload(); } }
+          : { icon: IconCharacter, label: t("From EVE Character"), sub: t("A saved fitting or a ship in your hangar"), onSelect: () => setSheet("esiimport") },
       ]} />}
       {sheet === "export" && <ChooserSheet title={t("Export Fit")} onClose={close} options={[
         { icon: IconClipboard, label: t("To EFT"), sub: t("Copy to clipboard"), onSelect: () => setSheet("exporteft") },
-        { icon: IconCharacter, label: t("To EVE Character"), sub: t("Save into in-game fittings"), onSelect: () => setSheet("esiexport") },
+        IS_WEB ? { icon: IconCharacter, label: t("To EVE Character"), sub: t("Needs the desktop app"), onSelect: () => { close(); openDesktopDownload(); } }
+          : { icon: IconCharacter, label: t("To EVE Character"), sub: t("Save into in-game fittings"), onSelect: () => setSheet("esiexport") },
       ]} />}
       {sheet === "importeft" && <ImportFitSheet onClose={() => { close(); setImportInitial(null); }} onImport={s.importFit} initialText={importInitial?.text} initialErr={importInitial?.err} />}
       {sheet === "exporteft" && <ExportDialog s={s} onClose={close} onCopied={(ok) => flash(ok ? "success" : "none", ok ? t("Fit copied to clipboard") : t("Couldn't copy to the clipboard"))} />}

@@ -16,6 +16,8 @@ import { ContextMenu } from "./ContextMenu.jsx";
 import { typeTarget } from "./inspect.js";
 import { dragProps } from "./items.js";
 import { requestSettings, ABYSSALS_CHANGED } from "./Settings.jsx";
+import { IS_WEB } from "./os-window.js";
+import { DesktopAppNote } from "./update-check.jsx";
 
 // Market › My Abyssals: your saved rolls (the phone module picker's My Abyssals, components/
 // abyssal-library.jsx), across every rack at once. Same store, same grouping and filters
@@ -104,12 +106,13 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow, h
         <span style={{ flex: 1 }} />
         {chip(favorites, `★ ${t("Favorites")}`, () => setFavorites(v => !v))}
         {chip(jita, t("Jita 4-4"), () => setJita(v => !v))}
-        {chip(false, t("Sync from EVE…"), () => requestSettings("esi"))}
+        {!IS_WEB && chip(false, t("Sync from EVE…"), () => requestSettings("esi"))}
       </div>
       {error && <div role="alert" style={{ padding: "4px 12px", fontSize: 12.5, color: C.danger }}>{error}</div>}
       {!all.length ? (
         <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid, lineHeight: 1.45 }}>
-          {t("No saved abyssal modules yet.")} {t("Sync them from EVE in Settings › ESI, or save one from its info window.")}
+          {t("No saved abyssal modules yet.")} {IS_WEB ? t("Save one from its info window.") : t("Sync them from EVE in Settings › ESI, or save one from its info window.")}
+          <DesktopAppNote style={{ marginTop: 6 }}>{t("Syncing your abyssal modules from EVE needs the desktop app.")}</DesktopAppNote>
         </div>
       ) : <>
         {!words.length && <div role="tree" style={{ flex: "1 1 45%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>

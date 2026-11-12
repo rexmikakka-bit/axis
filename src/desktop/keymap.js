@@ -12,6 +12,7 @@
 // system's own paste event, which is what lets Ctrl+V read the clipboard at all), and the mouse
 // gestures. Settings lists them as fixed.
 import { t } from '../lib/i18n.js';
+import { IS_WEB } from './os-window.js';
 
 const STORE_KEY = 'axis_desk_keys';
 
@@ -50,6 +51,14 @@ export const ACTIONS = [
 
   { id: 'shortcuts',     group: 'help',    label: () => t('Keyboard shortcuts'),             keys: ['F1', '?'] },
 ];
+// In a browser (the web build), the browser keeps Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+PageUp/PageDown and
+// Ctrl+Shift+T for itself and a page never sees them, so those actions default to Alt instead. Character
+// login is not in the web build, so neither are its two actions.
+if (IS_WEB) {
+  const WEB_KEYS = { newTab: ['Alt+T'], closeTab: ['Alt+W'], nextTab: ['Alt+PageDown'], prevTab: ['Alt+PageUp'], reopenWindow: ['Alt+Shift+T'] };
+  for (const a of ACTIONS) if (WEB_KEYS[a.id]) a.keys = WEB_KEYS[a.id];
+  for (const id of ['esiImport', 'esiExport']) ACTIONS.splice(ACTIONS.findIndex(a => a.id === id), 1);
+}
 export const GROUPS = [['fits', () => t('Fits')], ['windows', () => t('Windows')], ['layouts', () => t('Layouts')], ['help', () => t('This list')]];
 // The shortcuts the app keeps fixed, for the lists to show alongside the rest.
 export const FIXED = () => [

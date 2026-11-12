@@ -5,6 +5,10 @@
 // API is imported lazily, so a browser never loads it and the phone app never contains it.
 
 export const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+// The browser build of the desktop app (`--mode web`: npm run dev:web / build:web, hosted on Netlify).
+// It is the same app minus what a web page can't do: no ESI login (CCP's callback is the apps' own
+// eveauth-visviva:// link) and no update check (a web page is always the newest on reload).
+export const IS_WEB = import.meta.env?.MODE === "web";
 const label = (id) => `satellite-${id}`;
 
 /**

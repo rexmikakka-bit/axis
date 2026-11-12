@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { openExternal } from "./os-window.js";
+import { openExternal, IS_WEB } from "./os-window.js";
 import { TYPE } from "./kit.jsx";
 
 // "A new version of Axis is out" — pyfa's update notice, for the desktop app. On launch, at most once a
@@ -64,6 +64,7 @@ export async function checkForUpdate({ force = false } = {}) {
 export function UpdateBanner() {
   const [latest, setLatest] = useState(null);
   useEffect(() => {
+    if (IS_WEB) return;   // a web page is the newest version on every reload
     let live = true;
     // A moment after launch, so the check never competes with the app's own loading.
     const id = setTimeout(() => {
@@ -84,6 +85,29 @@ export function UpdateBanner() {
         <button type="button" style={btn()} onClick={() => setLatest(null)}>{t("Later")}</button>
         <button type="button" style={{ ...btn(), border: "none", color: C.textMid }} onClick={() => { write(SKIP_KEY, latest.version); setLatest(null); }}>{t("Skip this version")}</button>
       </div>
+    </div>
+  );
+}
+
+// The browser build's pointer to the installed app: the newest desktop release's page, or the release
+// list if GitHub can't be asked.
+const RELEASE_LIST = "https://github.com/rexmikakka-bit/axis/releases";
+export function openDesktopDownload() {
+  checkForUpdate().then(({ latest }) => openExternal(latest?.url ?? RELEASE_LIST)).catch(() => openExternal(RELEASE_LIST));
+}
+
+/**
+ * The browser build's quiet note: what needs the desktop app, and a link to it. Nothing on the
+ * installed app, which is the one it points at.
+ */
+export function DesktopAppNote({ children, style }) {
+  if (!IS_WEB) return null;
+  return (
+    <div style={{ fontSize: TYPE.small, color: C.textMid, lineHeight: 1.45, ...style }}>
+      {children}{" "}
+      <button type="button" onClick={openDesktopDownload}
+        style={{ border: "none", background: "none", padding: 0, color: C.accent, cursor: "pointer", font: "inherit", textDecoration: "underline" }}>
+        {t("Get the desktop app")}</button>
     </div>
   );
 }
