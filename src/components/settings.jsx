@@ -7,8 +7,11 @@ import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS } from "../li
 import { availableLocales, t } from "../lib/i18n.js";
 import { primePrices, getCachedPrices } from "../prices.js";
 import { allPriceableTypeIDs } from "../lib/core.js";
+import { IS_WEB_BUILD, phoneAppUrl, switchWebView } from "../lib/web-build.js";
 
 const RELEASES_URL = "https://github.com/rexmikakka-bit/axis/releases/latest";
+// A function, so the theme colours are read at render time.
+const footBtn = () => ({background:"none",border:`1px solid ${C.border}`,borderRadius:7,padding:"6px 12px",color:C.accent,fontSize:11,fontWeight:600,cursor:"pointer"});
 
 // The in-app browser on a phone: a plain target=_blank does nothing useful inside the native webview.
 function openUrl(url){
@@ -316,7 +319,10 @@ export function SettingsOverlay({onClose,skills,setSkills,skillProfiles,setSkill
       <div style={{flex:1,overflowY:"auto",padding:16}}>
         {section==="skills"&&<SkillsPanel skills={skills} setSkills={setSkills} profiles={skillProfiles} setProfiles={setSkillProfiles}/>}
         {section==="backup"&&<BackupPanel/>}
-        {section==="esi"&&<EsiSettingsPanel setSkills={setSkills}/>}
+        {section==="esi"&&(IS_WEB_BUILD?<div>
+          <div style={{fontSize:12,color:C.textMid,lineHeight:1.5,marginBottom:12}}>{t("Character login (skill sync, in-game fittings and your abyssal modules) needs the Axis app.")}</div>
+          <button onClick={()=>openUrl(phoneAppUrl())} style={footBtn()}>{t("Get the Axis app")}</button>
+        </div>:<EsiSettingsPanel setSkills={setSkills}/>)}
         {section==="market"&&<div>
           <div style={{fontSize:11,fontWeight:700,color:C.textMute,letterSpacing:.5,textTransform:"uppercase",marginBottom:8}}>{t("Price Source")}</div>
           {[{key:"fuzzwork",label:"Fuzzwork Market",note:null},{key:"ceve",label:"ceve-market.org",note:null}].map(m=>{
@@ -388,8 +394,14 @@ export function SettingsOverlay({onClose,skills,setSkills,skillProfiles,setSkill
             pointed at the release page. Not on iOS: there the App Store / TestFlight is the update
             path, and an APK link is no use to an iPhone. "latest" is always the Android release —
             desktop releases are published as pre-releases and never take it. */}
-        {window.Capacitor?.getPlatform?.()!=="ios"&&<div style={{marginBottom:8}}>
-          <button onClick={()=>openUrl(RELEASES_URL)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:7,padding:"6px 12px",color:C.accent,fontSize:11,fontWeight:600,cursor:"pointer"}}>{t("Newest Android build on GitHub")}</button>
+        {/* The browser build (lib/web-build.js) offers the app itself, as the App Store or the APK by
+            device, and the desktop layout. */}
+        {IS_WEB_BUILD?<div style={{marginBottom:8,display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}>
+          <button onClick={()=>openUrl(phoneAppUrl())} style={footBtn()}>{t("Get the Axis app")}</button>
+          <button onClick={()=>switchWebView("desktop")} style={{...footBtn(),color:C.textMid}}>{t("Desktop layout")}</button>
+        </div>
+        :window.Capacitor?.getPlatform?.()!=="ios"&&<div style={{marginBottom:8}}>
+          <button onClick={()=>openUrl(RELEASES_URL)} style={footBtn()}>{t("Newest Android build on GitHub")}</button>
         </div>}
         {t("Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.")}
         <div style={{marginTop:6}}>

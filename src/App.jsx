@@ -25,6 +25,7 @@ import { initBackButton, BACK_APP } from "./lib/back-button.js";
 import { useBackHandler } from "./lib/use-back-handler.js";
 import { t } from "./lib/i18n.js";
 import * as esi from "./lib/esi.js";
+import { IS_WEB_BUILD, phoneAppUrl } from "./lib/web-build.js";
 
 // "Nothing is boosting this fit" and "nothing is projecting at it" are each ONE value, not a new one
 // per render. Both memos below are keyed on `fitsDB`, which the autosave write-back replaces after
@@ -334,11 +335,14 @@ export default function App(){
         importFit(parsed);
         setPriceBanner({kind:"success",msg:t('Imported "{name}"',{name:parsed.fitName})});setTimeout(()=>setPriceBanner(null),3000);
       }},
-      {icon:IconCharacter,label:t("From EVE Character"),sub:t("A saved fitting or a ship in your hangar"),onSelect:()=>{setShowImportChooser(false);setShowEsiImport(true);}},
+      // The browser build has no character login (lib/web-build.js): the row points at the app instead.
+      IS_WEB_BUILD?{icon:IconCharacter,label:t("From EVE Character"),sub:t("Needs the Axis app"),onSelect:()=>{setShowImportChooser(false);window.open(phoneAppUrl(),"_blank","noopener");}}
+        :{icon:IconCharacter,label:t("From EVE Character"),sub:t("A saved fitting or a ship in your hangar"),onSelect:()=>{setShowImportChooser(false);setShowEsiImport(true);}},
     ]}/>}
     {showExportChooser&&<ChooserSheet title={t("Export Fit")} onClose={()=>setShowExportChooser(false)} options={[
       {icon:IconClipboard,label:t("To EFT"),sub:t("Copy to clipboard"),onSelect:()=>{setShowExportChooser(false);setShowExportFit(true);}},
-      {icon:IconCharacter,label:t("To EVE Character"),sub:t("Save into in-game fittings"),onSelect:()=>{setShowExportChooser(false);setShowEsiExport(true);}},
+      IS_WEB_BUILD?{icon:IconCharacter,label:t("To EVE Character"),sub:t("Needs the Axis app"),onSelect:()=>{setShowExportChooser(false);window.open(phoneAppUrl(),"_blank","noopener");}}
+        :{icon:IconCharacter,label:t("To EVE Character"),sub:t("Save into in-game fittings"),onSelect:()=>{setShowExportChooser(false);setShowEsiExport(true);}},
     ]}/>}
     {showShipInfo&&activeFit?.ship&&<ShipInfoSheet ship={shipInfoHull} cs={snapshotStats} onClose={()=>setShowShipInfo(false)}/>}
     {showPilot&&<PilotSheet pilot={slots?.pilot??null} setPilot={p=>setSlots(prev=>({...prev,pilot:p||undefined}))}
