@@ -347,6 +347,12 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
         onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(active)}
         tabs={stack.length > 1 ? stack.map(x => ({ id: x, title: titleOf(x), live: !!windowLive?.(x) })) : null} activeTab={active}
         onTab={onTab} onCloseTab={onCloseTab} onTabOut={onTabOut} onTabMove={onTabMove} onTabMenu={(e, x) => setTabMenu({ x: e.clientX, y: e.clientY, id: x })}
+        onTitleMenu={(e) => setChipMenu({ x: e.clientX, y: e.clientY, items: [
+          !g.float && { label: g.collapsed ? t("Expand") : t("Collapse"), hint: t("Double-click"), onSelect: () => onToggleCollapse(id) },
+          { label: t("Pop out"), onSelect: () => popOut(active) },
+          { divider: true },
+          { label: t("Close"), onSelect: () => close(id) },
+        ] })}
         collapsed={!g.float && !!g.collapsed} onToggleCollapse={g.float ? undefined : onToggleCollapse} dropTarget={dropTarget?.id === id} ghost={dropTarget?.from === id}>
         {renderWindow(active)}
       </DeskWindow>
@@ -380,7 +386,11 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
                        background: C.surface, borderTop: `1px solid ${C.border}`, overflowX: "auto" }}>
         <SectionLabel>{t("Detached")}</SectionLabel>
         {detached.length
-          ? detached.map(id => <Chip key={id} pressed={false} onClick={() => dock(id)} title={t("Dock")}>{windowTitle?.(id) ?? id}</Chip>)
+          ? detached.map(id => <Chip key={id} pressed={false} onClick={() => dock(id)} title={t("Dock")}
+              onContextMenu={(e) => { e.preventDefault(); setChipMenu({ x: e.clientX, y: e.clientY, items: [
+                { label: t("Dock"), onSelect: () => dock(id) },
+                { label: t("Bring its window to the front"), onSelect: () => popOut(id) },
+              ] }); }}>{windowTitle?.(id) ?? id}</Chip>)
           : <span style={{ fontSize: 12, color: C.textMid, whiteSpace: "nowrap" }}>{t("None. Pop a window out to send it to another monitor.")}</span>}
         <span style={{ flex: 1 }} />
         <SectionLabel>{t("Layout")}</SectionLabel>

@@ -9161,18 +9161,19 @@ Nanofiber Internal Structure II
 // -----------------------------------------------------------------------------
 // DESKTOP WINDOW MANAGER — src/desktop/layout.js. Not pyfa numbers: the geometry rules from
 // docs/desktop-handoff.md section 2, where a wrong rule loses a window off-screen or snaps it to the
-// wrong place. Pinned against the Default preset's own coordinates.
+// wrong place. Pinned against the classic preset's coordinates (the first Default, kept as the fixture).
 // -----------------------------------------------------------------------------
 {
   console.log('\nDESKTOP WINDOW MANAGER');
   const D = await import('./desktop/layout.js');
-  const def = D.presetLayout('default');
-  check('desk', 'every window has a Default rect', D.WINDOW_IDS.every(id => def[id]) ? 1 : 0, 1, 0);
-  check('desk', 'Default: stat column at x 984', def.defense.x, 984, 0);
-  check('desk', 'Default: drones, implants, notes, graphs closed', [def.drones, def.implants, def.notes, def.graphs].some(w => w.open) ? 1 : 0, 0, 0);
-  check('desk', 'Default: no two open windows overlap', D.WINDOW_IDS.filter(a => def[a].open).some(a => D.WINDOW_IDS.filter(b => b > a && def[b].open)
+  const def = D.presetLayout('classic');
+  check('desk', 'every window has a Default rect', D.WINDOW_IDS.every(id => D.presetLayout('default')[id]) ? 1 : 0, 1, 0);
+  check('desk', 'every window has a classic rect', D.WINDOW_IDS.every(id => def[id]) ? 1 : 0, 1, 0);
+  check('desk', 'classic: stat column at x 984', def.defense.x, 984, 0);
+  check('desk', 'classic: drones, implants, notes, graphs closed', [def.drones, def.implants, def.notes, def.graphs].some(w => w.open) ? 1 : 0, 0, 0);
+  check('desk', 'classic: no two open windows overlap', D.WINDOW_IDS.filter(a => def[a].open).some(a => D.WINDOW_IDS.filter(b => b > a && def[b].open)
     .some(b => def[a].x < def[b].x + def[b].w && def[b].x < def[a].x + def[a].w && def[a].y < def[b].y + def[b].h && def[b].y < def[a].y + def[a].h)) ? 1 : 0, 0, 0);
-  check('desk', 'Default: fits the 1440 reference width', Math.max(...D.WINDOW_IDS.filter(a => def[a].open).map(a => def[a].x + def[a].w)), 1432, 0);
+  check('desk', 'classic: fits the 1440 reference width', Math.max(...D.WINDOW_IDS.filter(a => def[a].open).map(a => def[a].x + def[a].w)), 1432, 0);
   check('desk', 'Mirrored: browser on the right', D.presetLayout('mirrored').browser.x, 1192, 0);
   check('desk', 'Focus: fitting takes the browser\'s room', D.presetLayout('focus').fitting.w, 960, 0);
   check('desk', 'Focus: browser closed', D.presetLayout('focus').browser.open ? 1 : 0, 0, 0);
@@ -9216,10 +9217,10 @@ Nanofiber Internal Structure II
   check('desk', 'clamp: a window already in view is the same object', D.clampIntoView(far, 3000, 3000) === far ? 1 : 0, 1, 0);
   // Persistence: a garbage or partial value falls back per field instead of crashing the workspace.
   const store = (v) => ({ getItem: () => v });
-  check('desk', 'persist: unparseable value -> Default', D.readLayoutState(store('{nope')).windows.fitting.x, 256, 0);
+  check('desk', 'persist: unparseable value -> Default', D.readLayoutState(store('{nope')).windows.fitting.x, D.presetLayout('default').fitting.x, 0);
   check('desk', 'persist: wrong version -> Default', D.readLayoutState(store(JSON.stringify({ v: 99, windows: {} }))).preset, 'default');
   const partial = D.readLayoutState(store(JSON.stringify({ v: D.LAYOUT_VERSION, windows: { fitting: { x: 40, y: 'x', w: 10 } }, locked: true })));
-  check('desk', 'persist: good fields kept, bad ones defaulted', `${partial.windows.fitting.x},${partial.windows.fitting.y},${partial.windows.fitting.w}`, '40,8,720');
+  check('desk', 'persist: good fields kept, bad ones defaulted', `${partial.windows.fitting.x},${partial.windows.fitting.y},${partial.windows.fitting.w}`, `40,8,${D.presetLayout('default').fitting.w}`);
   // Facing edges snap to the gutter, never flush: b's left edge 3 px right of a's right edge (300)
   // lands one gutter out at 308, not butted against it.
   check('desk', 'move: facing edges keep the gutter', D.snapMove(two, 'b', 303, 400, { windows: true }).x, 308, 0);
@@ -9237,18 +9238,27 @@ Nanofiber Internal Structure II
     .some(b => fit850[a].x < fit850[b].x + fit850[b].w && fit850[b].x < fit850[a].x + fit850[a].w && fit850[a].y < fit850[b].y + fit850[b].h && fit850[b].y < fit850[a].y + fit850[a].h)) ? 1 : 0, 0, 0);
   check('desk', 'fit to height: widths untouched', fit850.fitting.w, def.fitting.w, 0);
   check('desk', 'fit to height: a tall workspace leaves it alone', D.fitToHeight(def, 1400) === def ? 1 : 0, 1, 0);
-  // Standard: Owen's arrangement, with its tab group, squeezed both ways onto a smaller workspace.
-  const std = D.presetLayout('standard');
-  check('desk', 'Standard: the contents window is one tab group, Cargo shown', `${std.drones.stack.join(',')}|${std.drones.active}|${std.implants.in}`,
+  // Default: Owen's arrangement (it was "Standard"), with its tab group, squeezed both ways onto a smaller workspace.
+  const std = D.presetLayout('default');
+  check('desk', 'Default: the contents window is one tab group, Cargo shown', `${std.drones.stack.join(',')}|${std.drones.active}|${std.implants.in}`,
     'drones,cargo,implants,boosters,projected,command|cargo|drones');
-  check('desk', 'Standard: the group survives cleanLayout', D.cleanLayout(JSON.parse(JSON.stringify(std))).drones.stack.length, 6, 0);
-  check('desk', 'Standard: on its own 1640x1136 workspace, left exactly as drawn', D.fitPreset('standard', { w: 1700, h: 1150 }).targeting.x, 1192, 0);
-  const stdSmall = D.fitPreset('standard', { w: 1440, h: 850 });
+  check('desk', 'Default: the group survives cleanLayout', D.cleanLayout(JSON.parse(JSON.stringify(std))).drones.stack.length, 6, 0);
+  check('desk', 'Default: on its own 1640x1136 workspace, left exactly as drawn', D.fitPreset('default', { w: 1700, h: 1150 }).targeting.x, 1192, 0);
+  const stdSmall = D.fitPreset('default', { w: 1440, h: 850 });
   const shown = D.WINDOW_IDS.filter(a => stdSmall[a].open && !D.isTabMember(stdSmall, a));
-  check('desk', 'Standard on 1440x850: everything inside it', shown.every(a => stdSmall[a].x + stdSmall[a].w <= 1440 && stdSmall[a].y + stdSmall[a].h <= 850) ? 1 : 0, 1, 0);
-  check('desk', 'Standard on 1440x850: still no overlaps', shown.some(a => shown.filter(b => b > a)
+  check('desk', 'Default on 1440x850: everything inside it', shown.every(a => stdSmall[a].x + stdSmall[a].w <= 1440 && stdSmall[a].y + stdSmall[a].h <= 850) ? 1 : 0, 1, 0);
+  check('desk', 'Default on 1440x850: still no overlaps', shown.some(a => shown.filter(b => b > a)
     .some(b => stdSmall[a].x < stdSmall[b].x + stdSmall[b].w && stdSmall[b].x < stdSmall[a].x + stdSmall[a].w && stdSmall[a].y < stdSmall[b].y + stdSmall[b].h && stdSmall[b].y < stdSmall[a].y + stdSmall[a].h)) ? 1 : 0, 0, 0);
-  check('desk', 'the other presets are not squeezed sideways', D.fitPreset('default', { w: 1000, h: 1200 }).targeting.x, 984, 0);
+  check('desk', 'the other presets are not squeezed sideways', D.fitPreset('classic', { w: 1000, h: 1200 }).targeting.x, 984, 0);
+  // A save from before Standard became the Default: Standard carries over as Default, the old Default
+  // is no longer marked as a preset (its windows stay), and a hidden Standard stays hidden.
+  const oldSave = (preset, hidden = []) => D.readLayoutState(store(JSON.stringify({ v: D.LAYOUT_VERSION, windows: {}, preset, hidden })));
+  check('desk', 'old save: Standard is now Default', oldSave('standard').preset, 'default');
+  check('desk', 'old save: the old Default is no preset', oldSave('default').preset ?? 'none', 'none');
+  check('desk', 'old save: a hidden Standard stays hidden as Default', oldSave('mirrored', ['standard', 'default']).hidden.join(), 'default');
+  check('desk', 'old save: other presets untouched', oldSave('mirrored').preset, 'mirrored');
+  check('desk', 'new save: Default stays Default', D.readLayoutState(store(JSON.stringify(D.defaultLayoutState()))).preset, 'default');
+  check('desk', 'Standard is off the layout bar', D.PRESETS.map(p => p.id).join(), 'default,mirrored,focus,graphs');
   // A window being opened lands where it can be seen (Owen: "sometimes opening a window opens it
   // offscreen"). The view is the workspace's scroll offset and size.
   {
@@ -9393,7 +9403,7 @@ Nanofiber Internal Structure II
   check('insp', 'roll: an abyssal roll survives a restart', JSON.stringify(I.cleanTarget(JSON.parse(JSON.stringify(rolled)))), JSON.stringify(rolled));
   check('insp', 'roll: it gets a window apart from the base type', I.targetKey(rolled) !== I.targetKey(I.typeTarget(527)) ? 1 : 0, 1, 0);
   check('insp', 'roll: it resolves to the rolled item', I.resolveTarget(rolled, {}).item?.mutations?.speedFactor, -61.2);
-  const base = L.presetLayout('default');
+  const base = L.presetLayout('classic');
   const a = L.openFloat(base, { target: tm, tab: 'info', key: I.targetKey(tm) }, { seq: 1 });
   check('insp', 'float: opens raised above every window', a.layout[a.id].z, L.topZ(base) + 1, 0);
   const mid = L.openFloat(base, { target: tm, tab: 'info', key: 'mid' }, { seq: 9, view: { w: 1600, h: 1000 } }).layout;
@@ -9420,7 +9430,7 @@ Nanofiber Internal Structure II
   check('insp', 'layouts: a blank name is refused', L.renameNamed(st0, 'B', '   ') === st0 ? 1 : 0, 1, 0);
   check('insp', 'layouts: update leaves the inspectors out', Object.keys(L.floatsOf(L.overwriteNamed(st0, 'A').named.A)).length, 0, 0);
   // Tab groups: a title bar dropped on another makes one window; tabs come back out where they were.
-  const g0 = L.presetLayout('default');
+  const g0 = L.presetLayout('classic');
   const g1 = L.combineWindows(g0, 'targeting', 'capacitor');
   check('insp', 'tabs: combining keeps the target\'s place and lists both', `${g1.capacitor.x},${g1.capacitor.y}|${g1.capacitor.stack.join(',')}`, `${g0.capacitor.x},${g0.capacitor.y}|capacitor,targeting`);
   check('insp', 'tabs: the dropped window is the one shown', g1.capacitor.active, 'targeting');

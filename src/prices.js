@@ -76,9 +76,10 @@ let nativeFetch = null;
 export function setPriceFetch(fetcher) { nativeFetch = typeof fetcher === 'function' ? fetcher : null; }
 const CEVE_API = 'https://www.ceve-market.org/api';
 // isNativePlatform, not `window.Capacitor`: Capacitor's web runtime defines that global in a plain
-// browser too (the same trap mutamarket-client.js documents).
+// browser too (the same trap mutamarket-client.js documents). The hosted browser build (`--mode web`)
+// has the same prefix, proxied by Netlify (netlify.toml).
 const ceveBase = () => nativeFetch ? CEVE_API
-  : (import.meta.env?.DEV && typeof window !== 'undefined' && !window.Capacitor?.isNativePlatform?.()) ? '/ceve-api' : CEVE_API;
+  : ((import.meta.env?.DEV || import.meta.env?.MODE === 'web') && typeof window !== 'undefined' && !window.Capacitor?.isNativePlatform?.()) ? '/ceve-api' : CEVE_API;
 
 async function timedFetch(url, signal, { native = false } = {}) {
   const ctl = new AbortController();

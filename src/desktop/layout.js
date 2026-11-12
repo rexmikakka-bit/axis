@@ -70,7 +70,10 @@ const CLOSED_BY_DEFAULT = { drones: [296, 120, 500, 420, false], implants: [340,
                             settings: [340, 64, 760, 760, false], shipinfo: [520, 72, 480, 700, false] };
 
 const PRESET_GEOMETRY = {
-  default: {
+  // The first Default (until 2026-11-12), off the layout bar since Owen's arrangement took its name.
+  // Kept because Mirrored, Focus and Graphs are drawn from it, and the window manager's suite pins its
+  // snapping and persistence rules against these coordinates. Not in PRESETS: nothing offers it.
+  classic: {
     browser: [8, 8, 240, 560, true], cargo: [8, 576, 240, 408, true],
     fitting: [256, 8, 720, 600, true], projected: [256, 616, 356, 368, true], firepower: [620, 616, 356, 368, true],
     ...column(STATS, 984, 448), ...CLOSED_BY_DEFAULT,
@@ -97,7 +100,8 @@ const PRESET_GEOMETRY = {
   // Owen's own arrangement (2026-11-05), drawn on a 1640x1136 workspace: a full-height browser, a tall
   // Fitting table over one tabbed window of the fit's contents, and the stat column with Capacitor
   // and Fit price side by side. The tabs' own rects are where each goes when pulled out of the group.
-  standard: {
+  // It was "Standard" until it became the Default (2026-11-12); readLayoutState carries old saves over.
+  default: {
     ...CLOSED_BY_DEFAULT,
     browser: [8, 8, 336, 1128, true], fitting: [352, 8, 832, 808, true],
     drones: [352, 824, 832, 312, true], cargo: [1616, 8, 400, 192, true], implants: [1240, 912, 352, 208, true],
@@ -109,14 +113,13 @@ const PRESET_GEOMETRY = {
 };
 // A preset's tab groups: host -> [tabs, host first; the tab shown].
 const PRESET_GROUPS = {
-  standard: { drones: [['drones', 'cargo', 'implants', 'boosters', 'projected', 'command'], 'cargo'] },
+  default: { drones: [['drones', 'cargo', 'implants', 'boosters', 'projected', 'command'], 'cargo'] },
 };
 // The workspace a preset is drawn for, when it is not the 1440 x PRESET_HEIGHT the others share. Such
 // a preset is squeezed to a smaller workspace in both directions (fitPreset).
-const PRESET_SIZE = { standard: [1640, 1136] };
+const PRESET_SIZE = { default: [1640, 1136] };
 export const PRESETS = [
   { id: 'default', title: 'Default' },
-  { id: 'standard', title: 'Standard' },
   { id: 'mirrored', title: 'Mirrored' },
   { id: 'focus', title: 'Focus' },
   { id: 'graphs', title: 'Graphs' },
@@ -531,8 +534,11 @@ export function cleanLayout(raw) {
   return cleanGroups(out);
 }
 
+// pv: which preset ids a save was written with. Before 2 (2026-11-12), "default" was the arrangement
+// now kept as "classic" and "standard" was today's Default.
+const PRESET_IDS_VERSION = 2;
 export function defaultLayoutState() {
-  return { v: LAYOUT_VERSION, windows: presetLayout('default'), preset: 'default',
+  return { v: LAYOUT_VERSION, pv: PRESET_IDS_VERSION, windows: presetLayout('default'), preset: 'default',
            snapGrid: true, snapWindows: true, locked: false, cols: {}, named: {}, hidden: [] };
 }
 
@@ -554,13 +560,17 @@ export function readLayoutState(storage) {
       if (ok.length) cols[win] = Object.fromEntries(ok);
     }
   }
+  // An older save: Standard is the Default now, and the old Default is gone (its windows stay as they
+  // are, just no longer marked as a preset).
+  const oldIds = raw.pv !== PRESET_IDS_VERSION;
+  const renamed = (id) => !oldIds ? id : id === 'standard' ? 'default' : id === 'default' ? null : id;
   return {
-    v: LAYOUT_VERSION,
+    v: LAYOUT_VERSION, pv: PRESET_IDS_VERSION,
     windows: cleanLayout(raw.windows),
-    preset: typeof raw.preset === 'string' ? raw.preset : null,
+    preset: typeof raw.preset === 'string' ? renamed(raw.preset) : null,
     snapGrid: raw.snapGrid !== false, snapWindows: raw.snapWindows !== false, locked: raw.locked === true,
     cols, named,
-    hidden: Array.isArray(raw.hidden) ? raw.hidden.filter(id => PRESETS.some(p => p.id === id)) : [],
+    hidden: Array.isArray(raw.hidden) ? raw.hidden.map(renamed).filter(id => PRESETS.some(p => p.id === id)) : [],
   };
 }
 

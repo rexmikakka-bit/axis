@@ -32,7 +32,7 @@ export default function CargoPanel({ s, capacity }) {
   // m³ per stack rides in the row tooltip: the window is narrow by default and the name is what you read.
   const cols = "18px minmax(0,1fr) 52px 16px";
   return (
-    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div {...drop.props} {...rs.blankProps([{ label: t("Add to cargo…"), onSelect: () => itemOps.browse("cargo") }])} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       <DropHint over={drop.over} ok={drop.ok} label={t("Add to cargo")} />
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <span style={{ fontSize: TYPE.label, color: C.textMid }}>{t("Cargo")}</span>

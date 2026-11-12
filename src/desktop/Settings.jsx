@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import KeysSettings from "./KeysSettings.jsx";
-import { UpdateCheckRow } from "./update-check.jsx";
+import { UpdateCheckRow, DesktopAppNote } from "./update-check.jsx";
+import { IS_WEB } from "./os-window.js";
 import { createPortal } from "react-dom";
 import { C, THEMES, THEME_LABELS } from "../theme.js";
 import { availableLocales, t } from "../lib/i18n.js";
@@ -562,12 +563,24 @@ function EsiSection({ s }) {
   );
 }
 
+// The browser build has no character login: CCP sends a login back to the apps' own registered link,
+// which a web page can't receive. MutaMarket browsing needs no login, so it is said here too.
+function EsiWebSection() {
+  return (
+    <>
+      <Heading first>{t("EVE ESI Connection")}</Heading>
+      <DesktopAppNote>{t("Character login (skill sync, in-game fittings and your abyssal modules) needs the desktop app.")}</DesktopAppNote>
+      <Note>{t('MutaMarket browsing needs no character login. Axis sends module types and filters, not your inventory. Public ESI lookups resolve contract locations; prices and availability can be delayed.')}</Note>
+    </>
+  );
+}
+
 function AboutSection() {
   const [before, after] = t("Fitting calculations are validated against {pyfa}, and its environment-effect data is used with thanks. pyfa is licensed GPLv3.").split("{pyfa}");
   return (
     <>
       <Heading first>{t("About Axis")}</Heading>
-      <UpdateCheckRow />
+      {IS_WEB ? <DesktopAppNote style={{ margin: "12px 0 8px" }}>{t("This is Axis in your browser.")}</DesktopAppNote> : <UpdateCheckRow />}
       <div style={{ fontSize: TYPE.label, color: C.text, lineHeight: 1.5 }}>{before}<a href="https://github.com/pyfa-org/Pyfa" target="_blank" rel="noreferrer" style={{ color: C.accent }}>pyfa</a>{after}</div>
       <Note>{t("Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.")}</Note>
     </>
@@ -603,7 +616,7 @@ export default function DeskSettings({ s, bd }) {
           {cur === "keyboard" && <KeysSettings />}
           {cur === "market" && <MarketSection s={s} />}
           {cur === "backup" && <BackupSection />}
-          {cur === "esi" && <EsiSection s={s} />}
+          {cur === "esi" && (IS_WEB ? <EsiWebSection /> : <EsiSection s={s} />)}
           {cur === "about" && <AboutSection />}
         </div>
       </div>

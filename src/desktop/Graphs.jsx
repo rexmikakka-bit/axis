@@ -15,6 +15,9 @@ import Menu from "./Menu.jsx";
 import { TYPE } from "./kit.jsx";
 import { useFitDrop, DropHint } from "./items-context.jsx";
 import { ContextMenu } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { typeTarget } from "./inspect.js";
+import { eveIcon } from "../lib/icons.js";
 
 // The desktop Graphs window, after pyfa's graph window (docs/desktop.md, "Graphs"): several SOURCE
 // fits plotted against several TARGETS at once — every source x target pair is one line, colour by
@@ -308,8 +311,8 @@ function Slider({ label, value, onChange, min = 0, max = 100, unit = "%" }) {
     </label>
   );
 }
-const ListRow = ({ swatch, label, onRemove, children }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 7, minHeight: 26, fontSize: 12.5 }}>
+const ListRow = ({ swatch, label, onRemove, onContextMenu, children }) => (
+  <div onContextMenu={onContextMenu} style={{ display: "flex", alignItems: "center", gap: 7, minHeight: 26, fontSize: 12.5 }}>
     {swatch}<span title={typeof label === "string" ? label : undefined} style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{label}</span>
     {children}
     {onRemove && <button type="button" onClick={onRemove} aria-label={t("Remove")} style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
@@ -371,6 +374,18 @@ export default function GraphsPanel({ s }) {
   const [pin, setPin] = useState(saved.pin ?? null);
   const [picker, setPicker] = useState(null);   // "source" | "target"
   const [plotMenu, setPlotMenu] = useState(null);   // the plot's right-click menu, {x, y}
+  const [rowMenu, setRowMenu] = useState(null);   // a Fits / Targets row's, {x, y, items}
+  const insp = useInspect();
+  // A fit on the graph (ship null: a target profile): open it, its hull's info, take it off.
+  const fitRowMenu = (ship, fitName, onRemove) => (e) => {
+    e.preventDefault();
+    setRowMenu({ x: e.clientX, y: e.clientY, items: [
+      ship && { label: t("Open"), onSelect: () => s.loadFit(ship, fitName) },
+      ship && { label: t("Ship info"), icon: eveIcon(tidByName(ship), 32), onSelect: () => insp.inspect(typeTarget(tidByName(ship)), "info") },
+      ship && { divider: true },
+      { label: t("Remove"), danger: true, disabled: !onRemove, onSelect: () => onRemove?.() },
+    ] });
+  };
   // Compact (plot only) or expanded (controls under it). The controls sit BELOW the plot so the plot
   // keeps the window's full width, which a distance or time axis needs far more than height. "auto"
   // follows the window: under 460 px tall the controls fold away, so the graph can sit small in a
@@ -617,7 +632,8 @@ export default function GraphsPanel({ s }) {
         <DropHint over={srcDrop.over} ok={srcDrop.ok} label={t("Graph this fit")} />
         <Label>{t("Fits")}</Label>
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
-          onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
+          onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))}
+          onContextMenu={fitRowMenu(sc.ship, sc.fitName, sc.auto ? null : () => setSources(l => l.filter((_, k) => k !== i)))} />)}
         {!srcList.length && <div style={{ fontSize: 12.5, color: C.textMid }}>{t("Open a fit, or add one.")}</div>}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
           <button type="button" style={addBtn()} onClick={() => setPicker("source")}>+ {t("Fit")}</button>
@@ -634,7 +650,8 @@ export default function GraphsPanel({ s }) {
             return (
               <div key={j}>
               <ListRow swatch={dashSwatch(j)} label={tg.kind === "fit" ? `${tg.ship} · ${tg.fitName}` : tg.kind === "custom" ? t("Custom") : P?.label() ?? tg.profile}
-                onRemove={targets.length > 1 ? () => setTargets(l => l.filter((_, k) => k !== j)) : undefined}>
+                onRemove={targets.length > 1 ? () => setTargets(l => l.filter((_, k) => k !== j)) : undefined}
+                onContextMenu={fitRowMenu(tg.kind === "fit" ? tg.ship : null, tg.fitName, targets.length > 1 ? () => setTargets(l => l.filter((_, k) => k !== j)) : null)}>
                 {P?.mwdSig != null && <button type="button" aria-pressed={!!tg.mwd} onClick={() => setTarget(j, { mwd: !tg.mwd })}
                   style={{ ...addBtn(), height: 20, padding: "0 6px", color: tg.mwd ? C.accent : C.textMid, borderColor: tg.mwd ? C.accent : C.borderStrong }}>MWD</button>}
                 {P && <button type="button" title={t("Edit this target's signature and speed")} onClick={() => { const p = profileTarget(tg.profile, !!tg.mwd);
@@ -683,6 +700,7 @@ export default function GraphsPanel({ s }) {
       </div>}
 
       {/* Display options, on a right-click of the plot (they were checkboxes under it). */}
+      {rowMenu && <ContextMenu x={rowMenu.x} y={rowMenu.y} items={rowMenu.items} onClose={() => setRowMenu(null)} />}
       {plotMenu && <ContextMenu x={plotMenu.x} y={plotMenu.y} onClose={() => setPlotMenu(null)} items={[
         { heading: t("Display") },
         (cat === "damage" || cat === APP_PROFILE) && { label: t("Ignore target resists"), checked: ignoreResists, onSelect: () => setIgnoreResists(v => !v) },

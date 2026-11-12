@@ -1,0 +1,31 @@
+# Axis in the browser: the desktop app's web build (`npm run build:web`, IS_WEB in src/desktop/os-window.js).
+# Same app as the installer, minus ESI login and the update check.
+
+[build]
+  command = "npm run build:web"
+  publish = "dist-web"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# ceve-market and MutaMarket send no CORS headers, so a browser can't call them directly. The web build
+# asks for these same-site prefixes instead (prices.js ceveBase, mutamarket-client.js apiBase), as the
+# dev server does through vite.config.js's proxy.
+[[redirects]]
+  from = "/ceve-api/*"
+  to = "https://www.ceve-market.org/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/mutamarket-api/*"
+  to = "https://mutamarket.com/api/:splat"
+  status = 200
+  force = true
+  headers = { User-Agent = "Axis EVE fitting tool (rexmikakka@gmail.com)" }
+
+# Hashed bundles never change under the same name; the page itself is always revalidated.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

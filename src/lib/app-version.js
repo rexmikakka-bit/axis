@@ -14,7 +14,7 @@ let pending = null;
 /** "1.28.7 iOS", "1.28.7 Android", "0.5.2 Desktop", or "dev". Resolves once and is cached. */
 export function appVersion() {
   pending ??= (async () => {
-    if (typeof __AXIS_DESKTOP_VERSION__ === "string") return `${__AXIS_DESKTOP_VERSION__} Desktop`;
+    if (typeof __AXIS_DESKTOP_VERSION__ === "string") return `${__AXIS_DESKTOP_VERSION__} ${import.meta.env?.MODE === "web" ? "Web" : "Desktop"}`;
     try {
       const [{ App }, { Capacitor }] = await Promise.all([import("@capacitor/app"), import("@capacitor/core")]);
       const info = await App.getInfo();

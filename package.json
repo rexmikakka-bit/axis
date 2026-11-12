@@ -8,6 +8,8 @@
     "build": "vite build",
     "dev:desktop": "vite --config vite.desktop.config.js",
     "build:desktop": "vite build --config vite.desktop.config.js",
+    "dev:web": "vite --config vite.desktop.config.js --mode web --port 5185",
+    "build:web": "vite build --config vite.desktop.config.js --mode web --outDir dist-web",
     "tauri": "tauri",
     "lint": "eslint .",
     "preview": "vite preview",

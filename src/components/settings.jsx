@@ -8,6 +8,15 @@ import { availableLocales, t } from "../lib/i18n.js";
 import { primePrices, getCachedPrices } from "../prices.js";
 import { allPriceableTypeIDs } from "../lib/core.js";
 
+const RELEASES_URL = "https://github.com/rexmikakka-bit/axis/releases/latest";
+
+// The in-app browser on a phone: a plain target=_blank does nothing useful inside the native webview.
+function openUrl(url){
+  if(window.Capacitor?.isNativePlatform?.())
+    return import("@capacitor/browser").then(({Browser})=>Browser.open({url}));
+  window.open(url,"_blank","noopener,noreferrer");
+}
+
 // Skill groups are DERIVED from SKILL_CATALOG rather than hand-listed. The old hardcoded table
 // covered 28 skills; the catalog has 388 — every skill the engine reads PLUS every skill any
 // fittable item requires. Most were unreachable from the UI before, so you could not lower a
@@ -375,6 +384,13 @@ export function SettingsOverlay({onClose,skills,setSkills,skillProfiles,setSkill
           that models them is standing on pyfa's hand-written handlers — ours included. Naming that
           in the shipped app, not only in the repo, is the honest place for it. */}
       <div style={{flexShrink:0,padding:"10px 16px calc(10px + env(safe-area-inset-bottom, 0px))",borderTop:`1px solid ${C.border}`,background:C.surfaceAlt,fontSize:10,lineHeight:1.5,color:C.textMute,textAlign:"center"}}>
+        {/* Android builds reach GitHub before (or instead of) the Play Store, so Android users are
+            pointed at the release page. Not on iOS: there the App Store / TestFlight is the update
+            path, and an APK link is no use to an iPhone. "latest" is always the Android release —
+            desktop releases are published as pre-releases and never take it. */}
+        {window.Capacitor?.getPlatform?.()!=="ios"&&<div style={{marginBottom:8}}>
+          <button onClick={()=>openUrl(RELEASES_URL)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:7,padding:"6px 12px",color:C.accent,fontSize:11,fontWeight:600,cursor:"pointer"}}>{t("Newest Android build on GitHub")}</button>
+        </div>}
         {t("Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.")}
         <div style={{marginTop:6}}>
           {/* One key with the link's position marked by a placeholder, then split on it — rather

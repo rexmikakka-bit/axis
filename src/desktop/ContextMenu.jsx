@@ -3,12 +3,16 @@ import { createPortal } from "react-dom";
 import { C } from "../theme.js";
 import { Dialog } from "./kit.jsx";
 import { useInspect } from "./inspect-context.jsx";
+import { t } from "../lib/i18n.js";
+import { readClipboardText } from "../lib/core.js";
 
 // The desktop's right-click menu: opens at the pointer, kept inside the window, closes on a pick, an
 // outside click, Escape, or the window losing focus. Items are {label, onSelect, disabled?, hint?,
 // danger?, checked?, icon?, submenu?} or {divider:true} or {heading}. An item with a `submenu` (items
 // of the same shape) opens it beside itself on hover or click, flipping left at the screen's edge —
-// pyfa's Charge ▸ Depleted Uranium ▸ Republic Fleet. `icon` is an image URL drawn before the label.
+// pyfa's Charge ▸ Depleted Uranium ▸ Republic Fleet. One with both a `submenu` and an `onSelect` opens
+// the submenu on hover and runs `onSelect` on click (Variations: the list, or the window).
+// `icon` is an image URL drawn before the label.
 
 // One column of the menu. Submenus are drawn INSIDE the root's element (fixed-positioned), so a click
 // in one is not an "outside" click that closes the whole menu.
@@ -38,7 +42,7 @@ function Panel({ x, y, items, onClose, depth = 0, flipFrom = null }) {
         const hasSub = Array.isArray(it.submenu) && it.submenu.length > 0, open = sub?.index === i;
         return (
           <button key={i} type="button" role="menuitem" aria-haspopup={hasSub ? "menu" : undefined} aria-expanded={hasSub ? open : undefined} disabled={it.disabled}
-            onClick={(e) => { if (hasSub) { openSub(i, e.currentTarget); return; } onClose(); it.onSelect?.(); }}
+            onClick={(e) => { if (hasSub && !it.onSelect) { openSub(i, e.currentTarget); return; } onClose(); it.onSelect?.(); }}
             style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "none", borderRadius: 5,
                      background: open ? C.surfaceAlt : "transparent",
                      color: it.disabled ? C.textMute : it.danger ? C.danger : C.text, fontSize: 13, textAlign: "left", cursor: it.disabled ? "default" : "pointer" }}
@@ -75,6 +79,50 @@ export function ContextMenu({ x, y, items, onClose }) {
   }, [onClose]);
   // Portalled for the same reason as kit.jsx Dialog: a docked window's menu must not open under an item window.
   return createPortal(<div ref={root} style={{ display: "contents" }}><Panel x={pos.x} y={pos.y} items={items} onClose={onClose} /></div>, document.body);
+}
+
+/**
+ * The webview's own right-click menu (Back, Reload, Inspect…) never shows in Axis. Whatever a window
+ * did not answer with a menu of its own lands here: a text field gets Cut / Copy / Paste / Select all,
+ * selected text elsewhere gets Copy, and anything else gets nothing. Listens on `window`, after React's
+ * handlers have run, so `defaultPrevented` says a component already opened its menu. Shift+right-click
+ * on the dev server still gets the webview's menu, for Inspect.
+ */
+export function useNativeMenuFallback() {
+  const [menu, setMenu] = useState(null);
+  useEffect(() => {
+    const onMenu = (e) => {
+      if (e.defaultPrevented) return;
+      if (import.meta.env.DEV && e.shiftKey) return;
+      e.preventDefault();
+      const el = e.target instanceof Element ? e.target.closest("input, textarea, [contenteditable=''], [contenteditable='true']") : null;
+      const textual = el && (el.tagName !== "INPUT" || /^(text|search|url|email|tel|number|password|)$/.test(el.type ?? ""));
+      if (textual) {
+        el.focus();
+        const editable = !el.readOnly && !el.disabled;
+        const picked = el.isContentEditable ? !!window.getSelection()?.toString()
+          : el.type !== "number" && el.selectionStart != null && el.selectionEnd > el.selectionStart;
+        const run = (cmd) => () => { el.focus(); document.execCommand(cmd); };
+        setMenu({ x: e.clientX, y: e.clientY, items: [
+          { label: t("Cut"), hint: "Ctrl+X", disabled: !editable || !picked || el.type === "password", onSelect: run("cut") },
+          { label: t("Copy"), hint: "Ctrl+C", disabled: !picked || el.type === "password", onSelect: run("copy") },
+          { label: t("Paste"), hint: "Ctrl+V", disabled: !editable, onSelect: async () => {
+            const { text } = await readClipboardText();
+            el.focus();
+            // insertText goes through the field's own input event, so React sees the change and Undo keeps it.
+            if (text) document.execCommand("insertText", false, text);
+          } },
+          { divider: true },
+          { label: t("Select all"), hint: "Ctrl+A", onSelect: () => { el.focus(); el.select ? el.select() : document.execCommand("selectAll"); } },
+        ] });
+        return;
+      }
+      if (window.getSelection()?.toString()) setMenu({ x: e.clientX, y: e.clientY, items: [{ label: t("Copy"), hint: "Ctrl+C", onSelect: () => document.execCommand("copy") }] });
+    };
+    window.addEventListener("contextmenu", onMenu);
+    return () => window.removeEventListener("contextmenu", onMenu);
+  }, []);
+  return menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />;
 }
 
 /**
@@ -129,8 +177,17 @@ export function useRowSelect() {
     },
     style: { outline: "none" },
   });
+  // On the window's body: a right-click that no row took (empty space under the list) gets `items`,
+  // the window's own actions. A text field keeps the text menu (useNativeMenuFallback).
+  const blankProps = (items) => ({
+    onContextMenu: (e) => {
+      if (e.defaultPrevented || e.target.closest("input, textarea, select")) return;
+      e.preventDefault(); setSel(null);
+      setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items });
+    },
+  });
   const view = menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />;
-  return { sel, setSel, rowProps, listProps, view };
+  return { sel, setSel, rowProps, listProps, blankProps, view };
 }
 
 /**
