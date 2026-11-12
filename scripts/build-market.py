@@ -70,7 +70,7 @@ SLOT_BY_EFFECT = [(12, 'high'), (13, 'mid'), (11, 'low'), (2663, 'rigs')]
 # CCP's metaGroupID -> the label the UI shows. Kept identical to META_BY_MG in
 # src/lib/meta.js; if that map gains a tier, mirror it here.
 META_BY_MG = {1: 'T1', 2: 'T2', 3: 'Storyline', 4: 'Faction', 5: 'Officer', 6: 'Deadspace',
-              14: 'T3', 15: 'Abyssal', 17: 'Premium', 19: 'Limited',
+              14: 'T3', 15: 'Abyssal', 17: 'Premium', 19: 'Limited', 63: 'Aberrant',
               52: 'Faction', 53: 'T2', 54: 'T1'}
 
 CHARGE_GROUP_ATTRS = [604, 605, 606, 609, 610]
@@ -157,10 +157,12 @@ def build(db_path):
     cur = db.cursor()
     groups = {r[0]: {'n': r[1], 'p': r[2] or None} for r in
               cur.execute('SELECT marketGroupID, marketGroupName, parentGroupID FROM invmarketgroups')}
-    market_of, cargo_only = {}, {}
-    for tid, mgid, cat, gid, name in cur.execute(
-            'SELECT t.typeID, t.marketGroupID, g.categoryID, t.groupID, t.typeName FROM invtypes t '
+    market_of, cargo_only, parent_of = {}, {}, {}
+    for tid, mgid, cat, gid, name, parent in cur.execute(
+            'SELECT t.typeID, t.marketGroupID, g.categoryID, t.groupID, t.typeName, t.variationParentTypeID FROM invtypes t '
             'JOIN invgroups g ON g.groupID = t.groupID WHERE t.published = 1'):
+        if parent and parent != tid:
+            parent_of[tid] = parent
         if mgid and cat in MARKET_CATS:
             market_of[tid] = (mgid, cat)
         elif mgid and gid in CARGO_GROUPS:
@@ -246,6 +248,10 @@ def build(db_path):
             m[f] = vals if any(v is not None for v in vals.values()) else None
         m['requiredSkills'] = rec.get('rs') or []
         modules[str(tid)] = {k: m[k] for k in FIELD_ORDER}
+        # CCP's variation parent (a faction web's is Stasis Webifier I). core.js files a module whose
+        # parent's family in data-bundle.js predates it, so new variants join without a hand list.
+        if parent_of.get(tid):
+            modules[str(tid)]['variationParent'] = parent_of[tid]
 
     return modules, {'g': tree_g, 't': tree_t}, new_groups, dropped_unknown
 

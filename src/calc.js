@@ -14,7 +14,6 @@
 
 import { Fit, TYPES, typeIDByName, AID, EFFECTS_DATA, ATTR_META, DRONE_TYPES, setTrace, tracing } from './dogma-engine-init.js';
 import alphaCloneData from './data/alpha-clone.json' with { type: 'json' };
-import { ISA_EXPLOSION_VELOCITY, ISA_EXPLOSION_RADIUS } from './data/prerelease-balance.js';
 // Attribute ID → name map (inverse of AID), for abyssal/mutaplasmid attribute resolution.
 export const ATTR_ID_TO_NAME = {};
 for (const [name, id] of Object.entries(AID)) ATTR_ID_TO_NAME[id] = name;
@@ -1244,9 +1243,9 @@ const SHIP_MISSILE_DMG={3024:['eliteBonusCovertOps1','exp',10],3026:['eliteBonus
   // empty). They were never added here, so both hulls flew without their 37.5% missile damage —
   // 87.9 rocket DPS against eos's 120.8 — and the suite only checked the patch's wiring.
   13025:['shipBonusCF','all',4],13027:['shipBonusAF','all',4],
-  // The 24.02 pre-release bonuses (data/prerelease-balance.js).
-  991101:['shipBonusCC3','kin',4],991102:['shipBonusCF',['em','th','exp'],4],991103:['shipBonus3CF','kin',4],
-  // Fractured Skies' Naga Navy Issue (data/sisi-patch.js): cruise missiles and torpedoes.
+  // Fractured Skies (24.02): the Cerberus's kinetic bonus, the Hawk's EM/thermal/explosive one (its
+  // kinetic one is 6350 above), and the Naga Navy Issue's cruise missile and torpedo bonuses.
+  13056:['shipBonusCC3','kin',4],13074:['shipBonusCF','em',[3,5]],13075:['shipBonusCF','exp',[3,5]],13076:['shipBonusCF','th',[3,5]],
   12934:['shipBonusCBC1','kin',[0,6]],12935:['shipBonusCBC2',['em','th','exp'],[0,6]]};
 // Exported for the regression suite, which checks every hull missile-damage effect is listed.
 export const SHIP_MISSILE_DMG_IDS = () => Object.keys(SHIP_MISSILE_DMG).map(Number);
@@ -4066,14 +4065,16 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       if (isActive(s2.state)) { const ab = fi2.get?.('moduleAberrantDroneNavigationComputerBonusEffect'); if (ab) dncVals.push(ab); }
     }
     const dncMult = stackMult(dncVals);
-    // An ACTIVE Integrated Sensor Array (24.02, data/prerelease-balance.js): light fighters' attack
-    // explosion velocity and radius, unpenalised. Only one array can run at a time.
-    let isaVel = 0, isaRad = 0;
+    // An ACTIVE Integrated Sensor Array (24.02, effect 12597): every fighter's attack-missile and
+    // missile-salvo explosion velocity x1.2 and radius x0.9 (PreMul multipliers on the array, pyfa
+    // Effect12597). Fighters never enter the engine, so they are read here. One array runs at a time.
+    let isaVel = 1, isaRad = 1;
     for (const { slot: s2, fitItem: fi2 } of modItems) {
       if (!fi2 || !isActive(s2.state)) continue;
-      const at = TYPES[fi2.typeID]?.attrs;
-      if (at?.[ISA_EXPLOSION_VELOCITY] || at?.[ISA_EXPLOSION_RADIUS]) { isaVel = at[ISA_EXPLOSION_VELOCITY] ?? 0; isaRad = at[ISA_EXPLOSION_RADIUS] ?? 0; break; }
+      const v = fi2.get?.('ISAFighterExplosionVelocityBonusActive'), r = fi2.get?.('ISAFighterExplosionRadiusReductionBonusActive');
+      if (v || r) { isaVel = v || 1; isaRad = r || 1; break; }
     }
+    const ISA_ABILITIES = new Set(['AttackMissile', 'Missiles']);
     const fightersSkill = 1 + 0.05*skFighters, droneInterfacing = 1 + 0.10*skInterfacing;
     const heavyMult = 1 + 0.05*skHeavy;
     const droneNavSkill = 1 + 0.05*skNav;         // Drone Navigation (+5%/lvl velocity)
@@ -4138,8 +4139,8 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
                 ftrGraph.push({ kind:'fighter', volley:{...pt}, cycleS: durS,
                   optimal: fa[`fighterAbility${ab}RangeOptimal`] ?? fa[`fighterAbility${ab}Range`] ?? 0,
                   falloff: fa[`fighterAbility${ab}RangeFalloff`] ?? 0,
-                  explosionRadius: (fa[`fighterAbility${ab}ExplosionRadius`] ?? 0) * (isLight && ab === 'AttackMissile' ? 1 + isaRad / 100 : 1),
-                  explosionVelocity: (fa[`fighterAbility${ab}ExplosionVelocity`] ?? 0) * (isLight && ab === 'AttackMissile' ? 1 + isaVel / 100 : 1),
+                  explosionRadius: (fa[`fighterAbility${ab}ExplosionRadius`] ?? 0) * (ISA_ABILITIES.has(ab) ? isaRad : 1),
+                  explosionVelocity: (fa[`fighterAbility${ab}ExplosionVelocity`] ?? 0) * (ISA_ABILITIES.has(ab) ? isaVel : 1),
                   aoeDamageReductionFactor: (rFac > 0 && rSen > 1) ? Math.log(rFac)/Math.log(rSen) : 0,
                   lockRange: Math.min(s.get('maxTargetRange'), s.get('maximumRangeCap') || 300000) });
               }

@@ -1,5 +1,4 @@
 import { C } from '../theme.js';
-import { t } from '../lib/i18n.js';
 
 // inline-block is load-bearing, not cosmetic: an INLINE box sizes its border box from the font's
 // ascent+descent and ignores line-height, so `lineHeight:1` did nothing and the pill came out 22px
@@ -12,7 +11,3 @@ export function SourceBadge({label,color=C.success}){
   return <span style={{...BADGE_STYLE,color,background:`${color}1f`,border:`1px solid ${color}55`}}>{label}</span>;
 }
 
-// A hull CCP has shown but not shipped (data/sisi-patch.js).
-export function PrereleaseBadge(){
-  return <SourceBadge label={t('Pre-release')} color={C.warning}/>;
-}

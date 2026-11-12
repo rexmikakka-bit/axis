@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { checkFitSkills, SKILL_DEFAULTS, tidByName } from "./calc.js";
-import { SAVED_FITS_SEED, _bundleListeners, _bundleReady, generateEmptySlots, reconcileRacks, lookupShip, optimizeSlotPrice, moduleVariations, haptic } from "./lib/core.js";
+import { SAVED_FITS_SEED, _bundleListeners, _bundleReady, generateEmptySlots, reconcileRacks, lookupShip, optimizeSlotPrice, synchronizerSetsOf, moduleVariations, haptic } from "./lib/core.js";
 import { fetchPrices } from "./prices.js";
 import { THEMES, setTheme } from "./theme.js";
 import { FIT_SUBTABS } from "./components/FittingsScreen.jsx";
@@ -229,8 +229,10 @@ export function useFitSession({ onFitOpened, notify } = {}) {
     try{priceMap=await fetchPrices([...idsToPrice],priceHub,priceSource);}
     catch(e){banner("none",e?.offline?t("No connection — market prices need internet"):t("Couldn't fetch market prices — try again"),3500);return;}
     let swapped=0;
+    // Faction modules feeding a fitted Synchronizer stay put (optimizeSlotPrice).
+    const syncSets=synchronizerSetsOf(slots.rigs);
     const patchSection=sec=>(slots[sec]??[]).map(s=>{
-      const next=optimizeSlotPrice(s,priceMap);   // returns `s` itself when nothing changes
+      const next=optimizeSlotPrice(s,priceMap,syncSets);   // returns `s` itself when nothing changes
       if(next!==s)swapped++;
       return next;
     });

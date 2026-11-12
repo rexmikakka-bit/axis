@@ -109,6 +109,21 @@ def load_fsd_effects(db_path, explicit=None):
     return None
 
 
+def load_fsd_attrs(db_path, explicit_effects=None):
+    """CCP's dogmaattributes (with `stackable`, which eve.db lacks), beside the effects dump."""
+    d = os.path.dirname(os.path.abspath(explicit_effects)) if explicit_effects else None
+    cands = [os.path.join(d, 'dogmaattributes.0.json')] if d else []
+    d = os.path.dirname(os.path.abspath(db_path))
+    for _ in range(3):
+        cands.append(os.path.join(d, 'staticdata', 'fsd_built', 'dogmaattributes.0.json'))
+        d = os.path.dirname(d)
+    for p in cands:
+        if p and os.path.isfile(p):
+            raw = json.load(open(p, encoding='utf-8'))
+            return raw if isinstance(raw, dict) else {str(x['attributeID']): x for x in raw}
+    return None
+
+
 def clean_mod(m):
     """One modifier in the bundle's shape: no null fields, integral floats as ints."""
     return {k: (int(v) if isinstance(v, float) and v.is_integer() else v)
@@ -357,6 +372,8 @@ def main():
         new_types[sid] = entry
 
     # ── attributes: eve.db has no `stackable`, so preserve existing flags ────
+    fsd_attrs = load_fsd_attrs(db_path, args.fsd)
+    fsd_flagged_attrs = []
     new_attrs = dict(old_attrs)
     new_attr_ids = []
     for aid, an, dv, hg, mx in db.execute(
@@ -374,24 +391,40 @@ def main():
             else:
                 new_attrs[s].pop('x', None)
         else:
-            # stackable is NOT in eve.db. Default to 1 (unpenalised) and report — if a new
-            # attribute is actually stacking-penalised, set "s": 0 by hand in data-patches.json.
-            new_attrs[s] = {'n': an or '', 's': 1, 'h': 1 if hg else 0, 'd': num(dv)}
+            # stackable is NOT in eve.db. CCP's dogmaattributes dump beside the db has it; without
+            # that, default to 1 (unpenalised) and report — set "s": 0 by hand in data-patches.json.
+            fa = (fsd_attrs or {}).get(s)
+            st = int(fa['stackable']) if fa and fa.get('stackable') is not None else None
+            new_attrs[s] = {'n': an or '', 's': 1 if st is None else st, 'h': 1 if hg else 0, 'd': num(dv)}
             if cap:
                 new_attrs[s]['x'] = cap
-            new_attr_ids.append((aid, an))
+            if st is None:
+                new_attr_ids.append((aid, an))
+            else:
+                fsd_flagged_attrs.append((aid, an, st))
 
-    # ── effects: modifiers cannot come from eve.db; preserve, and flag new ones ──
+    # ── effects: modifiers cannot come from eve.db; preserve, and fill new ones from CCP ──
+    # A NEW effect takes its modifiers and category from CCP's FSD dump. The rule below that only
+    # refreshes effects already carrying modifiers exists for the ~150 the bundle leaves empty on
+    # purpose (implemented in calc.js); a new effect has no such history. Fractured Skies brought 67,
+    # and every one would otherwise have arrived inert. Category comes from the dump too: the
+    # placeholder 0 (passive) would make an active-only bonus apply while a module is merely online.
+    fsd_effs = load_fsd_effects(db_path, args.fsd)
     new_effs = dict(old_effs)
     referenced = set()
     for tid in fit_types:
         referenced.update(teff[tid])
     new_effect_ids = []
+    filled_from_fsd = []
     for eid in sorted(referenced):
         s = str(eid)
         if s not in new_effs:
-            new_effs[s] = {'c': 0, 'm': []}     # inert until a modifier is supplied
+            fe = (fsd_effs or {}).get(s) or {}
+            fm = [clean_mod(m) for m in (fe.get('modifierInfo') or [])]
+            new_effs[s] = {'c': int(fe.get('effectCategory') or 0), 'm': fm}
             new_effect_ids.append(eid)
+            if fm:
+                filled_from_fsd.append(s)
 
     # ── refresh EXISTING modifier lists from CCP's FSD dump ─────────────────
     # "Preserve" above means an effect CCP edits in place never reaches the bundle. Crimson Harvest
@@ -403,7 +436,6 @@ def main():
     # ONLY effects that already carry modifiers. ~150 effects are empty in the bundle and implemented
     # by hand in calc.js (missile damage, boosters, ...); filling them from the FSD would apply each
     # bonus twice. An empty effect still needs a data-patch or a handler, deliberately.
-    fsd_effs = load_fsd_effects(db_path, args.fsd)
     refreshed = []
     if fsd_effs is None:
         print("!! no FSD dogmaeffects found beside the db (pass --fsd): existing modifier lists NOT refreshed")
@@ -580,6 +612,11 @@ def main():
     print(f"effects: {len(effect_changes):,} type effect-list changes   |   +{len(new_effect_ids)} new effects")
     if refreshed:
         print(f"         {len(refreshed)} existing effects refreshed from CCP's FSD modifiers: {', '.join(refreshed)}")
+    if filled_from_fsd:
+        print(f"         {len(filled_from_fsd)} new effects filled from CCP's FSD modifiers")
+    if fsd_flagged_attrs:
+        pen = [f"{a} {n}" for a, n, st in fsd_flagged_attrs if st == 0]
+        print(f"         {len(fsd_flagged_attrs)} new attributes took CCP's stackable flag ({len(pen)} penalised: {', '.join(pen) or 'none'})")
     if patched:
         print(f"patches: re-applied {len(patched)} ({', '.join(patched)})")
     if patch_vs_ccp:

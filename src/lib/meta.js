@@ -15,7 +15,7 @@ import { TYPES } from "../calc.js";
 // Standup ... II genuinely IS the Tech II tier.
 const META_BY_MG={1:"T1",2:"T2",3:"Storyline",4:"Faction",5:"Officer",6:"Deadspace",
                   14:"T3",15:"Abyssal",17:"Premium",19:"Limited",
-                  // Fractured Skies' Aberrant modules ('Vigilant' Vital, data/sisi-patch.js).
+                  // Fractured Skies' Aberrant modules ('Vigilant' Vital).
                   63:"Aberrant",
                   52:"Faction",53:"T2",54:"T1"};
 const metaOf=(typeID,fallback)=>{

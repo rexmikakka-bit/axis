@@ -32,7 +32,8 @@ _PYFA_ROOT = os.environ.get("PYFA_ROOT", os.path.join(_REPO_ROOT, "Pyfa-master")
 # example: the Astarte's Command Ships bonus moved to it in v2.68, and a v2.66.3 clone drops the
 # whole bonus and reports weaponDps 799.8 where the correct answer is 1199.6.
 # When you upgrade eve.db + the clone together, update this list to an effect new in THAT version.
-_VERSION_SENTINELS = {"Effect13027": "v2.69 (Vengeance all-missile damage bonus, new in 24.01)"}
+_VERSION_SENTINELS = {"Effect13027": "v2.69 (Vengeance all-missile damage bonus, new in 24.01)",
+                      "Effect12963": "b79cd90 (Synchronizer set marker, new in 24.02)"}
 
 
 def _assert_clone_matches_db():
