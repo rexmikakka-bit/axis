@@ -1621,4 +1621,5 @@ export default {
   "Sort ascending": "По возрастанию",
   "Sort descending": "По убыванию",
   "Hide column": "Скрыть столбец",
+  "Merges into the existing tag \"{tag}\"": "Будет объединён с существующим тегом «{tag}»",
 };

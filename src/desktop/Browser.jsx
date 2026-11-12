@@ -8,7 +8,9 @@ import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES,
          generateEmptySlots, lookupShip } from "../lib/core.js";
 import marketTreeData from "../data/market-tree.json";
 import { jargonSearch, nameMatchesQuery, searchScore } from "../lib/jargon.js";
-import { tagsOf } from "../lib/fit-tags.js";
+import { tagsOf, tagKey, allTags, fitsWithTag, toggleTag, renameTag, removeTagEverywhere, colorForTag, setTagColor } from "../lib/fit-tags.js";
+import { TagChip } from "../components/FittingsScreen.jsx";
+import { useTagColors, FitTagsDialog, TagEditDialog } from "./Tags.jsx";
 import { metaOf, META_COLORS, compareForBrowser } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
@@ -464,8 +466,65 @@ function ShipsPane({ s }) {
   };
   const remove = (ship, fit) => { if (window.confirm(t('Delete "{name}"?', { name: fit.name }))) s.deleteFit(ship, fit); };
 
-  // `withShip`: say which hull, for a row outside its hull's branch (Recent fits).
-  const fitRow = (ship, fit, depth, withShip = false) => {
+  // Tags (lib/fit-tags.js): the phone's cross-hull axis. A fit's own tags in its row and its Tags…
+  // dialog; every tag as a branch of the tree, with its fits under it; a tag's own menu to edit it.
+  const [tagColors, setTagColors] = useTagColors();
+  const tagList = useMemo(() => allTags(fitsDB), [fitsDB]);
+  const tagNames = tagList.map(x => x.name);
+  const [tagFit, setTagFit] = useState(null);   // {ship, id}: whose Tags… dialog is open
+  const [tagEdit, setTagEdit] = useState(null);   // the tag whose edit dialog is open
+  const toggleFitTag = (ship, id, name) => s.setFitsDB(prev => ({ ...prev, [ship]: (prev[ship] || []).map(f => f.id === id ? toggleTag(f, name) : f) }));
+  // Renaming onto an existing tag merges the two, and the old name's colour stays behind (the phone's rule).
+  const renameTagTo = (from, to) => {
+    const merging = tagNames.some(x => tagKey(x) === tagKey(to));
+    s.setFitsDB(prev => renameTag(prev, from, to));
+    setTagColors(prev => { const { [tagKey(from)]: old, ...rest } = prev ?? {}; return merging || old == null ? rest : { ...rest, [tagKey(to)]: old }; });
+    setOpen(o => { const x = new Set(o); if (x.delete(`tag:${tagKey(from)}`)) x.add(`tag:${tagKey(to)}`); return x; });
+  };
+  const deleteTag = (name, count) => {
+    if (!window.confirm(t({ one: 'Remove the tag "{tag}" from {n} fit? The fits themselves are kept.', other: 'Remove the tag "{tag}" from {n} fits? The fits themselves are kept.' }, { tag: name, n: count }))) return false;
+    s.setFitsDB(prev => removeTagEverywhere(prev, name));
+    setTagColors(prev => { const { [tagKey(name)]: _gone, ...rest } = prev ?? {}; return rest; });
+    return true;
+  };
+  const tagMenu = (tag) => [
+    { label: `${t("Edit")}…`, onSelect: () => setTagEdit(tag.name) },
+    { divider: true },
+    { label: t("Delete tag"), danger: true, onSelect: () => deleteTag(tag.name, tag.count) },
+  ];
+  const tagDot = (name) => <span aria-hidden="true" style={{ width: 9, height: 9, borderRadius: 99, flex: "none", background: colorForTag(name, tagColors), display: "inline-block", marginRight: 8 }} />;
+  const tagsSection = () => {
+    const isOpen = open.has("tags");
+    return (
+      <div role="group" aria-label={t("Tags")} style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: isOpen ? 4 : 0 }}>
+        <TreeRow depth={0} open={isOpen} label={<span style={{ fontWeight: 500 }}>{t("Tags")}</span>} sub={String(tagList.length)} onClick={() => toggle("tags")}
+          onContextMenu={e => openCtx(e, nodeMenu("tags", isOpen))} />
+        {isOpen && tagList.map(tag => {
+          const key = `tag:${tag.key}`, tagOpen = open.has(key);
+          return (
+            <div key={key} role="group">
+              <TreeRow depth={1} open={tagOpen} label={<span style={{ display: "inline-flex", alignItems: "center" }}>{tagDot(tag.name)}{tag.name}</span>} sub={String(tag.count)}
+                onClick={() => toggle(key)} onContextMenu={e => openCtx(e, [{ label: tagOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(key) }, { divider: true }, ...tagMenu(tag)])} />
+              {tagOpen && fitsWithTag(fitsDB, tag.name).map(r => fitRow(r.ship, r.fit, 2, true, tag.name))}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  const tagFitRec = tagFit ? fitsDB[tagFit.ship]?.find(f => f.id === tagFit.id) : null;
+  const tagEditRec = tagEdit ? tagList.find(x => tagKey(x.name) === tagKey(tagEdit)) : null;
+  const tagDialogs = <>
+    {tagFitRec && <FitTagsDialog fit={tagFitRec} allNames={tagNames} colors={tagColors} onToggle={name => toggleFitTag(tagFit.ship, tagFit.id, name)} onClose={() => setTagFit(null)} />}
+    {tagEditRec && <TagEditDialog key={tagEditRec.key} tag={tagEditRec.name} count={tagEditRec.count} allNames={tagNames} colors={tagColors}
+      onRename={to => renameTagTo(tagEditRec.name, to)} onColor={p => setTagColors(prev => setTagColor(prev, tagEditRec.name, p))}
+      onDelete={() => { if (deleteTag(tagEditRec.name, tagEditRec.count)) setTagEdit(null); }} onClose={() => setTagEdit(null)} />}
+  </>;
+
+  // `withShip`: say which hull, for a row outside its hull's branch (Recent fits, a tag's fits).
+  // `hideTag`: the tag whose branch this row is in, which its row needn't repeat.
+  const fitRow = (ship, fit, depth, withShip = false, hideTag = null) => {
+    const tags = tagsOf(fit).filter(x => !hideTag || tagKey(x) !== tagKey(hideTag));
     const on = s.activeFit?.ship === ship && s.activeFit?.fitName === fit.name;
     if (renaming?.ship === ship && renaming?.id === fit.id) return (
       <div key={fit.id} style={{ padding: `2px 10px 2px ${10 + depth * INDENT + 16}px` }}>
@@ -480,6 +539,7 @@ function ShipsPane({ s }) {
       { label: t("Open in New Tab"), onSelect: () => s.openFitInNewTab(ship, fit.name) },
       { label: t("Rename"), onSelect: () => setRenaming({ ship, id: fit.id }) },
       { label: t("Duplicate"), onSelect: () => duplicate(ship, fit) },
+      { label: `${t("Tags")}…`, onSelect: () => setTagFit({ ship, id: fit.id }) },
       { label: t("Ship info"), icon: eveIcon(tidByName(ship), 32), onSelect: () => insp.inspect(typeTarget(tidByName(ship)), "info") },
       { divider: true },
       { label: t("Delete"), danger: true, onSelect: () => remove(ship, fit) },
@@ -494,6 +554,11 @@ function ShipsPane({ s }) {
               <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{withShip ? <><span style={{ color: C.textMid }}>{ship}</span> {fit.name}</> : fit.name}</span>
               {/* The phone's subtitle. `modified` is a string baked at save time, shown as stored. */}
               {fit.modified && <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", fontSize: 11.5, color: C.textMute, marginTop: 1 }}>{t("Modified {date}", { date: fit.modified })}</span>}
+              {/* Its tags, as the phone's row shows them; the "+" opens its Tags… dialog. */}
+              {(tags.length > 0 || on) && <span style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
+                {tags.map(x => <TagChip key={x} name={x} color={colorForTag(x, tagColors)} />)}
+                <TagChip name={tags.length ? "+" : `+ ${t("Tag")}`} color={C.textMid} dim onClick={e => { e.stopPropagation(); setTagFit({ ship, id: fit.id }); }} />
+              </span>}
             </>}
             onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more · drag onto Projected or Command")} drag={fitDragProps(ship, fit.name)} />
         </div>
@@ -574,6 +639,8 @@ function ShipsPane({ s }) {
             {showRecent && recent.map(r => fitRow(r.ship, r.fit, 1, true))}
           </div>
         )}
+        {/* Hidden until something is tagged, as on the phone: an empty section is just chrome. */}
+        {!q && tagList.length > 0 && tagsSection()}
         {q
           ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.map(h => fitRow(h.ship, h.fit, 0))}
               {moreHits > 0 && <div style={{ padding: "6px 12px", fontSize: 12, color: C.textMute }}>{t("{n} more fits match. Keep typing to narrow it down.", { n: moreHits })}</div>}
@@ -581,6 +648,7 @@ function ShipsPane({ s }) {
           : tree.map(n => nodeRow(n, 0))}
       </div>
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
+      {tagDialogs}
     </>
   );
 }

@@ -1619,4 +1619,5 @@ export default {
   "Sort ascending": "오름차순 정렬",
   "Sort descending": "내림차순 정렬",
   "Hide column": "열 숨기기",
+  "Merges into the existing tag \"{tag}\"": "기존 태그 \"{tag}\"에 병합됩니다",
 };

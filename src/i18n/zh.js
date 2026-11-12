@@ -1614,4 +1614,5 @@ export default {
   "Sort ascending": "升序排列",
   "Sort descending": "降序排列",
   "Hide column": "隐藏列",
+  "Merges into the existing tag \"{tag}\"": "将合并到现有标签“{tag}”",
 };

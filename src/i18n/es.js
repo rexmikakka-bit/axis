@@ -1684,4 +1684,5 @@ export default {
   "Sort ascending": "Orden ascendente",
   "Sort descending": "Orden descendente",
   "Hide column": "Ocultar columna",
+  "Merges into the existing tag \"{tag}\"": "Se fusiona con la etiqueta existente «{tag}»",
 };

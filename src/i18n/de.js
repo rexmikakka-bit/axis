@@ -1669,4 +1669,5 @@ export default {
   "Sort ascending": "Aufsteigend sortieren",
   "Sort descending": "Absteigend sortieren",
   "Hide column": "Spalte ausblenden",
+  "Merges into the existing tag \"{tag}\"": "Wird mit dem vorhandenen Tag „{tag}“ zusammengeführt",
 };

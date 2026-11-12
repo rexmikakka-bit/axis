@@ -1685,4 +1685,5 @@ export default {
   "Sort ascending": "Tri croissant",
   "Sort descending": "Tri décroissant",
   "Hide column": "Masquer la colonne",
+  "Merges into the existing tag \"{tag}\"": "Fusionne avec le tag existant « {tag} »",
 };

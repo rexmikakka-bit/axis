@@ -1620,4 +1620,5 @@ export default {
   "Sort ascending": "昇順で並べ替え",
   "Sort descending": "降順で並べ替え",
   "Hide column": "列を非表示",
+  "Merges into the existing tag \"{tag}\"": "既存のタグ「{tag}」に統合されます",
 };
