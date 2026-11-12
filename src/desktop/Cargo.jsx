@@ -2,10 +2,11 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
-import { cargoVolume } from "../lib/core.js";
+import { cargoVolume, cargoUnitVolume } from "../lib/core.js";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
+import { variantMenuItems } from "./variant-menu.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 import { useItemDrop, DropHint, useItems } from "./items-context.jsx";
 
@@ -28,6 +29,14 @@ export default function CargoPanel({ s, capacity }) {
   const over = used > cap + 1e-6;
   const setQty = (id, qty) => s.setCargoItems(prev => (prev ?? []).map(e => e.id === id ? { ...e, qty: Math.max(1, Math.round(qty) || 1) } : e));
   const remove = (id) => s.setCargoItems(prev => (prev ?? []).filter(e => e.id !== id));
+  // A stack swapped for another variant. If the hold already has a stack of that variant, they merge,
+  // as adding the same item twice does.
+  const swapTo = (e, v, name) => s.setCargoItems(prev => {
+    const list = prev ?? [];
+    const same = list.find(x => x.id !== e.id && !x.mutaplasmid && Number(x.typeID ?? tidByName(x.name)) === Number(v.typeID));
+    if (same) return list.filter(x => x.id !== e.id).map(x => x === same ? { ...x, qty: (x.qty ?? 0) + (e.qty ?? 0) } : x);
+    return list.map(x => x.id === e.id ? { id: x.id, name, qty: x.qty, vol: cargoUnitVolume({ name, typeID: v.typeID }), typeID: v.typeID } : x);
+  });
   // As the phone's addItem: a second pick of the same item adds one to its stack.
   // m³ per stack rides in the row tooltip: the window is narrow by default and the name is what you read.
   const cols = "18px minmax(0,1fr) 52px 16px";
@@ -54,8 +63,12 @@ export default function CargoPanel({ s, capacity }) {
         {items.map(e => {
           const tid = e.typeID ?? tidByName(e.name);
           const vol = (e.vol ?? TYPES[tid]?.attrs?.volume ?? 0) * (e.qty ?? 0);
+          // As the Fitting window's: hover for the variants, click for the Variations window. Only for
+          // an item that has variants; a rolled abyssal stays what it is.
+          const variants = tid && !e.mutaplasmid ? variantMenuItems(tid, { isCurrent: (v) => Number(v.typeID) === Number(tid), onPick: (v, name) => swapTo(e, v, name) }) : undefined;
           const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: () => remove(e.id), items: [
             { label: t("Show info"), disabled: !tid, onSelect: () => setInfo(tid) },
+            variants && { label: t("Variations…"), onSelect: () => insp.inspect(typeTarget(tid), "variations"), submenu: variants },
             { divider: true },
             { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(e.id) },
           ] });
