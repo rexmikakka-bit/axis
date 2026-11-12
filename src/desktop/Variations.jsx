@@ -300,6 +300,18 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
     const next = cur.includes(k) ? cur.filter(x => x !== k) : attributes.filter(a => cur.includes(a) || a === k);
     return { ...m, [group]: next };
   });
+  // A column header's menu: sort by it either way, take it off, or pick the columns (the Columns menu's list).
+  const headMenu = (e, k) => {
+    e.preventDefault();
+    const attr = k !== "meta" && k !== "price";
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: t("Sort ascending"), checked: activeSort === k && sort.dir === "asc", onSelect: () => setSort({ by: k, dir: "asc" }) },
+      { label: t("Sort descending"), checked: activeSort === k && sort.dir === "desc", onSelect: () => setSort({ by: k, dir: "desc" }) },
+      attr && { divider: true },
+      attr && { label: t("Hide column"), onSelect: () => toggleCol(k) },
+      { label: t("Columns"), submenu: attributes.map(a => ({ label: colLabel(a), checked: visibleCols.includes(a), onSelect: () => toggleCol(a) })) },
+    ] });
+  };
 
   // ── View ─────────────────────────────────────────────────────────────────────────────────────
   const abyssalCapable = TYPES[typeID]?.c === 7 && marketTypes.length > 0;
@@ -478,9 +490,9 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
         <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "100%", fontVariantNumeric: "tabular-nums", lineHeight: 1.25 }}>
           <thead>
             <tr>
-              <th onClick={() => sortBy("meta")} style={{ ...th, textAlign: "left", left: 0, zIndex: 3, minWidth: 230 }}>{t("Item")}{sortMark("meta")}</th>
-              <th onClick={() => sortBy("price")} style={th}>{t("Price")}{sortMark("price")}</th>
-              {shownCols.map(k => <th key={k} onClick={() => sortBy(k)} title={colLabel(k)} style={th}>{colLabel(k)}{sortMark(k)}</th>)}
+              <th onClick={() => sortBy("meta")} onContextMenu={e => headMenu(e, "meta")} style={{ ...th, textAlign: "left", left: 0, zIndex: 3, minWidth: 230 }}>{t("Item")}{sortMark("meta")}</th>
+              <th onClick={() => sortBy("price")} onContextMenu={e => headMenu(e, "price")} style={th}>{t("Price")}{sortMark("price")}</th>
+              {shownCols.map(k => <th key={k} onClick={() => sortBy(k)} onContextMenu={e => headMenu(e, k)} title={colLabel(k)} style={th}>{colLabel(k)}{sortMark(k)}</th>)}
             </tr>
             <tr>
               <th style={{ ...fth, left: 0, zIndex: 3 }} />

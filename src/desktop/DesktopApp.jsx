@@ -8,7 +8,7 @@ import { ShipInfoSheet } from "../components/FittingsScreen.jsx";
 import { parsePastedModule, resolveItemLink, pastedSlot } from "../lib/abyssal-paste.js";
 import { useFitSession } from "../use-fit-session.js";
 import { ImportFitSheet, DamageProfileSheet, initKeyboardTracking, SheetFrame, BottomSheet } from "../components/ui.jsx";
-import { DialogFrame } from "./ContextMenu.jsx";
+import { ContextMenu, DialogFrame, useNativeMenuFallback } from "./ContextMenu.jsx";
 import { deskCss, Empty } from "./kit.jsx";
 import { useBackdrop, Backdrop } from "./Backdrop.jsx";
 import { SnapshotModal } from "../components/snapshot.jsx";
@@ -242,6 +242,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
 /** One window, popped out into its own OS window. Closing it (or Dock) puts it back in the workspace. */
 function SatelliteApp({ id }) {
   const banner = useBanner();
+  const textMenu = useNativeMenuFallback();
   const s = useFitSession({ onFitOpened: () => {}, notify: banner.notify });
   const adderRef = useRef(null);
   const sync = useSessionSync(s, { onMessage: (m) => {
@@ -277,6 +278,7 @@ function SatelliteApp({ id }) {
         <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{renderWindow(id)}</div>
       </div>
       {banner.view}
+      {textMenu}
     </SkillsProvider></SheetFrame.Provider>
     </InspectContext.Provider>
   );
@@ -284,6 +286,8 @@ function SatelliteApp({ id }) {
 
 function DesktopApp() {
   const banner = useBanner();
+  const textMenu = useNativeMenuFallback();
+  const [tabMenu, setTabMenu] = useState(null);   // {x, y, tab}: a fit tab's right-click menu
   const s = useFitSession({
     // The fit lives in its own window here, so opening one changes no navigation.
     onFitOpened: () => {},
@@ -537,7 +541,8 @@ function DesktopApp() {
                   style={{ height: 32, display: "flex", alignItems: "center", gap: 8, padding: "0 10px 0 12px", borderRadius: "6px 6px 0 0",
                            background: on ? C.bg : "transparent", borderTop: `1px solid ${on ? C.border : "transparent"}`, borderLeft: `1px solid ${on ? C.border : "transparent"}`, borderRight: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
                            marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}
-                  onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}>
+                  onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}
+                  onContextMenu={(e) => { e.preventDefault(); setTabMenu({ x: e.clientX, y: e.clientY, tab: tb }); }}>
                   <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? C.text : C.textMid }}>{tb.ship}</span>
                   <span style={{ fontSize: 13.5, color: C.textMid }}>{tb.name}</span>
                   {s.openFitTabs.length > 0 && <button type="button" aria-label={t("Close tab")} title={t("Close tab")}
@@ -588,6 +593,21 @@ function DesktopApp() {
       </div>
 
       {banner.view}
+      {textMenu}
+      {tabMenu && (() => {
+        const tb = tabMenu.tab, real = s.openFitTabs.length > 0;
+        const same = (x) => x.ship === tb.ship && (x.id != null && tb.id != null ? x.id === tb.id : x.name === tb.name);
+        const active = tb.ship === s.activeFit?.ship && tb.name === s.activeFit?.fitName;
+        const open = () => { if (!active) s.loadFit(tb.ship, tb.name, undefined, true); };
+        return <ContextMenu x={tabMenu.x} y={tabMenu.y} onClose={() => setTabMenu(null)} items={[
+          { heading: tb.ship },
+          { label: t("Ship info"), icon: eveIcon(tidByName(tb.ship), 32), onSelect: () => { open(); openWindow(setLayoutState, "shipinfo"); } },
+          { label: t("Open a fit in a new tab"), onSelect: newTab },
+          real && { divider: true },
+          real && { label: t("Close tab"), onSelect: () => s.closeFitTab(tb) },
+          real && { label: t("Close other tabs"), disabled: s.openFitTabs.length < 2, onSelect: () => { open(); s.setOpenTabs(prev => (prev ?? []).filter(same)); } },
+        ]} />;
+      })()}
       {/* A newer desktop release on GitHub: a card in the corner (update-check.jsx). Main window only. */}
       <UpdateBanner />
 

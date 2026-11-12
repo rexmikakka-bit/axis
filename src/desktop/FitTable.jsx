@@ -219,6 +219,7 @@ export function FitTable({ api }) {
     const [perCycle, setPerCycleState] = useState(() => { try { return localStorage.getItem(PER_CYCLE_KEY) === "1"; } catch { return false; } });
     const togglePerCycle = () => setPerCycleState(v => { try { localStorage.setItem(PER_CYCLE_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
     const [blankMenu, setBlankMenu] = useState(null);     // {x, y}: right-click on the table's empty space
+    const [rackMenu, setRackMenu] = useState(null);       // {x, y, items}: right-click on a rack's header
     // Browser items dropped here: a module is fitted to its rack, a charge loads into every module
     // that takes it — or, dropped on one row, into that row (all of a grouped row's members).
     const items = useItems();
@@ -385,6 +386,20 @@ export function FitTable({ api }) {
       setCols({ ...(cols ?? {}), [d.id]: Math.max(MIN_COL, Math.round(d.w - (e.clientX - d.x))) });
     };
     const endResize = () => { drag.current = null; };
+    // The toolbar's and the column header's menu: the table's own view settings, and its history.
+    const viewMenu = (e) => {
+      if (e.defaultPrevented || e.target.closest("input")) return;
+      e.preventDefault();
+      setRackMenu({ x: e.clientX, y: e.clientY, items: [
+        { label: t("Undo"), hint: "Ctrl+Z", disabled: !undoDepth, onSelect: () => undo?.() },
+        { label: t("Redo"), hint: "Ctrl+Y", disabled: !redoDepth, onSelect: () => redo?.() },
+        { divider: true },
+        { label: t("Charge rows"), checked: chargeRows, onSelect: flipChargeRows },
+        { label: t("Grouped"), checked: grouped, onSelect: () => setGrouped(g => !g) },
+        { divider: true },
+        { label: t("Reset column widths"), disabled: !cols || !Object.keys(cols).length, onSelect: () => setCols({}) },
+      ] });
+    };
 
     const cell = { fontSize: 13, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "right" };
     const histBtn = (on) => ({ height: 24, padding: "0 8px", borderRadius: 5, fontSize: 12.5, border: `1px solid ${C.borderStrong}`, background: "transparent",
@@ -393,7 +408,7 @@ export function FitTable({ api }) {
     return (
       <div {...drop.props} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", lineHeight: 1.3, position: "relative" }}>
         {!chargeOver && <DropHint over={drop.over} ok={drop.ok} label={dragKind === "charge" ? t("Load into compatible modules") : t("Fit")} />}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
+        <div onContextMenu={viewMenu} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
           <button type="button" style={histBtn(undoDepth > 0)} disabled={!undoDepth} onClick={() => undo?.()} title={t("Undo last change ({n})", { n: undoDepth })}>↶ {t("Undo")}</button>
           <button type="button" style={histBtn(redoDepth > 0)} disabled={!redoDepth} onClick={() => redo?.()} title={t("Redo last undone change ({n})", { n: redoDepth })}>↷ {t("Redo")}</button>
           <span style={{ flex: 1 }} />
@@ -403,7 +418,7 @@ export function FitTable({ api }) {
             style={{ ...histBtn(true), color: grouped ? C.accent : C.textMid, background: grouped ? C.accentLight : "transparent", borderColor: grouped ? C.accent : C.borderStrong }}>{t("Grouped")}</button>
         </div>
         {/* Column header */}
-        <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 24, padding: "0 12px", flex: "none",
+        <div onContextMenu={viewMenu} style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 24, padding: "0 12px", flex: "none",
                       borderBottom: `1px solid ${C.border}`, fontSize: 11.5, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", color: C.textMid }}>
           <span /><span />{!chargeRows && <span />}<span>{chargeRows ? t("Module") : <>{t("Module")} · {t("Charge")}</>}</span>
           {FIT_COLS.map(c => (
@@ -416,6 +431,7 @@ export function FitTable({ api }) {
           <span />
         </div>
         {menu && <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu.secKey, menu.row)} onClose={() => setMenu(null)} />}
+        {rackMenu && <ContextMenu x={rackMenu.x} y={rackMenu.y} items={rackMenu.items} onClose={() => setRackMenu(null)} />}
         {blankMenu && <ContextMenu x={blankMenu.x} y={blankMenu.y} onClose={() => setBlankMenu(null)} items={[
           { heading: ship?.name }, { label: t("Ship info"), icon: ship?.typeID ? eveIcon(ship.typeID, 32) : undefined, onSelect: requestShipInfo }]} />}
         {chargeMenu && <ContextMenu x={chargeMenu.x} y={chargeMenu.y} onClose={() => setChargeMenu(null)} items={[
@@ -437,7 +453,17 @@ export function FitTable({ api }) {
             return (
               <div key={sec.key}>
                 {/* Rack header: one colour for every rack (the handoff's rule), with its sums. */}
-                <div style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 22, padding: "0 12px",
+                <div onContextMenu={(e) => {
+                    e.preventDefault();
+                    const empty = rows.find(r => r.type === "empty");
+                    setRackMenu({ x: e.clientX, y: e.clientY, items: [
+                      { heading: sec.label },
+                      { label: t("Add module…"), disabled: !empty && sec.key === "subsystems", onSelect: () => openEmpty(sec.key, empty?.id) },
+                      { divider: true },
+                      { label: t("Ship info"), icon: ship?.typeID ? eveIcon(ship.typeID, 32) : undefined, onSelect: requestShipInfo },
+                    ] });
+                  }}
+                  style={{ display: "grid", gridTemplateColumns: template, columnGap: 8, alignItems: "center", height: 22, padding: "0 12px",
                               background: C.surfaceAlt, borderBottom: `1px solid ${C.border}`, fontSize: 12, color: C.textMid }}>
                   <span style={{ gridColumn: `1 / ${lead + 1}`, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden" }}>
                     {sec.label} <span style={{ fontWeight: 500 }}>{fitted.length} / {total}</span>

@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { C } from "../theme.js";
 import { Dialog } from "./kit.jsx";
 import { useInspect } from "./inspect-context.jsx";
+import { t } from "../lib/i18n.js";
+import { readClipboardText } from "../lib/core.js";
 
 // The desktop's right-click menu: opens at the pointer, kept inside the window, closes on a pick, an
 // outside click, Escape, or the window losing focus. Items are {label, onSelect, disabled?, hint?,
@@ -78,6 +80,50 @@ export function ContextMenu({ x, y, items, onClose }) {
 }
 
 /**
+ * The webview's own right-click menu (Back, Reload, Inspect…) never shows in Axis. Whatever a window
+ * did not answer with a menu of its own lands here: a text field gets Cut / Copy / Paste / Select all,
+ * selected text elsewhere gets Copy, and anything else gets nothing. Listens on `window`, after React's
+ * handlers have run, so `defaultPrevented` says a component already opened its menu. Shift+right-click
+ * on the dev server still gets the webview's menu, for Inspect.
+ */
+export function useNativeMenuFallback() {
+  const [menu, setMenu] = useState(null);
+  useEffect(() => {
+    const onMenu = (e) => {
+      if (e.defaultPrevented) return;
+      if (import.meta.env.DEV && e.shiftKey) return;
+      e.preventDefault();
+      const el = e.target instanceof Element ? e.target.closest("input, textarea, [contenteditable=''], [contenteditable='true']") : null;
+      const textual = el && (el.tagName !== "INPUT" || /^(text|search|url|email|tel|number|password|)$/.test(el.type ?? ""));
+      if (textual) {
+        el.focus();
+        const editable = !el.readOnly && !el.disabled;
+        const picked = el.isContentEditable ? !!window.getSelection()?.toString()
+          : el.type !== "number" && el.selectionStart != null && el.selectionEnd > el.selectionStart;
+        const run = (cmd) => () => { el.focus(); document.execCommand(cmd); };
+        setMenu({ x: e.clientX, y: e.clientY, items: [
+          { label: t("Cut"), hint: "Ctrl+X", disabled: !editable || !picked || el.type === "password", onSelect: run("cut") },
+          { label: t("Copy"), hint: "Ctrl+C", disabled: !picked || el.type === "password", onSelect: run("copy") },
+          { label: t("Paste"), hint: "Ctrl+V", disabled: !editable, onSelect: async () => {
+            const { text } = await readClipboardText();
+            el.focus();
+            // insertText goes through the field's own input event, so React sees the change and Undo keeps it.
+            if (text) document.execCommand("insertText", false, text);
+          } },
+          { divider: true },
+          { label: t("Select all"), hint: "Ctrl+A", onSelect: () => { el.focus(); el.select ? el.select() : document.execCommand("selectAll"); } },
+        ] });
+        return;
+      }
+      if (window.getSelection()?.toString()) setMenu({ x: e.clientX, y: e.clientY, items: [{ label: t("Copy"), hint: "Ctrl+C", onSelect: () => document.execCommand("copy") }] });
+    };
+    window.addEventListener("contextmenu", onMenu);
+    return () => window.removeEventListener("contextmenu", onMenu);
+  }, []);
+  return menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />;
+}
+
+/**
  * The desktop list-row mouse model, for windows with one selection at a time (Implants, Drones,
  * Boosters, Cargo, the Market list): left click selects, double click does the row's main action,
  * right click selects and opens a menu. `rowProps(key, {onOpen, items, target, repeat})` spreads onto the row
@@ -129,8 +175,17 @@ export function useRowSelect() {
     },
     style: { outline: "none" },
   });
+  // On the window's body: a right-click that no row took (empty space under the list) gets `items`,
+  // the window's own actions. A text field keeps the text menu (useNativeMenuFallback).
+  const blankProps = (items) => ({
+    onContextMenu: (e) => {
+      if (e.defaultPrevented || e.target.closest("input, textarea, select")) return;
+      e.preventDefault(); setSel(null);
+      setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items });
+    },
+  });
   const view = menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />;
-  return { sel, setSel, rowProps, listProps, view };
+  return { sel, setSel, rowProps, listProps, blankProps, view };
 }
 
 /**

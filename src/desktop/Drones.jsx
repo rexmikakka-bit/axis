@@ -67,7 +67,7 @@ export default function DronesPanel({ s, stats }) {
     ];
   };
   return (
-    <div ref={rootRef} {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div ref={rootRef} {...drop.props} {...rs.blankProps([{ label: t("Add drones…"), onSelect: () => itemOps.browse("drones") }])} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       <DropHint over={drop.over} ok={drop.ok} label={t("Add to drone bay")} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: "8px 16px", padding: "10px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <UsageBar label={t("Drone bay")} used={bay} total={cap.bay} unit="m³" fmt={n => String(Math.round(n))} />

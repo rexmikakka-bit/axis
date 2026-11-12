@@ -9,6 +9,10 @@ import { fmtPriceAge } from "../lib/fmt.js";
 import { abyssalValue } from "../lib/abyssal-value.js";
 import { useAbyssalData } from "../lib/use-abyssal-data.js";
 import { Empty, TYPE } from "./kit.jsx";
+import { eveIcon } from "../lib/icons.js";
+import { ContextMenu } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { typeTarget } from "./inspect.js";
 
 // The desktop Fit price window (docs/desktop-handoff.md, "Fit price"): the total, a breakdown by
 // group that opens to its items, and the market source and hub. The pricing rules are the phone's
@@ -22,6 +26,8 @@ const SOURCE_LABEL = { fuzzwork: "Fuzzwork", ceve: "ceve-market" };
 export default function PricePanel({ s, ship }) {
   const slots = s.slots ?? {};
   const abyssalData = useAbyssalData(slots);
+  const [menu, setMenu] = useState(null);   // a row's right-click menu, {x, y, items}
+  const insp = useInspect();
   const items = useMemo(() => {
     const all = [...(slots.high ?? []), ...(slots.mid ?? []), ...(slots.low ?? []), ...(slots.rigs ?? []), ...(slots.subsystems ?? [])];
     const ammo = (m) => { const nm = (m.ammo || "").replace(/\s*\(\d+\)$/, ""); return nm ? tidByName(nm) : null; };
@@ -82,13 +88,17 @@ export default function PricePanel({ s, ship }) {
     return (
       <>
         <div onClick={expandable ? () => setOpen(o => ({ ...o, [g]: !o[g] })) : undefined}
+          onContextMenu={expandable ? e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items: [
+            { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => setOpen(o => ({ ...o, [g]: !o[g] })) }] }); } : undefined}
           style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 28, padding: "0 12px", cursor: expandable ? "pointer" : "default", borderTop: `1px solid ${C.border}99` }}>
           <span style={{ width: 10, fontSize: 9, color: C.textMid, transform: isOpen ? "rotate(90deg)" : "none", opacity: expandable ? 1 : 0 }}>▶</span>
           <span style={{ flex: 1, fontSize: TYPE.label, color: dim ? C.textMid : C.text }}>{label}</span>
           <span style={{ fontSize: TYPE.value, color: dim ? C.textMid : C.text, fontVariantNumeric: "tabular-nums" }}>{loading ? "…" : isk(value)}</span>
         </div>
         {isOpen && list.map(r => (
-          <div key={r.key} style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 24, padding: "0 12px 0 30px", background: `${C.surfaceAlt}88` }}>
+          <div key={r.key} onContextMenu={r.typeID ? e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items: [
+              { label: t("Show info"), icon: eveIcon(r.typeID, 32), onSelect: () => insp.inspect(typeTarget(r.typeID), "info") }] }); } : undefined}
+            style={{ display: "flex", gap: 8, alignItems: "center", minHeight: 24, padding: "0 12px 0 30px", background: `${C.surfaceAlt}88` }}>
             <span title={r.name} style={{ flex: 1, minWidth: 0, fontSize: TYPE.small, color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {r.qty > 1 && <span style={{ color: C.text }}>{r.qty}× </span>}{r.name}{r.abyssal && <span style={{ color: C.textMid }}> · {t("abyssal")}</span>}
             </span>
@@ -123,6 +133,7 @@ export default function PricePanel({ s, ship }) {
         </select>
         {age && <span style={{ fontSize: TYPE.small, color: C.textMid }}>{t("sell prices, {age}", { age })}</span>}
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }

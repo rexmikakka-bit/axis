@@ -12,6 +12,7 @@ import { abyssalGrade } from "../lib/eft-export.js";
 import { AbyssalBadge, FitCost, fitCostParts, fmtMutaVal, mutaLabel } from "../components/ui.jsx";
 import { variantCostFits, fitCostRatioOf } from "../lib/core.js";
 import { useInspect } from "./inspect-context.jsx";
+import { ContextMenu } from "./ContextMenu.jsx";
 import { typeTarget } from "./inspect.js";
 import { dragProps } from "./items.js";
 import { requestSettings, ABYSSALS_CHANGED } from "./Settings.jsx";
@@ -41,6 +42,7 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow, h
   const [jita, setJita] = useState(false);
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);
+  const [ctx, setCtx] = useState(null);   // a category's right-click menu, {x, y, items}
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => {
     let live = true;
@@ -77,7 +79,11 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow, h
     return (
       <div key={n.id} role="group">
         <TreeRow depth={depth} open={isOpen} leaf={!kids} selected={selected === n.id} label={n.other ? t("Other modules") : n.name}
-          icon={n.iconTid ? eveIcon(n.iconTid, 32) : null} sub={String(n.count)} onClick={() => toggle(n)} title={n.subtitle} />
+          icon={n.iconTid ? eveIcon(n.iconTid, 32) : null} sub={String(n.count)} onClick={() => toggle(n)} title={n.subtitle}
+          onContextMenu={e => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, items: [
+            kids ? { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(n) } : { label: t("Show items"), onSelect: () => toggle(n) },
+            { label: t("Collapse all"), disabled: open.size === 0, onSelect: () => setOpen(new Set()) },
+          ] }); }} />
         {kids && isOpen && renderNodes(n.children, depth + 1)}
       </div>
     );
@@ -156,6 +162,7 @@ export default function AbyssalPane({ s, ship, search, fit, rowProps, TreeRow, h
             {t("Show more")}</button>}
         </div>
       </>}
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
     </>
   );
 }

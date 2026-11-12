@@ -43,8 +43,9 @@ const Remove = ({ onClick, label }) => (
     style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 15, padding: "0 2px", flex: "none" }}>×</button>
 );
 // `drop` (useItemDrop) makes the whole window a drop target for browser items.
-const Shell = ({ children, drop, dropLabel }) => (
-  <div {...drop?.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+// `blank`: useRowSelect's blankProps, the window's own menu on a right-click no row took.
+const Shell = ({ children, drop, dropLabel, blank }) => (
+  <div {...drop?.props} {...blank} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
     {drop && <DropHint over={drop.over} ok={drop.ok} label={dropLabel} />}{children}
   </div>
 );
@@ -98,7 +99,7 @@ export function BoostersPanel({ s }) {
   const bTarget = (b) => boosterTarget(insp.fitRef, b.id, tidByName(b.name));
   const show = (b, tab) => insp.inspect(bTarget(b), tab);
   return (
-    <Shell drop={drop} dropLabel={t("Add booster")}>
+    <Shell drop={drop} dropLabel={t("Add booster")} blank={rs.blankProps([{ label: `${t("Add booster")}…`, onSelect: () => itemOps.browse("boosters") }])}>
       <Header onAdd={() => itemOps.browse("boosters")} addLabel={t("Booster")}>{t("Toggle boosters to simulate their stat effects on this fit.")}</Header>
       <Body list={rs.listProps({ onDelete: remove })}>
         {!list.length && <None>{t("No boosters added")}</None>}
@@ -198,6 +199,7 @@ export function projectedLines(eff, rangeKm, assist, jamTarget, ewarResist) {
 export function ProjectedPanel({ s, jamTarget }) {
   const [picker, setPicker] = useState(false);
   const [modMenu, setModMenu] = useState(null);   // the Default effect menu, {x, y}
+  const [blankMenu, setBlankMenu] = useState(null);   // right-click on the window's empty space, {x, y}
   const rs = useRowSelect();
   // A fit dragged from the ship browser projects onto this one, as if picked from the list. Not the
   // fit being edited: a fit projecting onto itself is not an engagement.
@@ -222,7 +224,10 @@ export function ProjectedPanel({ s, jamTarget }) {
   };
   const moduleMenu = () => PROJECTED_MODULES.map(d => ({ label: d.module, onSelect: () => addModule(d.module) }));
   return (
-    <Shell drop={drop} dropLabel={t("Project onto this fit")}>
+    <Shell drop={drop} dropLabel={t("Project onto this fit")} blank={{ onContextMenu: (e) => {
+      if (e.defaultPrevented || e.target.closest("input, textarea, select")) return;
+      e.preventDefault(); setBlankMenu({ x: e.clientX, y: e.clientY });
+    } }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
         <span style={{ fontSize: TYPE.small, color: C.textMid, flex: 1 }}>{t("Other fits, or stock modules, projecting onto this one. Effects scale with range.")}</span>
         <button type="button" style={btn()} title={t("A stock module projected onto this fit, flown with every skill at V")}
@@ -299,6 +304,10 @@ export function ProjectedPanel({ s, jamTarget }) {
       {picker && <FitPickerSheet title={t("Project a Fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
         onSelect={(ship, fit) => add(ship, fit)} onClose={() => setPicker(false)} />}
       {modMenu && <ContextMenu x={modMenu.x} y={modMenu.y} items={moduleMenu()} onClose={() => setModMenu(null)} />}
+      {blankMenu && <ContextMenu x={blankMenu.x} y={blankMenu.y} onClose={() => setBlankMenu(null)} items={[
+        { label: t("Add fit…"), onSelect: () => setPicker(true) },
+        { label: t("Default effect"), submenu: moduleMenu() },
+      ]} />}
       {rs.view}
     </Shell>
   );
@@ -427,11 +436,16 @@ export function CommandPanel({ s }) {
 // ── Environment ──────────────────────────────────────────────────────────────────────────────
 export function EnvironmentPanel({ s }) {
   const [picker, setPicker] = useState(false);
+  const [menu, setMenu] = useState(null);   // the window's right-click menu, {x, y}
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const env = s.slots?.environment ?? null;
   const setEnv = (n) => s.setSlots(prev => ({ ...prev, environment: n || undefined }));
   return (
-    <Shell>
+    <Shell blank={{ onContextMenu: (e) => { if (e.defaultPrevented) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); } }}>
+      {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
+        { label: t("Change…"), onSelect: () => setPicker(true) },
+        { label: t("Clear"), disabled: !env, onSelect: () => setEnv(null) },
+      ]} />}
       <Header>{t("The system this fit is sitting in. Wormhole effects and metaliminal storms change resists, reps, damage, speed and signature for everything in the system.")}</Header>
       <div style={{ ...rowStyle(), minHeight: 40 }}>
         <div style={{ flex: 1, minWidth: 0 }}>

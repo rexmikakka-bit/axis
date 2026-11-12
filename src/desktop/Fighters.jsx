@@ -53,7 +53,7 @@ export default function FightersPanel({ s, stats, shipFighter }) {
   const cell = { fontSize: TYPE.small, color: C.textMid, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
   const int = (n) => String(Math.round(n));
   return (
-    <div {...drop.props} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div {...drop.props} {...rs.blankProps([{ label: t("Add fighters…"), onSelect: () => itemOps.browse("fighters") }])} style={{ height: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       <DropHint over={drop.over} ok={drop.ok} label={t("Add to fighter bay")} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "8px 16px", padding: "10px 12px", flex: "none", borderBottom: `1px solid ${C.border}` }}>
         <UsageBar label={t("Fighter bay")} used={bayUsed} total={shipFighter.cap} unit="m³" fmt={fmtK} />

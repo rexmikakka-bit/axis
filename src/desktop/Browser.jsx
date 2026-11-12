@@ -222,6 +222,7 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
   const [open, setOpen] = useState(() => new Set());
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
+  const [ctx, setCtx] = useState(null);   // a category's right-click menu, {x, y, items}
   const insp = useInspect();
   // What the list is narrowed to when a window's "+" asked for it ({to, slot}), or null. Cleared by
   // its chip's ✕ or by picking a rack; not remembered, since it answers one request.
@@ -340,7 +341,11 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
     return (
       <div key={n.id} role="group">
         <TreeRow depth={depth} open={isOpen} leaf={!hasKids} selected={selected === n.id} label={n.name}
-          icon={n.iconTid ? eveIcon(n.iconTid, 32) : null} sub={!hasKids && n.mods?.length ? String(n.mods.length) : null} onClick={() => toggle(n)} />
+          icon={n.iconTid ? eveIcon(n.iconTid, 32) : null} sub={!hasKids && n.mods?.length ? String(n.mods.length) : null} onClick={() => toggle(n)}
+          onContextMenu={e => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, items: [
+            hasKids ? { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(n) } : { label: t("Show items"), onSelect: () => toggle(n) },
+            { label: t("Collapse all"), disabled: open.size === 0, onSelect: () => setOpen(new Set()) },
+          ] }); }} />
         {hasKids && isOpen && renderNodes(n.children, depth + 1)}
       </div>
     );
@@ -412,12 +417,14 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
       </div>
       </div>}
       {rs.view}
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={ctx.items} onClose={() => setCtx(null)} />}
     </>
   );
 }
 
 // ── Ships ──────────────────────────────────────────────────────────────────────────────────────
 function ShipsPane({ s }) {
+  const insp = useInspect();
   const tree = useMemo(() => buildShipTaxonomy(), []);
   const [open, setOpen] = useState(() => new Set());
   const [search, setSearch] = useState("");
@@ -472,6 +479,7 @@ function ShipsPane({ s }) {
       { label: t("Open in New Tab"), onSelect: () => s.openFitInNewTab(ship, fit.name) },
       { label: t("Rename"), onSelect: () => setRenaming({ ship, id: fit.id }) },
       { label: t("Duplicate"), onSelect: () => duplicate(ship, fit) },
+      { label: t("Ship info"), icon: eveIcon(tidByName(ship), 32), onSelect: () => insp.inspect(typeTarget(tidByName(ship)), "info") },
       { divider: true },
       { label: t("Delete"), danger: true, onSelect: () => remove(ship, fit) },
     ];
@@ -487,15 +495,28 @@ function ShipsPane({ s }) {
       </div>
     );
   };
+  // A hull's menu: a fit of it, and its info (the Ship info sheet, in a window of its own).
+  const hullMenu = (sh, extra) => [
+    { heading: sh.name },
+    { label: t("New Fit"), onSelect: () => createFit(sh.name) },
+    { label: t("Show info"), icon: eveIcon(sh.typeID, 32), onSelect: () => insp.inspect(typeTarget(sh.typeID), "info") },
+    extra && { divider: true }, extra,
+  ];
+  // A category's: open or shut it, or shut every one.
+  const nodeMenu = (key, isOpen) => [
+    { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(key) },
+    { label: t("Collapse all"), disabled: open.size === 0, onSelect: () => setOpen(new Set()) },
+  ];
   const hullRow = (sh, depth) => {
     const key = `ship:${sh.name}`, fits = fitsDB[sh.name] ?? [], isOpen = open.has(key);
     return (
       <div key={key} role="group">
         <TreeRow depth={depth} open={isOpen} label={sh.name} icon={eveIcon(sh.typeID, 32)} iconSize={24} sub={fits.length ? String(fits.length) : null} onClick={() => toggle(key)}
-          onContextMenu={e => openCtx(e, [{ label: t("New Fit"), onSelect: () => createFit(sh.name) }, { label: isOpen ? t("Collapse") : t("Expand"), onSelect: () => toggle(key) }])} />
+          onContextMenu={e => openCtx(e, hullMenu(sh, isOpen ? { label: t("Collapse"), onSelect: () => toggle(key) } : { label: t("Expand"), onSelect: () => toggle(key) }))} />
         {isOpen && <>
           {fits.map(f => fitRow(sh.name, f, depth + 1))}
-          <TreeRow depth={depth + 1} leaf label={<span style={{ color: C.accent }}>+ {t("New Fit")}</span>} onClick={() => createFit(sh.name)} />
+          <TreeRow depth={depth + 1} leaf label={<span style={{ color: C.accent }}>+ {t("New Fit")}</span>} onClick={() => createFit(sh.name)}
+            onContextMenu={e => openCtx(e, hullMenu(sh))} />
         </>}
       </div>
     );
@@ -505,7 +526,8 @@ function ShipsPane({ s }) {
     const count = shipsUnder(n).reduce((a, sh) => a + (fitsDB[sh.name]?.length ?? 0), 0);
     return (
       <div key={key} role="group">
-        <TreeRow depth={depth} open={isOpen} label={<span style={{ fontWeight: depth === 0 ? 500 : 400 }}>{n.label}</span>} sub={count ? String(count) : null} onClick={() => toggle(key)} />
+        <TreeRow depth={depth} open={isOpen} label={<span style={{ fontWeight: depth === 0 ? 500 : 400 }}>{n.label}</span>} sub={count ? String(count) : null} onClick={() => toggle(key)}
+          onContextMenu={e => openCtx(e, nodeMenu(key, isOpen))} />
         {isOpen && <>{(n.children ?? []).map(c => nodeRow(c, depth + 1))}{(n.ships ?? []).map(sh => hullRow(sh, depth + 1))}</>}
       </div>
     );
@@ -541,7 +563,8 @@ function ShipsPane({ s }) {
         {!q && recent.length > 0 && (
           <div role="group" aria-label={t("Recent fits")} style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: showRecent ? 4 : 0 }}>
             <TreeRow depth={0} open={showRecent} label={<span style={{ fontWeight: 500 }}>{t("Recent fits")}</span>} sub={String(recent.length)} onClick={flipRecent}
-              title={showRecent ? t("Hide recent fits") : t("Show recent fits")} />
+              title={showRecent ? t("Hide recent fits") : t("Show recent fits")}
+              onContextMenu={e => openCtx(e, [{ label: showRecent ? t("Hide recent fits") : t("Show recent fits"), onSelect: flipRecent }])} />
             {showRecent && recent.map(r => fitRow(r.ship, r.fit, 1, true))}
           </div>
         )}

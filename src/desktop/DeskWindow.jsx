@@ -93,7 +93,7 @@ function Tab({ id, title, on, locked, onSelect, onClose, onOut, onMenu, onSlide,
 // window is dragged over it (dropping there combines the two).
 export default function DeskWindow({ id, title, rect, z, focused, locked, floating = false, onFocus, onDragStart, onDrag, onDragEnd,
                                      onDragCancel, onKeyNudge, onClose, onPopOut, extra, children,
-                                     tabs = null, activeTab, onTab, onCloseTab, onTabOut, onTabMenu, onTabMove, collapsed = false, onToggleCollapse, dropTarget = false, ghost = false }) {
+                                     tabs = null, activeTab, onTab, onCloseTab, onTabOut, onTabMenu, onTabMove, onTitleMenu, collapsed = false, onToggleCollapse, dropTarget = false, ghost = false }) {
   const drag = useRef(null);
 
   // Reordering tabs: while one is dragged along the strip, `slot` is where it would land (an index
@@ -172,6 +172,7 @@ export default function DeskWindow({ id, title, rect, z, focused, locked, floati
                boxShadow: floating ? "0 14px 40px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4)" : "0 4px 16px rgba(0,0,0,.45)" }}>
       <div data-titlebar tabIndex={0} onKeyDown={onTitleKey} {...pointer("move", "")}
         onDoubleClick={(e) => { if (!floating && onToggleCollapse && !e.target.closest("button,input,select,textarea,[data-tab]")) onToggleCollapse(id); }}
+        onContextMenu={onTitleMenu ? (e) => { if (e.defaultPrevented) return; e.preventDefault(); onTitleMenu(e, id); } : undefined}
         aria-label={t("{title} window. Arrow keys move it, Shift and arrow keys resize it.", { title })}
         style={{ height: TITLE_H, flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "0 4px 0 10px",
                  background: dropTarget ? C.accentLight : C.surfaceAlt, borderBottom: `1px solid ${dropTarget ? C.accent : C.border}`,

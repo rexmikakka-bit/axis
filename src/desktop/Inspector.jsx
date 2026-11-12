@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, computeFitCostRatios } from "../calc.js";
@@ -13,6 +13,7 @@ import { ModuleMenu, ModuleInfoTab, MutaplasmidEditor, ItemInfoPanel, TraitsPane
 import { buildBoosterFromName } from "../components/effects.jsx";
 import { resolveTarget, inspectorTabs, typeTarget, targetKey } from "./inspect.js";
 import { useInspect } from "./inspect-context.jsx";
+import { ContextMenu } from "./ContextMenu.jsx";
 import DeskVariations from "./Variations.jsx";
 import { Empty, TYPE } from "./kit.jsx";
 
@@ -52,6 +53,7 @@ export function useHeadroom(s, ship, cs) {
 export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = false }) {
   const { inspect, fitModule } = useInspect();
   const headroom = useHeadroom(s, ship, cs);
+  const [headMenu, setHeadMenu] = useState(null);   // the item header's right-click menu, {x, y}
   if (!target) return <Empty>{only ? t("Select a module, drone, implant or item to see it here.") : t("Nothing to show.")}</Empty>;
   const r = resolveTarget(target, s);
   const typeID = r.typeID;
@@ -145,7 +147,15 @@ export function InspectorView({ s, ship, cs, target, tab, onTab, only, pinned = 
   }
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
+      {headMenu && <ContextMenu x={headMenu.x} y={headMenu.y} onClose={() => setHeadMenu(null)} items={[
+        // This item's other tabs: switched to here, or (a full-time window shows one) opened on it.
+        ...tabs.map(tb => ({ label: t(TAB_LABELS[tb]), checked: tb === cur, onSelect: () => { if (tb !== cur) { if (onTab && !only) onTab(tb); else inspect(target, tb); } } })),
+        { divider: true },
+        !pinned && { label: t("Pin in its own window"), onSelect: () => inspect(target, cur, { fresh: true }) },
+        { label: t("Copy name"), onSelect: () => navigator.clipboard?.writeText(name).catch(() => {}) },
+      ]} />}
+      <div onContextMenu={e => { if (e.defaultPrevented) return; e.preventDefault(); setHeadMenu({ x: e.clientX, y: e.clientY }); }}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${C.border}`, flex: "none" }}>
         {typeID && <img className="eve-icon" src={eveIcon(typeID, 64)} width={34} height={34} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />}
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 14, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>

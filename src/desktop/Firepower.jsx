@@ -1,13 +1,16 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
-import { TYPES, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
+import { TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { DMG, validStatesFor, NAVY_AMMO_PREFIXES } from "../lib/core.js";
 import { META_COLORS } from "../lib/meta.js";
 import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { TargetProfileSheet } from "../components/ui.jsx";
 import { KV, Empty, Dialog, SectionLabel, TYPE, WEIGHT } from "./kit.jsx";
 import { eveIcon } from "../lib/icons.js";
+import { ContextMenu } from "./ContextMenu.jsx";
+import { useInspect } from "./inspect-context.jsx";
+import { typeTarget } from "./inspect.js";
 
 // The desktop Firepower window: the phone's Firepower card (tabs.jsx StatsTab) figure for figure —
 // resist-weighted when a target profile is set, spool ranges, clip damage only for weapons that
@@ -42,6 +45,8 @@ const KIND = {
 };
 const fmt1 = (n) => n == null ? "—" : n >= 100 ? Math.round(n).toLocaleString() : (+n.toFixed(1)).toLocaleString();
 export function RemoteRepsPanel({ cs }) {
+  const [menu, setMenu] = useState(null);   // a module row's right-click menu, {x, y, items}
+  const insp = useInspect();
   // Narrow, the table keeps the module, its rate and its range; per-cycle and cycle go to the tooltip.
   const [width, setWidth] = useState(600);
   const boxRef = useRef(null);
@@ -87,7 +92,11 @@ export function RemoteRepsPanel({ cs }) {
         const spools = (g.spoolFactor ?? 1) > 1;
         const perCycle = `${(g.amount ?? 0).toLocaleString()} ${g.kind === "cap" ? "GJ" : "HP"}`, cycle = g.cycleMs ? `${+(g.cycleMs / 1000).toFixed(2)}s` : "—";
         return (
-          <div key={g.name} title={narrow ? `${g.n > 1 ? `${g.n}× ` : ""}${g.name} · ${perCycle} / ${cycle}` : undefined} style={{ display: "grid", gridTemplateColumns: cols, columnGap: 10, alignItems: "center", minHeight: 28, padding: "0 12px",
+          <div key={g.name} title={narrow ? `${g.n > 1 ? `${g.n}× ` : ""}${g.name} · ${perCycle} / ${cycle}` : undefined}
+            onContextMenu={g.typeID ? e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items: [
+              { label: t("Show info"), icon: eveIcon(g.typeID, 32), onSelect: () => insp.inspect(typeTarget(g.typeID), "info") },
+              { label: t("Variations"), onSelect: () => insp.inspect(typeTarget(g.typeID), "variations") },
+            ] }); } : undefined} style={{ display: "grid", gridTemplateColumns: cols, columnGap: 10, alignItems: "center", minHeight: 28, padding: "0 12px",
                                      fontSize: TYPE.label, borderBottom: `1px solid ${C.border}99` }}>
             <img className="eve-icon" src={eveIcon(g.typeID, 32)} width={18} height={18} alt="" onError={e => { e.target.style.visibility = "hidden"; }} />
             <span title={g.name} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>
@@ -102,6 +111,7 @@ export function RemoteRepsPanel({ cs }) {
         );
       })}
       {spool && (spool.spoolTimeS ?? 0) > 0 && <KV min={150} rows={[[t("Spool-up time"), `${fmt1(spool.spoolTimeS)}s`]]} />}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }
@@ -121,11 +131,24 @@ function Spine({ dmg }) {
 function AmmoSection({ s, ship, opts }) {
   const racks = useMemo(() => weaponRacks(s.slots), [s.slots]);
   const [open, setOpen] = useState(null);   // rack index whose picker is open
+  const [menu, setMenu] = useState(null);   // a rack line's right-click menu, {x, y, items}
+  const insp = useInspect();
   if (!racks.length) return null;
+  const rackMenu = (e, r, i) => {
+    e.preventDefault();
+    const ammo = r.ammo ? r.ammo.replace(/\s*\(\d+\)$/, "") : null;
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: t("Change…"), onSelect: () => setOpen(i) },
+      { divider: true },
+      { heading: t("Show info") },
+      ...[r.name, ammo].filter(n => n && tidByName(n)).map(n => ({ label: n, icon: eveIcon(tidByName(n), 32), onSelect: () => insp.inspect(typeTarget(tidByName(n)), "info") })),
+    ] });
+  };
   return (
     <div style={{ flex: "none", borderTop: `1px solid ${C.border}`, padding: "6px 0" }}>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
       {racks.map((r, i) => (
-        <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 12px", minHeight: 28 }}>
+        <div key={r.name} onContextMenu={e => rackMenu(e, r, i)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 12px", minHeight: 28 }}>
           <span style={{ fontSize: TYPE.label, color: C.textMid, flex: "none" }}>{t("Ammo")}</span>
           <span title={`${r.mounts.length}× ${r.name}`} style={{ fontSize: TYPE.label, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {r.ammo ? r.ammo.replace(/\s*\(\d+\)$/, "") : <span style={{ color: C.textMid }}>{t("None loaded")}</span>}
@@ -179,6 +202,8 @@ const TierBadge = ({ tier }) => (
 
 function AmmoTable({ s, ship, opts, rack, onPicked }) {
   const [result, setResult] = useState(null);
+  const [menu, setMenu] = useState(null);   // a round's right-click menu, {x, y, items}
+  const insp = useInspect();
   // Grouped by kind of round (remembered), or one list by DPS; a chip narrows it to one kind.
   const [grouped, setGrouped] = useState(() => { try { return localStorage.getItem(GROUP_KEY) !== "0"; } catch { return true; } });
   const flipGrouped = () => setGrouped(v => { try { localStorage.setItem(GROUP_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
@@ -252,6 +277,12 @@ function AmmoTable({ s, ship, opts, rack, onPicked }) {
         const loaded = r.name === rack.ammo;
         return (
           <div key={r.name} role="button" tabIndex={0} onClick={() => load(r)} onKeyDown={e => { if (e.key === "Enter") load(r); }}
+            onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items: [
+              { label: t("Load into every {name}", { name: rack.name }), disabled: loaded, onSelect: () => load(r) },
+              { divider: true },
+              // The advisor is a dialog: it gives way to the item's window.
+              { label: t("Show info"), disabled: !tidByName(r.name), onSelect: () => { onPicked?.(); insp.inspect(typeTarget(tidByName(r.name)), "info"); } },
+            ] }); }}
             title={loaded ? t("Loaded") : t("Load into every {name}", { name: rack.name })}
             style={{ display: "grid", gridTemplateColumns: cols, columnGap: 12, alignItems: "center", minHeight: 32, padding: "0 16px",
                      cursor: "pointer", fontSize: 13.5, fontVariantNumeric: "tabular-nums", background: loaded ? C.accentLight : "transparent",
@@ -272,6 +303,7 @@ function AmmoTable({ s, ship, opts, rack, onPicked }) {
         );
       })}
       </div>)}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   );
 }
