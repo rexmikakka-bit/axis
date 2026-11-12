@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { calcFitStats, computeProjectedReps, calcAngularSpeed, tidByName, isT3Cruiser, t3cSlotLayout, TYPES } from "../calc.js";
@@ -399,11 +399,15 @@ export default function GraphsPanel({ s }) {
   const scaleKey = `${cat}|${y}|${x}`, scale = scales[scaleKey] ?? {};
   const setScale = (axis, v) => setScales(m => ({ ...m, [scaleKey]: { ...(m[scaleKey] ?? {}), [axis]: v > 0 ? v : null } }));
 
+  // Every edit autosaves into the fit library, and each plotted fit and target is a whole-fit
+  // calculation off it. Reading the library DEFERRED lets the edit paint first and the graph follow in
+  // an interruptible render (the Fitting window's stats work the same way).
+  const fitsDB = useDeferredValue(s.fitsDB);
   const srcData = useMemo(() => srcList.map(sc => {
-    const fit = s.fitsDB?.[sc.ship]?.find(f => f.name === sc.fitName);
-    return fit ? { sc, fit, d: sourceData(s, sc.ship, fit, ignoreResists ? {} : { targetResists: s.tgtProfile?.r }) } : null;
-  }), [JSON.stringify(srcList), s.fitsDB, s.sourceSkills, s.factorInReload, s.tgtProfile, ignoreResists]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const tgtData = useMemo(() => tgtList.map(tg => tg ? targetData(s, tg) : null), [JSON.stringify(tgtList), s.fitsDB, s.sourceSkills]);   // eslint-disable-line react-hooks/exhaustive-deps
+    const fit = fitsDB?.[sc.ship]?.find(f => f.name === sc.fitName);
+    return fit ? { sc, fit, d: sourceData({ ...s, fitsDB }, sc.ship, fit, ignoreResists ? {} : { targetResists: s.tgtProfile?.r }) } : null;
+  }), [JSON.stringify(srcList), fitsDB, s.sourceSkills, s.factorInReload, s.tgtProfile, ignoreResists]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const tgtData = useMemo(() => tgtList.map(tg => tg ? targetData({ ...s, fitsDB }, tg) : null), [JSON.stringify(tgtList), fitsDB, s.sourceSkills]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ordinary curves are cheap enough to compute in the render; the application profile is one
   // whole-fit calculation per round, so it runs off the render and lands when ready.

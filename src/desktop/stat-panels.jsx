@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { calcFitStats, peakRegen, PEAK_REGEN_AT_PCT, TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
@@ -12,14 +12,31 @@ import { fitStatsOptions } from "../lib/stats-opts.js";
 // here and the same number on the phone cannot differ. If StatsTab's options change, change them
 // here too.
 
-/** The fit's full stats, as the phone's Stats page computes them. Null with no fit. */
+/**
+ * The fit's full stats, as the phone's Stats page computes them. Null with no fit.
+ *
+ * THE desktop calculation: every stat window, the Fitting table, the Drones and Cargo windows and the
+ * snapshot card read this one result (useWindowContents hands it round). They each used to run their
+ * own, so one click ran calcFitStats up to five times before it could paint.
+ *
+ * And it is DEFERRED (useDeferredValue), the phone Stats page's trick: an edit renders first with the
+ * previous numbers, so the state dot or the new module appears on the next frame, and React then
+ * computes the stats in a background render it can throw away if another edit lands first. The
+ * inputs travel as one object so the ship and its modules always arrive together; a fit switch never
+ * computes the new hull on the old fit's modules.
+ */
 export function useFitStats(s, ship) {
+  const live = useMemo(() => ({ ship, slots: s.slots, drones: s.drones, fighters: s.fighters, implants: s.implants, boosters: s.boosters,
+    fitSkills: s.fitSkills, factorInReload: s.factorInReload, externalBursts: s.externalBursts, projectedEffects: s.projectedEffects,
+    dmgProfile: s.dmgProfile, tgtProfile: s.tgtProfile }),
+  [ship, s.slots, s.drones, s.fighters, s.implants, s.boosters, s.fitSkills, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile]);
+  const d = useDeferredValue(live);
   return useMemo(() => {
-    if (!ship || !s.slots) return null;
+    if (!d.ship || !d.slots) return null;
     try {
-      return calcFitStats(ship, s.slots, s.drones ?? [], s.fitSkills, fitStatsOptions(s)) ?? null;
+      return calcFitStats(d.ship, d.slots, d.drones ?? [], d.fitSkills, fitStatsOptions(d)) ?? null;
     } catch { return null; }
-  }, [ship, s.slots, s.drones, s.fitSkills, s.implants, s.boosters, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile, s.fighters]);
+  }, [d]);
 }
 
 const fmtN = (n) => (n == null || n === 0) ? "0" : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));

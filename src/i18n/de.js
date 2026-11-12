@@ -460,6 +460,7 @@ export default {
   "No saved fittings on this character.": "Keine gespeicherten Fittings bei diesem Charakter.",
   "No saved loadouts": "Keine gespeicherten Loadouts",
   "No ships or fits found": "Keine Schiffe oder Fittings gefunden",
+  "{n} more fits match. Keep typing to narrow it down.": "{n} weitere Fittings passen. Tippe weiter, um die Liste einzugrenzen.",
   "No side effects": "Keine Nebenwirkungen",
   "No subsystems found": "Keine Subsysteme gefunden",
   "No tags yet": "Noch keine Tags",

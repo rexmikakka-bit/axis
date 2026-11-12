@@ -445,6 +445,7 @@ export default {
   "No saved fittings on this character.": "У этого персонажа нет сохранённых фиттингов.",
   "No saved loadouts": "Нет сохранённых сборок",
   "No ships or fits found": "Корабли и фиттинги не найдены",
+  "{n} more fits match. Keep typing to narrow it down.": "Ещё {n} фитов подходят. Продолжайте вводить, чтобы сузить список.",
   "No side effects": "Побочных эффектов нет",
   "No subsystems found": "Подсистемы не найдены",
   "No tags yet": "Тегов пока нет",

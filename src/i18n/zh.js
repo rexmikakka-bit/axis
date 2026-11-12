@@ -442,6 +442,7 @@ export default {
   "No saved fittings on this character.": "该角色没有已保存的装配。",
   "No saved loadouts": "没有已保存的方案",
   "No ships or fits found": "未找到舰船或装配",
+  "{n} more fits match. Keep typing to narrow it down.": "还有 {n} 个装配匹配。继续输入以缩小范围。",
   "No side effects": "没有副作用",
   "No subsystems found": "未找到子系统",
   "No tags yet": "暂无标签",

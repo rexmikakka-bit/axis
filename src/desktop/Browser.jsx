@@ -150,6 +150,8 @@ function pruneTree(nodes, ok) {
   return out;
 }
 const RECENT_KEY = "axis_desk_recent_shown";
+// How many saved fits a Ships search lists before it says how many more matched.
+const FIT_HIT_CAP = 100;
 const KIND_LABEL = { module: "Module", charge: "Charge", drone: "Drone", fighter: "Fighter", implant: "Implant", booster: "Booster", ship: "Ship" };
 
 const allMods = (nodes) => nodes.flatMap(n => [...(n.mods ?? []), ...allMods(n.children ?? [])]);
@@ -282,7 +284,9 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
   const priceOf = (id) => fetched.get(Number(id)) ?? fetched.get(String(id)) ?? prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
 
   const find = (nodes, id) => { for (const n of nodes) { if (n.id === id) return n; const f = find(n.children ?? [], id); if (f) return f; } return null; };
-  const q = search.trim().toLowerCase();
+  // Deferred: the search box shows each keystroke on the next frame, and the result list follows in
+  // an interruptible render, so fast typing never waits on a list it is about to replace.
+  const q = useDeferredValue(search).trim().toLowerCase();
   // Ordered as on the phone (lib/meta.js compareForBrowser): T2 first, then T1, faction, deadspace,
   // officer, each by meta level. A rack's tree is already built in that order (with its ancillary-first
   // rule); the full market tree is stored A–Z, so its lists are sorted here. A search is the phone's
@@ -510,12 +514,20 @@ function ShipsPane({ s }) {
   // The phone's search (FittingsScreen): hulls through nameMatchesQuery, so initialisms work (BNI is
   // the Brutix Navy Issue, ONI both Navy Issue hulls), and fits by name or tag. Each list is ranked
   // with searchScore, so "raven" leads with the Raven rather than Raven Navy Issue.
-  const q = search.trim().toLowerCase();
-  const ranked = (rows, nameOf) => rows.map((r, i) => ({ r, i, sc: searchScore(nameOf(r), search) }))
-    .sort((a, b) => b.sc - a.sc || nameOf(a.r).length - nameOf(b.r).length || a.i - b.i).map(x => x.r);
-  const hits = q ? ranked(Object.entries(fitsDB).flatMap(([ship, fits]) =>
-    fits.filter(f => f.name.toLowerCase().includes(q) || tagsOf(f).some(tag => tag.toLowerCase().includes(q))).map(fit => ({ ship, fit }))), h => h.fit.name) : [];
-  const shipHits = q ? ranked(tree.flatMap(n => shipsUnder(n)).filter(sh => nameMatchesQuery(sh.name, search)), sh => sh.name).slice(0, 60) : [];
+  //
+  // Deferred like the Market pane's, and the fit list is capped: "f" matches every saved fit, and
+  // laying out 1,500 rows on one keystroke froze the window for over a second on a big library.
+  const dSearch = useDeferredValue(search);
+  const q = dSearch.trim().toLowerCase();
+  const { hits, moreHits, shipHits } = useMemo(() => {
+    if (!q) return { hits: [], moreHits: 0, shipHits: [] };
+    const ranked = (rows, nameOf) => rows.map((r, i) => ({ r, i, sc: searchScore(nameOf(r), dSearch) }))
+      .sort((a, b) => b.sc - a.sc || nameOf(a.r).length - nameOf(b.r).length || a.i - b.i).map(x => x.r);
+    const all = ranked(Object.entries(fitsDB).flatMap(([ship, fits]) =>
+      fits.filter(f => f.name.toLowerCase().includes(q) || tagsOf(f).some(tag => tag.toLowerCase().includes(q))).map(fit => ({ ship, fit }))), h => h.fit.name);
+    return { hits: all.slice(0, FIT_HIT_CAP), moreHits: Math.max(0, all.length - FIT_HIT_CAP),
+      shipHits: ranked(tree.flatMap(n => shipsUnder(n)).filter(sh => nameMatchesQuery(sh.name, dSearch)), sh => sh.name).slice(0, 60) };
+  }, [q, dSearch, fitsDB, tree]);
   // The fits you opened last (the session's recentFits, newest first), above the tree; a toggle hides
   // them and is remembered. Each is a normal fit row, labelled with its hull since it sits outside it.
   const [showRecent, setShowRecent] = useState(() => { try { return localStorage.getItem(RECENT_KEY) !== "0"; } catch { return true; } });
@@ -535,6 +547,7 @@ function ShipsPane({ s }) {
         )}
         {q
           ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.map(h => fitRow(h.ship, h.fit, 0))}
+              {moreHits > 0 && <div style={{ padding: "6px 12px", fontSize: 12, color: C.textMute }}>{t("{n} more fits match. Keep typing to narrow it down.", { n: moreHits })}</div>}
               {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
           : tree.map(n => nodeRow(n, 0))}
       </div>

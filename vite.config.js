@@ -1,8 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'fs'
+
+// Every data file (dogma types, effects, modules, the market tree: ~10 MB) is emitted as
+// JSON.parse('...') instead of as a JavaScript object literal. V8 parses JSON several times faster
+// than the same data written as JS, and parsing it is most of what the app does before its first
+// frame. Vite's own `json.stringify` would do this, but Vite 8 (Rolldown) ignores it and inlines
+// object literals. Every JSON import in src/ is a default import, which is all this emits.
+// Production builds only: the dev server keeps Vite's own handling, so editing a data file still
+// hot-reloads.
+const jsonAsParse = {
+  name: 'axis-json-as-parse',
+  enforce: 'pre',
+  apply: 'build',
+  load(id) {
+    if (id.includes('?') || !id.endsWith('.json') || id.includes('node_modules')) return null
+    const text = JSON.stringify(JSON.parse(readFileSync(id, 'utf8')))
+    return { code: `export default JSON.parse(${JSON.stringify(text)});`, moduleType: 'js' }
+  },
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), jsonAsParse],
   build: {
     // Do NOT inline images as base64. Vite inlines assets under 4 KB by default, which pulled all
     // ~1,700 bundled icons into the JS bundle (10 MB -> 15.4 MB) — meaning the app parses every icon

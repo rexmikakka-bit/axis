@@ -443,6 +443,7 @@ export default {
   "No saved fittings on this character.": "이 캐릭터에 저장된 피팅이 없습니다.",
   "No saved loadouts": "저장된 로드아웃이 없습니다",
   "No ships or fits found": "함선이나 피팅을 찾지 못했습니다",
+  "{n} more fits match. Keep typing to narrow it down.": "{n}개의 피팅이 더 일치합니다. 계속 입력해 목록을 좁히세요.",
   "No side effects": "부작용 없음",
   "No subsystems found": "서브시스템을 찾지 못했습니다",
   "No tags yet": "아직 태그가 없습니다",

@@ -10,7 +10,6 @@ import { FittingsScreen } from "../components/FittingsScreen.jsx";
 import { CargoScreen } from "../components/cargo.jsx";
 import { DronesScreen } from "../components/drones.jsx";
 import { ImplantsScreen } from "../components/implants.jsx";
-import { fitStatsOptions } from "../lib/stats-opts.js";
 import { EffectsScreen } from "../components/effects.jsx";
 import { FitTable, FitTableConfig } from "./FitTable.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
@@ -33,38 +32,13 @@ export function useActiveShip(s) {
   }, [s.activeFit?.ship, s.slots?.subsystems]);
 }
 
-/**
- * The whole-fit figures the phone's App.jsx computes for its Cargo, Drones, Effects and ship-info
- * screens, the same three calcFitStats calls with the same options. The phone gates them on which
- * screen is showing; the desktop shows them all at once, so it gates on which windows are open.
- */
-export function useDeskStats(s, want) {
-  const ship = s.activeFit?.ship;
-  const snapshot = useMemo(() => {
-    if (!ship || !want.snapshot) return null;
-    try {
-      const sh = lookupShip(ship) ?? { name: ship, typeID: tidByName(ship) };
-      // The stat windows' own options (lib/stats-opts.js), so the snapshot card shows their numbers.
-      return calcFitStats(sh, s.slots, s.drones ?? [], s.fitSkills, fitStatsOptions(s));
-    } catch { return null; }
-  }, [ship, s.slots, s.drones, s.fighters, s.fitSkills, s.implants, s.boosters, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile, want.snapshot]);
-  const droneCs = useMemo(() => {
-    if (!ship || !want.drones) return null;
-    try {
-      return calcFitStats({ name: ship, typeID: tidByName(ship) }, s.slots, s.drones ?? [], s.fitSkills, { implants: s.implants, boosters: s.boosters,
-        externalBursts: s.externalBursts, projectedEffects: s.projectedEffects, pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity });
-    } catch { return null; }
-  }, [ship, s.slots, s.drones, s.fitSkills, s.implants, s.boosters, s.externalBursts, s.projectedEffects, want.drones]);
-  const fighterInfo = useMemo(() => {
-    if (!ship || !(s.fighters?.length) || !want.drones) return EMPTY;
-    try {
-      const cs = calcFitStats({ name: ship, typeID: tidByName(ship) }, s.slots, s.drones ?? [], s.fitSkills, { implants: s.implants, boosters: s.boosters,
-        externalBursts: s.externalBursts, damageProfile: s.dmgProfile?.p, pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity,
-        fighters: s.fighters.map(f => ({ name: f.name, qty: f.qty ?? 1, active: f.active, abilities: f.abilities })) });
-      return cs?.fighterDetails ?? EMPTY;
-    } catch { return EMPTY; }
-  }, [ship, s.slots, s.drones, s.fitSkills, s.implants, s.boosters, s.externalBursts, s.fighters, s.dmgProfile, want.drones]);
-  return { snapshot, droneInfo: droneCs?.droneInfo ?? EMPTY, fittedDrones: droneCs?.fittedDrones ?? null, fighterInfo };
+/** The whole-fit figures the phone's App.jsx computes for its Cargo, Drones, Effects and ship-info screens. */
+export function useDeskStats(cs) {
+  // Everything here comes off the window's one deferred calculation (stat-panels.jsx useFitStats):
+  // the snapshot card, the Drones window's bay, bandwidth and per-drone figures, and the fighters'.
+  // Each used to be its own calcFitStats.
+  return useMemo(() => ({ snapshot: cs ?? null, droneInfo: cs?.droneInfo ?? EMPTY, fittedDrones: cs?.fittedDrones ?? null,
+    fighterInfo: cs?.fighterDetails ?? EMPTY }), [cs]);
 }
 
 export function NoFit() {
@@ -89,7 +63,7 @@ export function StatsWindow({ s, ship, sections, id }) {
   );
 }
 
-export function FittingWindow({ s, ship, adderRef, cols, setCols, onBrowseRack }) {
+export function FittingWindow({ s, ship, cs, adderRef, cols, setCols, onBrowseRack }) {
   if (!ship) return <NoFit />;
   return (
     <FitTableConfig.Provider value={{ hub: s.priceHub, source: s.priceSource, cols, setCols }}>
@@ -97,7 +71,7 @@ export function FittingWindow({ s, ship, adderRef, cols, setCols, onBrowseRack }
       <FitTab TableView={FitTable} MenuFrame={DialogFrame} adderRef={adderRef} onBrowseRack={onBrowseRack} undo={s.undo} undoDepth={s.undoDepth} redo={s.redo} redoDepth={s.redoDepth} ship={ship} slots={s.slots} setSlots={s.setSlots}
         skills={s.fitSkills} implants={s.implants} boosters={s.boosters} drones={s.drones} factorInReload={s.factorInReload}
         externalBursts={s.externalBursts} projectedEffects={s.projectedEffects} dmgProfile={s.dmgProfile} tgtProfile={s.tgtProfile}
-        autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd} />
+        autoFillHardpoints={s.autoFillHardpoints} closeBrowserOnAdd={s.closeBrowserOnAdd} cs={cs} />
     </div>
     </FitTableConfig.Provider>
   );

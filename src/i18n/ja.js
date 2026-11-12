@@ -444,6 +444,7 @@ export default {
   "No saved fittings on this character.": "このキャラクターに保存済みのフィッティングはありません。",
   "No saved loadouts": "保存済みのロードアウトはありません",
   "No ships or fits found": "艦船もフィットも見つかりません",
+  "{n} more fits match. Keep typing to narrow it down.": "他に {n} 件のフィットが一致します。入力を続けて絞り込んでください。",
   "No side effects": "副作用なし",
   "No subsystems found": "サブシステムが見つかりません",
   "No tags yet": "タグはまだありません",

@@ -276,15 +276,18 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 // the logic, menus and sheets, so the desktop table edits a fit exactly as the phone does.
 // `onBrowseRack` (desktop only): (secKey, slotId) => void. An empty module slot asks for it instead of
 // opening the module picker sheet; the desktop answers with its Browser window, on that rack.
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,onBrowseRack=null,dense=false,TableView=null,MenuFrame=null}){
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,onBrowseRack=null,dense=false,TableView=null,MenuFrame=null,cs:csProp}){
   const gestureMemory=useRef(null);
   const _scroll=useScrollMemory("Fit");
   // Memoised on its inputs: this tab re-renders for menus, gestures and every unrelated session
   // update, and a full fit calculation on each of those was most of the lag adding a booster
   // (eight calculations for one change, on the desktop). Every input is replaced, never mutated.
   const _csOpts=(sl)=>({implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:sl?.pilotSec,systemSecurity:sl?.systemSecurity});
-  const _cs=useMemo(()=>(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,_csOpts(slots))??{}:{},
-    [ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // `cs` (desktop): the window's own deferred calculation (desktop/stat-panels.jsx useFitStats),
+  // handed in so the Fitting table does not run a second one on every edit. The phone passes none.
+  const _ownCs=useMemo(()=>(csProp===undefined&&ship&&slots)?calcFitStats(ship,slots,drones??[],skills,_csOpts(slots))??{}:null,
+    [csProp===undefined,ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const _cs=(csProp===undefined?_ownCs:csProp)??{};
   // Keyed by SLOT id, not typeID: two slots holding the same module can have genuinely different
   // stats. A missile launcher's range comes entirely from its charge (velocity x flight time), so an
   // unloaded launcher has no range at all — keying by typeID let a loaded launcher's range bleed onto

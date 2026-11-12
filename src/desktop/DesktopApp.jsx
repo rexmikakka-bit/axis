@@ -148,13 +148,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
   const issues = useMemo(() => fitIssues(cs, s.slots, s.drones), [cs, s.slots, s.drones]);
-  const stats = useDeskStats(s, {
-    // Only what reads them: the Drones window (bay, bandwidth, drone stats) and the two sheets. Cargo
-    // and Projected never did, and a Drones tab hidden behind another tab is not drawn — computing
-    // two extra full fit calculations for it on every edit was part of the booster lag.
-    snapshot: isOpen("drones") || sheet === "snapshot",
-    drones: isOpen("drones"),
-  });
+  const stats = useDeskStats(cs);
   const hullAttrs = TYPES[tidByName(s.activeFit?.ship)]?.attrs ?? null;
   const shipFighter = { cap: hullAttrs?.fighterCapacity ?? 0, tubes: hullAttrs?.fighterTubes ?? 0, light: hullAttrs?.fighterLightSlots ?? 0,
                         heavy: hullAttrs?.fighterHeavySlots ?? 0, support: hullAttrs?.fighterSupportSlots ?? 0 };
@@ -188,7 +182,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
       case "browser": return <DeskBrowser s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} modeRequest={browserMode} />;
-      case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} onBrowseRack={browseRack} />;
+      case "fitting": return <FittingWindow s={s} ship={ship} cs={cs} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} onBrowseRack={browseRack} />;
       case "graphs": return <GraphsPanel s={s} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
