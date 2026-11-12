@@ -3,21 +3,23 @@
 // only diagnosable when it says which build drew it).
 //
 // The desktop build knows its own at build time (vite.desktop.config.js). On a phone the installed
-// app is the authority: Capacitor's App.getInfo() reads the native marketing version and build
-// number (Android versionName/versionCode, iOS CFBundleShortVersionString/CFBundleVersion), which
-// is what the user actually has, rather than anything in the web bundle that could disagree with
-// it. In a plain browser (the dev server) there is no native layer, and it says so.
+// app is the authority: Capacitor's App.getInfo() reads the native marketing version (Android
+// versionName, iOS CFBundleShortVersionString), which is what the user actually has, rather than
+// anything in the web bundle that could disagree with it. The platform follows it, since the two
+// platforms' builds are cut separately. In a plain browser (the dev server) there is no native layer,
+// and it says so.
 
 let pending = null;
 
-/** "1.28.7 (124)", "Desktop 0.5.2", or "dev". Resolves once and is cached. */
+/** "1.28.7 iOS", "1.28.7 Android", "0.5.2 Desktop", or "dev". Resolves once and is cached. */
 export function appVersion() {
   pending ??= (async () => {
-    if (typeof __AXIS_DESKTOP_VERSION__ === "string") return `Desktop ${__AXIS_DESKTOP_VERSION__}`;
+    if (typeof __AXIS_DESKTOP_VERSION__ === "string") return `${__AXIS_DESKTOP_VERSION__} Desktop`;
     try {
-      const { App } = await import("@capacitor/app");
+      const [{ App }, { Capacitor }] = await Promise.all([import("@capacitor/app"), import("@capacitor/core")]);
       const info = await App.getInfo();
-      if (info?.version) return info.build ? `${info.version} (${info.build})` : info.version;
+      const platform = { ios: "iOS", android: "Android" }[Capacitor.getPlatform()];
+      if (info?.version) return platform ? `${info.version} ${platform}` : info.version;
     } catch { /* no native layer: the web build */ }
     return "dev";
   })();
