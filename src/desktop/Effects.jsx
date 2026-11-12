@@ -201,11 +201,11 @@ export function ProjectedPanel({ s, jamTarget }) {
   const [modMenu, setModMenu] = useState(null);   // the Default effect menu, {x, y}
   const [blankMenu, setBlankMenu] = useState(null);   // right-click on the window's empty space, {x, y}
   const rs = useRowSelect();
-  // A fit dragged from the ship browser projects onto this one, as if picked from the list. Not the
-  // fit being edited: a fit projecting onto itself is not an engagement.
+  // A fit dragged from the ship browser projects onto this one, as if picked from the list — the fit
+  // being edited included (a mirror match, or a fleet of the same doctrine), as the picker allows. The
+  // source is computed from its own modules and links, never its own projections, so this can't loop.
   const fitOf = (ship, name) => s.fitsDB?.[ship]?.find(f => f.name === name);
-  const drop = useFitDrop((ship, name) => !!fitOf(ship, name) && !(ship === s.activeFit?.ship && name === s.activeFit?.fitName),
-                          (ship, name) => add(ship, fitOf(ship, name)));
+  const drop = useFitDrop((ship, name) => !!fitOf(ship, name), (ship, name) => add(ship, fitOf(ship, name)));
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = s.projFits ?? [];
   const update = (i, patch) => s.setProjFits(prev => (prev ?? []).map((p, j) => j === i ? { ...p, ...patch } : p));
