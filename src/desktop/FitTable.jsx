@@ -3,8 +3,9 @@ import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
 import { TYPES, tidByName } from "../calc.js";
-import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser, gestureTarget, DOUBLE_TAP_MS } from "../lib/core.js";
-import { metaOf } from "../lib/meta.js";
+import { DMG, STATE_COLORS, STATE_GLOW, STATE_LABELS, MUTA_BY_TYPE, getCompatibleCharges, canLoadCharge, groupChargesForBrowser, gestureTarget, DOUBLE_TAP_MS, variantsOf } from "../lib/core.js";
+import { metaOf, metaLevelOf, META_COLORS } from "../lib/meta.js";
+import { variantSwapPatch } from "../lib/fit-ops.js";
 import { ContextMenu } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { moduleTarget, chargeTarget } from "./inspect.js";
@@ -326,6 +327,17 @@ export function FitTable({ api }) {
       row.type !== "empty" && { label: t("Copy"), onSelect: () => copyRow(secKey, row) },
       { label: t("Paste"), hint: deskClip ? deskClip.slot.name : undefined, onSelect: () => { pasteInto(secKey, row); } },
     ].filter(Boolean);
+    const variantItems = (secKey, row, src) => {
+      const list = variantsOf(row.typeID).filter(v => v?.typeID != null && metaOf(v.typeID, v.meta) !== "Abyssal")
+        .sort((a, b) => metaLevelOf(a.typeID) - metaLevelOf(b.typeID) || String(a.name).localeCompare(String(b.name)));
+      if (list.length < 2) return undefined;
+      return list.map(v => {
+        const meta = metaOf(v.typeID, v.meta), name = TYPES[v.typeID]?.n ?? v.name;
+        const here = Number(v.typeID) === Number(row.typeID) && !row.mutaplasmid;
+        return { label: name, icon: eveIcon(v.typeID, 32), checked: here, hint: <span style={{ color: META_COLORS[meta] ?? C.textMid }}>{meta}</span>,
+                 onSelect: () => { if (!here) updateMod(secKey, row.id, variantSwapPatch(src, { ...v, name }), false, true, row.groupIds); } };
+      });
+    };
     const menuItems = (secKey, row) => {
       if (row.type === "empty") return [{ label: t("Add module…"), onSelect: () => openEmpty(secKey, row.id) }, { divider: true }, ...clipboardItems(secKey, row)];
       if (secKey === "subsystems") return [{ label: t("Change subsystem…"), onSelect: () => openSubsystem(row) }];
@@ -349,7 +361,9 @@ export function FitTable({ api }) {
         takesCharges && { divider: true },
         (TYPES[row.typeID] ?? TYPES[String(row.typeID)])?.gn === "Armor Resistance Shift Hardener" && { label: t("Adaptation…"), onSelect: () => inspectRow(secKey, row, "rah") },
         { label: t("Show info…"), onSelect: () => inspectRow(secKey, row, "info") },
-        { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations") },
+        // pyfa's Variations ▸ list on hover, every non-abyssal variant by meta level, a click swapping it
+        // in (the whole row, as the Variations window does); a click on Variations itself opens that window.
+        { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations"), submenu: src ? variantItems(secKey, row, src) : undefined },
         mutable && { label: t("Mutate…"), onSelect: () => inspectRow(secKey, row, "mutate") },
         { divider: true },
         ...clipboardItems(secKey, row),

@@ -10,7 +10,9 @@ import { readClipboardText } from "../lib/core.js";
 // outside click, Escape, or the window losing focus. Items are {label, onSelect, disabled?, hint?,
 // danger?, checked?, icon?, submenu?} or {divider:true} or {heading}. An item with a `submenu` (items
 // of the same shape) opens it beside itself on hover or click, flipping left at the screen's edge —
-// pyfa's Charge ▸ Depleted Uranium ▸ Republic Fleet. `icon` is an image URL drawn before the label.
+// pyfa's Charge ▸ Depleted Uranium ▸ Republic Fleet. One with both a `submenu` and an `onSelect` opens
+// the submenu on hover and runs `onSelect` on click (Variations: the list, or the window).
+// `icon` is an image URL drawn before the label.
 
 // One column of the menu. Submenus are drawn INSIDE the root's element (fixed-positioned), so a click
 // in one is not an "outside" click that closes the whole menu.
@@ -40,7 +42,7 @@ function Panel({ x, y, items, onClose, depth = 0, flipFrom = null }) {
         const hasSub = Array.isArray(it.submenu) && it.submenu.length > 0, open = sub?.index === i;
         return (
           <button key={i} type="button" role="menuitem" aria-haspopup={hasSub ? "menu" : undefined} aria-expanded={hasSub ? open : undefined} disabled={it.disabled}
-            onClick={(e) => { if (hasSub) { openSub(i, e.currentTarget); return; } onClose(); it.onSelect?.(); }}
+            onClick={(e) => { if (hasSub && !it.onSelect) { openSub(i, e.currentTarget); return; } onClose(); it.onSelect?.(); }}
             style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "none", borderRadius: 5,
                      background: open ? C.surfaceAlt : "transparent",
                      color: it.disabled ? C.textMute : it.danger ? C.danger : C.text, fontSize: 13, textAlign: "left", cursor: it.disabled ? "default" : "pointer" }}
