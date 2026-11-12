@@ -434,12 +434,13 @@ function ShipsPane({ s }) {
   const fitsDB = s.fitsDB ?? {};
   const toggle = (key) => setOpen(o => { const x = new Set(o); x.has(key) ? x.delete(key) : x.add(key); return x; });
 
+  // The phone's "modified" stamp: a display string, set on create, rename and duplicate (FittingsScreen).
+  const today = () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const createFit = (ship) => {
     const taken = new Set((fitsDB[ship] || []).map(f => f.name));
     const base = t("New Fit"); let name = base, n = 2;
     while (taken.has(name)) name = `${base} ${n++}`;
-    const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const nf = { id: nextFitId(fitsDB), name, modified: now, tags: [], slots: generateEmptySlots(lookupShip(ship)) };
+    const nf = { id: nextFitId(fitsDB), name, modified: today(), tags: [], slots: generateEmptySlots(lookupShip(ship)) };
     s.setFitsDB(prev => ({ ...prev, [ship]: [...(prev[ship] || []), nf] }));
     s.loadFit(ship, name, nf);
   };
@@ -447,7 +448,7 @@ function ShipsPane({ s }) {
     const taken = new Set((fitsDB[ship] || []).map(f => f.name));
     const base = `${fit.name} ${t("copy")}`; let name = base, n = 2;
     while (taken.has(name)) name = `${base} ${n++}`;
-    const copy = { ...structuredClone(fit), id: nextFitId(fitsDB), name };
+    const copy = { ...structuredClone(fit), id: nextFitId(fitsDB), name, modified: today() };
     s.setFitsDB(prev => ({ ...prev, [ship]: [...(prev[ship] || []), copy] }));
     // Opened straight away, in a new tab, so the copy is what you edit next. Handed over whole: the
     // library has not taken the copy yet, and looking it up there would open an empty fit.
@@ -458,7 +459,7 @@ function ShipsPane({ s }) {
     if (!name) return;
     const old = fitsDB[ship]?.find(f => f.id === id);
     if (!old || old.name === name || (fitsDB[ship] || []).some(f => f.name === name)) return;
-    s.setFitsDB(prev => ({ ...prev, [ship]: prev[ship].map(f => f.id === id ? { ...f, name } : f) }));
+    s.setFitsDB(prev => ({ ...prev, [ship]: prev[ship].map(f => f.id === id ? { ...f, name, modified: today() } : f) }));
     if (s.activeFit?.ship === ship && s.activeFit?.fitName === old.name) s.setActiveFit({ ship, fitName: name });
   };
   const remove = (ship, fit) => { if (window.confirm(t('Delete "{name}"?', { name: fit.name }))) s.deleteFit(ship, fit); };
@@ -488,7 +489,12 @@ function ShipsPane({ s }) {
     return (
       <div key={fit.id} style={{ display: "flex", alignItems: "center" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <TreeRow depth={depth} leaf selected={on} label={withShip ? <><span style={{ color: C.textMid }}>{ship}</span> {fit.name}</> : fit.name} icon={eveIcon(tidByName(ship), 32)} iconSize={24} onClick={() => s.loadFit(ship, fit.name)}
+          <TreeRow depth={depth} leaf selected={on} icon={eveIcon(tidByName(ship), 32)} iconSize={24} onClick={() => s.loadFit(ship, fit.name)}
+            label={<>
+              <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{withShip ? <><span style={{ color: C.textMid }}>{ship}</span> {fit.name}</> : fit.name}</span>
+              {/* The phone's subtitle. `modified` is a string baked at save time, shown as stored. */}
+              {fit.modified && <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", fontSize: 11.5, color: C.textMute, marginTop: 1 }}>{t("Modified {date}", { date: fit.modified })}</span>}
+            </>}
             onContextMenu={e => openCtx(e, actions)} title={t("Click to open · right-click for more · drag onto Projected or Command")} drag={fitDragProps(ship, fit.name)} />
         </div>
         <Menu label="⋯" ariaLabel={t("Fit actions")} buttonStyle={{ height: 22, padding: "0 6px", color: C.textMid }} items={actions} />
