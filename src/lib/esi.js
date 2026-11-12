@@ -18,6 +18,8 @@
 // still a meaningfully different risk class from the rest of what's stored here.
 
 import { ESI_CLIENT_ID, ESI_CALLBACK_URL, ESI_NATIVE_CALLBACK_URL, ESI_SCOPES } from '../esi-config.js';
+import { IS_WEB_BUILD } from './web-build.js';
+import { t } from './i18n.js';
 import { SKILL_CAMEL_TO_PYFA, SKILL_CATALOG, tidByName } from '../calc.js';
 
 const ESI_BASE = 'https://esi.evetech.net/latest';
@@ -147,6 +149,9 @@ export function isEsiCallbackUrl(url) {
 // Kicks off SSO login: opens the system browser (native) or redirects the current tab (web).
 export async function beginLogin(scopes = ESI_SCOPES) {
   if (!ESI_CLIENT_ID) throw new Error('ESI_CLIENT_ID is not set — see src/esi-config.js');
+  // The hosted browser builds' address is not a registered callback, so EVE would refuse the login
+  // on its own page. Say so here instead, where every login button shows the error (lib/web-build.js).
+  if (IS_WEB_BUILD) throw new Error(t('Character login needs the Axis app.'));
   const verifier = randomToken();
   const challenge = await challengeFromVerifier(verifier);
   const state = randomToken();

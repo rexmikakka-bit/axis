@@ -26,6 +26,7 @@ export const ACTIONS = [
   { id: 'copyEft',       group: 'fits',    label: () => t('Copy the fit as EFT'),            keys: ['Ctrl+C'], when: 'noSelection' },
   { id: 'importFit',     group: 'fits',    label: () => t('Import a fit'),                   keys: ['Ctrl+O'] },
   { id: 'exportFit',     group: 'fits',    label: () => t('Export the fit'),                 keys: ['Ctrl+S'], when: 'fit' },
+  { id: 'snapshot',      group: 'fits',    label: () => t('Export a snapshot'),              keys: ['Ctrl+Shift+S'], when: 'fit' },
   { id: 'esiImport',     group: 'fits',    label: () => t('Import from your EVE character'), keys: ['Ctrl+B'] },
   { id: 'esiExport',     group: 'fits',    label: () => t('Save to your in-game fittings'),  keys: ['Ctrl+E'], when: 'fit' },
   { id: 'optimizePrice', group: 'fits',    label: () => t("Optimize the fit's price"),       keys: ['Ctrl+D'], when: 'fit' },

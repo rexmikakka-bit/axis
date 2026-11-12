@@ -15,6 +15,8 @@ let pending = null;
 export function appVersion() {
   pending ??= (async () => {
     if (typeof __AXIS_DESKTOP_VERSION__ === "string") return `${__AXIS_DESKTOP_VERSION__} ${import.meta.env?.MODE === "web" ? "Web" : "Desktop"}`;
+    // The phone layout of the hosted site (/m/) has no native layer and no version of its own.
+    if (import.meta.env?.MODE === "web") return "Web";
     try {
       const [{ App }, { Capacitor }] = await Promise.all([import("@capacitor/app"), import("@capacitor/core")]);
       const info = await App.getInfo();

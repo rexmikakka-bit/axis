@@ -28,6 +28,15 @@
         if (p === 'system') p = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         if (p !== 'dark') document.documentElement.classList.add('boot-' + p);
       } catch (e) {}
+      // The hosted browser build only (%MODE% is Vite's, so the installed app never runs this): a
+      // phone gets the phone app at /m/ (lib/web-build.js), before the desktop bundle even loads,
+      // unless it chose the desktop layout. A popped-out window never moves.
+      try {
+        var view = localStorage.getItem('axis_web_view');
+        var phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+        if ('%MODE%' === 'web' && !/[?&]satellite=/.test(location.search) && (view === 'phone' || (view !== 'desktop' && phone)))
+          location.replace('/m/' + location.search + location.hash);
+      } catch (e) {}
     </script>
   </head>
   <body>

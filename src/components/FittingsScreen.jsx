@@ -20,6 +20,7 @@ import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeGesture } from "../lib/use-swipe-back.js";
 import { IconPencil, IconCopy, IconClose, IconTag } from "./glyphs.jsx";
 import { t } from "../lib/i18n.js";
+import { IS_WEB_BUILD, phoneAppUrl } from "../lib/web-build.js";
 
 // Module scope on purpose: FittingsScreen reads this inside a useState initializer, which runs
 // BEFORE a const declared later in the component body exists — the temporal dead zone would throw
@@ -60,6 +61,20 @@ export function ActiveFitBar({activeFit,onReturn}){
       <div><div style={{fontSize:11,fontWeight:700,color:C.accent,lineHeight:1.2}}>{activeFit.ship}</div><div style={{fontSize:10,color:C.textMid,marginTop:1}}>{activeFit.fitName}</div></div>
     </div>
     <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:11,fontWeight:600,color:C.accent}}>{t("Return to Fit")}</span><span style={{fontSize:16,color:C.accent}}>{">"}</span></div>
+  </div>);
+}
+
+// The browser build only (lib/web-build.js): one quiet line at the top of the ship browser pointing
+// at the installed app, until dismissed. Shares its "dismissed" with the desktop layout's note.
+const WEB_NOTE_KEY = "axis_web_note_hidden";
+function WebAppNote(){
+  const[hidden,setHidden]=useState(()=>{try{return localStorage.getItem(WEB_NOTE_KEY)==="1";}catch{return false;}});
+  if(hidden)return null;
+  return(<div style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 10px",marginBottom:10,border:`1px solid ${C.border}`,borderRadius:8,fontSize:11.5,lineHeight:1.45,color:C.textMid}}>
+    <div style={{flex:1}}>{t("Axis in your browser. The app adds EVE character login.")}{" "}
+      <a href={phoneAppUrl()} target="_blank" rel="noopener noreferrer" style={{color:C.accent}}>{t("Get the Axis app")}</a></div>
+    <button onClick={()=>{setHidden(true);try{localStorage.setItem(WEB_NOTE_KEY,"1");}catch{/* private mode */}}} aria-label={t("Dismiss")} title={t("Dismiss")}
+      style={{flexShrink:0,background:"none",border:"none",padding:0,color:C.textMute,cursor:"pointer",display:"flex"}}><IconClose size={14}/></button>
   </div>);
 }
 
@@ -1064,6 +1079,7 @@ export function FittingsScreen({recents,undo,undoDepth,redo,redoDepth,activeFit,
       <SheetSearchBar value={search} onChange={setSearch} placeholder={t("Search ships or fit names...")}/>
     </div>
     <div onScroll={dismissKeyboardOnScroll} style={{flex:1,overflowY:"auto",padding:"8px 10px"}}>
+      {IS_WEB_BUILD&&!search&&browsePath.length===0&&<WebAppNote/>}
       {!search&&browsePath.length===0&&<RecentFitsList fitsDB={fitsDB} activeFit={activeFit} loadFit={loadFit} recents={recents} act={fitRowAct} tagColors={tagColors}/>}
       {/* The cross-hull axis. Chips rather than rows because a doctrine list is short and scanned by
           colour, and rows would push the ship classes below the fold the way Recent Fits used to.
