@@ -532,22 +532,28 @@ function DesktopApp() {
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#ef4444" }} />
           </div>
           {/* Open fits, in the header itself: same tab list and rules as the phone's strip
-              (lib/fit-tabs.js). The strip scrolls on its own when there are many. */}
+              (lib/fit-tabs.js). The tabs condense to fit; only past their floor does the strip scroll. */}
           <div role="tablist" aria-label={t("Open fits")} style={{ flex: 1, minWidth: 0, alignSelf: "stretch", display: "flex", alignItems: "flex-end", gap: 2, overflowX: "auto" }}>
             {(s.openFitTabs.length ? s.openFitTabs : (hasFit ? [{ ship: s.activeFit.ship, name: s.activeFit.fitName, id: "current" }] : [])).map(tb => {
               const on = tb.ship === s.activeFit?.ship && tb.name === s.activeFit?.fitName;
               return (
-                <div key={`${tb.ship}:${tb.id}:${tb.name}`} role="tab" aria-selected={on}
-                  style={{ height: 32, display: "flex", alignItems: "center", gap: 8, padding: "0 10px 0 12px", borderRadius: "6px 6px 0 0",
+                // Many tabs share the bar rather than scroll off it (Owen): each shrinks to fit, the fit
+                // name giving way first and the hull name after, the open tab least; the tooltip has the
+                // whole of it. Past every tab's floor the strip still scrolls.
+                <div key={`${tb.ship}:${tb.id}:${tb.name}`} role="tab" aria-selected={on} title={`${tb.ship} · ${tb.name}`}
+                  style={{ height: 32, display: "flex", alignItems: "center", gap: 6, padding: "0 8px 0 10px", borderRadius: "6px 6px 0 0",
                            background: on ? C.bg : "transparent", borderTop: `1px solid ${on ? C.border : "transparent"}`, borderLeft: `1px solid ${on ? C.border : "transparent"}`, borderRight: `1px solid ${on ? C.border : "transparent"}`, borderBottom: "none",
-                           marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}
+                           marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap", flex: "1 1 0", minWidth: on ? 140 : 36, maxWidth: "max-content", boxSizing: "border-box", overflow: "hidden" }}
                   onClick={() => s.loadFit(tb.ship, tb.name, undefined, true)}
                   onContextMenu={(e) => { e.preventDefault(); setTabMenu({ x: e.clientX, y: e.clientY, tab: tb }); }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? C.text : C.textMid }}>{tb.ship}</span>
-                  <span style={{ fontSize: 13.5, color: C.textMid }}>{tb.name}</span>
+                  {/* The hull's icon: all a tab squeezed to its floor still shows, and enough to tell them apart. */}
+                  <img className="eve-icon" src={eveIcon(tidByName(tb.ship), 32)} width={16} height={16} alt="" style={{ flex: "none", borderRadius: 3 }}
+                    onError={e => { e.target.style.visibility = "hidden"; }} />
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: on ? C.text : C.textMid, flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{tb.ship}</span>
+                  <span style={{ fontSize: 13.5, color: C.textMid, flex: "0 1000 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{tb.name}</span>
                   {s.openFitTabs.length > 0 && <button type="button" aria-label={t("Close tab")} title={t("Close tab")}
                     onClick={(e) => { e.stopPropagation(); s.closeFitTab(tb); }}
-                    style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
+                    style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0, flex: "none" }}>×</button>}
                 </div>
               );
             })}
