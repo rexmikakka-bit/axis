@@ -5,6 +5,7 @@ import { calcFitStats, peakRegen, PEAK_REGEN_AT_PCT, TYPES, tidByName, usesTurre
 import { cargoVolume, canLoadCharge, DMG } from "../lib/core.js";
 import { resourceColor } from "../components/ui.jsx";
 import { KV, UsageBar, SectionLabel, Empty, TYPE, WEIGHT } from "./kit.jsx";
+import { fitStatsOptions } from "../lib/stats-opts.js";
 
 // Desktop-native stat windows. Display only: every figure comes from ONE calcFitStats call made
 // with exactly the options the phone's Stats page passes (tabs.jsx StatsTab `csOpts`), so a number
@@ -15,15 +16,8 @@ import { KV, UsageBar, SectionLabel, Empty, TYPE, WEIGHT } from "./kit.jsx";
 export function useFitStats(s, ship) {
   return useMemo(() => {
     if (!ship || !s.slots) return null;
-    const pe = s.projectedEffects;
     try {
-      return calcFitStats(ship, s.slots, s.drones ?? [], s.fitSkills, {
-        implants: s.implants, boosters: s.boosters, factorInReload: s.factorInReload, externalBursts: s.externalBursts,
-        projectedWebMult: pe?.webMult, projectedNeutGJs: pe?.neutGJs, projectedCapGJs: pe?.capGJs, projectedDebuffs: pe?.debuffs,
-        projectedBoosts: pe?.boosts, projectedEcm: pe?.ecm, damageProfile: s.dmgProfile?.p, targetResists: s.tgtProfile?.r,
-        pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity,
-        fighters: (s.fighters ?? []).map(f => ({ name: f.name, qty: f.qty ?? 1, active: f.active, abilities: f.abilities })),
-      }) ?? null;
+      return calcFitStats(ship, s.slots, s.drones ?? [], s.fitSkills, fitStatsOptions(s)) ?? null;
     } catch { return null; }
   }, [ship, s.slots, s.drones, s.fitSkills, s.implants, s.boosters, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile, s.fighters]);
 }

@@ -8923,6 +8923,47 @@ Nanofiber Internal Structure II
   check('2402', 'Hawk traits name the kinetic split', traits[tid('Hawk')].skills.find(s => s.header.startsWith('Caldari Frigate')).bonuses.map(b => b.number).join(','), '10%,5%,5%');
 }
 
+// ─── SNAPSHOT CARD = THE APP ─────────────────────────────────────────────────────────────────────
+// A user's card (2026-11-11): a Shadow Serpentis Synchronizer Cenotaph webbed by a projected Vigilant
+// read its UNWEBBED speed while the Stats tab read the webbed one, and the Incoming chip printed the
+// web's raw -104% rather than what landed. The card's stats ran on their own calcFitStats options,
+// which had lost the projected webs; its chips ignored the target's EWAR resistance. Both now come
+// from what the app applies: lib/stats-opts.js and buildProjectedEffects (via lib/snapshot-projected.js).
+{
+  console.log('\nSNAPSHOT CARD = THE APP');
+  const { buildProjectedEffects } = await import('./lib/projection.js');
+  const { buildProjected } = await import('./lib/snapshot-projected.js');
+  const { fitStatsOptions } = await import('./lib/stats-opts.js');
+  const ceno = { typeID: tid('Cenotaph'), name: 'Cenotaph' };
+  const slots = { ...EMPTY, mid: [M('Shadow Serpentis 100MN Afterburner', 'active'), M('Shadow Serpentis Stasis Webifier', 'active')],
+    rigs: [M('Medium Shadow Serpentis Synchronizer', 'online')] };
+  const fitsDB = { Vigilant: [{ name: 'web', slots: { ...EMPTY, mid: [M('Shadow Serpentis Stasis Webifier', 'active')] } }] };
+  const projFits = [{ ship: 'Vigilant', fitName: 'web', rangeKm: 10 }];
+  const pe = buildProjectedEffects({ projFits, fitsDB, sourceSkills: () => null, shipName: 'Cenotaph', slots, skills: SKILLS_ALL_V, externalBursts: [] });
+  check('snap', 'the Synchronizer gives the Cenotaph web resistance', pe.ewarResist.web < 1 ? 1 : 0, 1, 0);
+  // The Vigilant's 10%/lvl web bonus on a -60% web: -90% raw, inside optimal at 10 km.
+  const chip = buildProjected([], projFits, fitsDB, () => null, pe).incoming[0]?.effects.find(e => e.name === 'Stasis Webifier')?.eff;
+  check('snap', 'Incoming chip shows the web as it lands (raw x resistance)', chip, `−${(90 * pe.ewarResist.web).toFixed(0)}% speed`);
+  check('snap', '...which is what the app stacks', 1 + (-90 * pe.ewarResist.web) / 100, pe.webMult, 1e-9);
+  const opts = fitStatsOptions({ projectedEffects: pe, slots });
+  const card = calcFitStats(ceno, slots, [], SKILLS_ALL_V, opts), bare = calcFitStats(ceno, slots, [], SKILLS_ALL_V, fitStatsOptions({ slots }));
+  // speedFactor's CCP floor (minAttributeID -> speedFactorFloor, -99). A max-rolled abyssal web
+  // (-69%) on a Vigilant at V is -69 x 1.5 = -103.5% unfloored, which is the -104% the user's card
+  // printed; pyfa reads -99 (its Module Stats window, Owen 2026-11-11). Engine-level, so the web's own
+  // info panel, the Projected card and the snapshot all get it.
+  {
+    const { Fit } = await import('./dogma-engine-init.js');
+    const vig = new Fit(tid('Vigilant'));
+    for (const sk of ['Gallente Cruiser', 'Minmatar Cruiser', 'Recon Ships', 'Propulsion Jamming']) vig.setSkill(sk, 5);
+    const maxed = vig.addModule(tid('Stasis Webifier II'), 'active', { speedFactor: -69 });
+    const plain = vig.addModule(tid('Stasis Webifier II'), 'active');
+    vig.calculate();
+    check('snap', 'max-rolled web on a Vigilant floors at -99% (pyfa)', maxed.get('speedFactor'), -99, 1e-9);
+    check('snap', 'an ordinary web is untouched by the floor (-60 x 1.5)', plain.get('speedFactor'), -90, 1e-9);
+  }
+  check('snap', "card speed carries the incoming web (the user's report)", card.maxVelocityAB / bare.maxVelocityAB, pe.webMult, 2e-3);   // speeds are published to 1 m/s
+}
+
 // ─── FRACTURED SKIES ITEMS ───────────────────────────────────────────────────────────────────────
 // The Synchronizer rigs, their skill and implant, the navy attack battlecruisers, the Imperial Navy
 // web/scram/disruptor and the SARO boosters. From eve.db build 3687575; until then from SiSi through

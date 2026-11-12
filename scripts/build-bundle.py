@@ -376,12 +376,15 @@ def main():
     fsd_flagged_attrs = []
     new_attrs = dict(old_attrs)
     new_attr_ids = []
-    for aid, an, dv, hg, mx in db.execute(
-            "SELECT attributeID,attributeName,defaultValue,highIsGood,maxAttributeID FROM dgmattribs"):
+    for aid, an, dv, hg, mx, mn in db.execute(
+            "SELECT attributeID,attributeName,defaultValue,highIsGood,maxAttributeID,minAttributeID FROM dgmattribs"):
         s = str(aid)
         # maxAttributeID: id of another attribute whose value caps this one (upper bound). Used e.g.
         # to clamp forced damage resonances to 1.0 so Polarized weapons floor resists at 0%, not -9900%.
         cap = int(mx) if mx else 0
+        # minAttributeID: the floor. speedFactor's is speedFactorFloor (-99): a Vigilant's 50% web
+        # bonus on a -69% abyssal web is -99%, not -103.5% (pyfa floors it the same way).
+        floor = int(mn) if mn else 0
         if s in new_attrs:
             new_attrs[s]['n'] = an or new_attrs[s].get('n', '')
             new_attrs[s]['h'] = 1 if hg else 0
@@ -390,6 +393,10 @@ def main():
                 new_attrs[s]['x'] = cap
             else:
                 new_attrs[s].pop('x', None)
+            if floor:
+                new_attrs[s]['mn'] = floor
+            else:
+                new_attrs[s].pop('mn', None)
         else:
             # stackable is NOT in eve.db. CCP's dogmaattributes dump beside the db has it; without
             # that, default to 1 (unpenalised) and report — set "s": 0 by hand in data-patches.json.
@@ -398,6 +405,8 @@ def main():
             new_attrs[s] = {'n': an or '', 's': 1 if st is None else st, 'h': 1 if hg else 0, 'd': num(dv)}
             if cap:
                 new_attrs[s]['x'] = cap
+            if floor:
+                new_attrs[s]['mn'] = floor
             if st is None:
                 new_attr_ids.append((aid, an))
             else:

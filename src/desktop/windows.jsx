@@ -10,6 +10,7 @@ import { FittingsScreen } from "../components/FittingsScreen.jsx";
 import { CargoScreen } from "../components/cargo.jsx";
 import { DronesScreen } from "../components/drones.jsx";
 import { ImplantsScreen } from "../components/implants.jsx";
+import { fitStatsOptions } from "../lib/stats-opts.js";
 import { EffectsScreen } from "../components/effects.jsx";
 import { FitTable, FitTableConfig } from "./FitTable.jsx";
 import { DialogFrame } from "./ContextMenu.jsx";
@@ -43,10 +44,10 @@ export function useDeskStats(s, want) {
     if (!ship || !want.snapshot) return null;
     try {
       const sh = lookupShip(ship) ?? { name: ship, typeID: tidByName(ship) };
-      return calcFitStats(sh, s.slots, s.drones ?? [], s.fitSkills, { fighters: s.fighters, implants: s.implants, boosters: s.boosters,
-        externalBursts: s.externalBursts, projectedEcm: s.projectedEffects?.ecm, pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity });
+      // The stat windows' own options (lib/stats-opts.js), so the snapshot card shows their numbers.
+      return calcFitStats(sh, s.slots, s.drones ?? [], s.fitSkills, fitStatsOptions(s));
     } catch { return null; }
-  }, [ship, s.slots, s.drones, s.fighters, s.fitSkills, s.implants, s.boosters, s.externalBursts, s.projectedEffects, want.snapshot]);
+  }, [ship, s.slots, s.drones, s.fighters, s.fitSkills, s.implants, s.boosters, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile, want.snapshot]);
   const droneCs = useMemo(() => {
     if (!ship || !want.drones) return null;
     try {

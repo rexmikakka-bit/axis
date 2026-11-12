@@ -349,11 +349,15 @@ class AttrMap {
     // attribute's MODIFIED value on this item (its default if unset). This is what floors resists at
     // 0% for Polarized weapons: their forced resonance (>>1) is clamped to the *MaxDamageResonance
     // cap of 1.0 instead of running away to -9900%. _capping guards against cap-attr recursion.
+    //
+    // minAttributeID is the same rule from below (pyfa's max(val, floor)): speedFactor is floored by
+    // speedFactorFloor (-99), so a Vigilant's +50% on a -69% abyssal web reads -99%, not -103.5%.
     const capAid = _capping ? 0 : ATTRS[aid]?.x;
+    const floorAid = _capping ? 0 : ATTRS[aid]?.mn;
     const clamp = (v) => {
-      if (!capAid) return v;
-      const c = this.get(capAid, true);
-      return (c == null || isNaN(c)) ? v : Math.min(v, c);
+      if (capAid) { const c = this.get(capAid, true); if (c != null && !isNaN(c)) v = Math.min(v, c); }
+      if (floorAid) { const f = this.get(floorAid, true); if (f != null && !isNaN(f)) v = Math.max(v, f); }
+      return v;
     };
     if (aid in this._force) return clamp(this._force[aid]);
     const pre  = aid in this._pre ? this._pre[aid] : null;
@@ -430,10 +434,9 @@ class AttrMap {
     // the flag cannot mean one thing on a forced value and another on a multiplied one. Compared
     // against the same clamp get() applies, so the two cannot disagree about where the ceiling is.
     const cappedAt = (v) => {
-      const capAid = ATTRS[aid]?.x;
-      if (!capAid) return false;
-      const c = this.get(capAid, true);
-      return c != null && !isNaN(c) && v >= c;
+      const capAid = ATTRS[aid]?.x, floorAid = ATTRS[aid]?.mn;
+      const c = capAid ? this.get(capAid, true) : null, f = floorAid ? this.get(floorAid, true) : null;
+      return (c != null && !isNaN(c) && v >= c) || (f != null && !isNaN(f) && v <= f);
     };
 
     // PostAssignment wins over everything, exactly as _resolve returns early on it. Last writer wins

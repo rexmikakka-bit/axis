@@ -614,7 +614,7 @@ function DesktopApp() {
       {sheet === "dmgprofile" && <DamageProfileSheet current={s.dmgProfile} onSelect={s.setDmgProfile} onClose={close} />}
       {sheet === "pilot" && <PilotSheet pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
         missing={s.skillCheck.missing} appSkills={s.skills} skillProfiles={s.skillProfiles} onClose={close} />}
-      {sheet === "snapshot" && <SnapshotModal onClose={close} assist={s.projectedEffects?.assist} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}
+      {sheet === "snapshot" && <SnapshotModal onClose={close} projectedEffects={s.projectedEffects} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}
         shipName={s.activeFit?.ship} shipTypeID={tidByName(s.activeFit?.ship)} shipFaction={shipMeta.faction} shipClass={shipMeta.cls} slots={s.slots}
         cs={stats.snapshot} drones={s.drones} fighters={s.fighters} implants={s.implants} boosters={s.boosters} cmdFits={s.cmdFits} projFits={s.projFits}
         fitsDB={s.fitsDB} sourceSkills={s.sourceSkills} skillLabel={s.fitSkillLabel} dmgProfile={s.dmgProfile} priceHub={s.priceHub} priceSource={s.priceSource} />}

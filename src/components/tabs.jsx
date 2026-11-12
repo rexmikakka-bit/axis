@@ -10,6 +10,7 @@ import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { moduleGestureHistory } from '../lib/module-gesture.js';
 import { fittedAbyssalIds } from '../lib/variation-items.js';
 import { enforceGroupLimit, groupFittedRoom, applyModUpdate, applyRemove, applyRowState, applySubsystemSwap } from '../lib/fit-ops.js';
+import { fitStatsOptions } from '../lib/stats-opts.js';
 import { abyssalValue } from '../lib/abyssal-value.js';
 import { useAbyssalData } from '../lib/use-abyssal-data.js';
 import { missileRangeTip, fmtPriceAge } from "../lib/fmt.js";
@@ -1511,7 +1512,8 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
   // lit half a second later. Deferring it lets React paint the pressed control against the previous
   // numbers, then land the new ones. Same total work, in the order a finger expects it.
   const dSlots=useDeferredValue(slots);
-  const csOpts=useMemo(()=>({implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile.p,targetResists:tgtProfile?.r,pilotSec:dSlots?.pilotSec,systemSecurity:dSlots?.systemSecurity,fighters:(fighters??[]).map(f=>({name:f.name,qty:f.qty??1,active:f.active,abilities:f.abilities}))}),
+  // lib/stats-opts.js: the same builder the snapshot card and the desktop stat windows use.
+  const csOpts=useMemo(()=>fitStatsOptions({implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile,tgtProfile,slots:dSlots,fighters}),
     [implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile,tgtProfile,dSlots,fighters]);
   // Memoized on the full argument list, so a re-render that changed none of them — the autosave
   // write-back replacing `fitsDB` is one, and it lands after every single edit — doesn't pay for a
