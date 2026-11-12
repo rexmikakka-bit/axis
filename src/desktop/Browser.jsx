@@ -165,7 +165,7 @@ function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind, headroom }
   const a = TYPES[String(mod.typeID)]?.a ?? {};
   const meta = metaOf(mod.typeID, mod.meta);
   const primary = actions[0];
-  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, kind === "module" ? rack : undefined) : undefined, onOpen: () => primary?.onSelect(), items: [
+  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, kind === "module" ? rack : undefined) : undefined, onOpen: () => primary?.onSelect(), repeat: true, items: [
     ...actions.map((x, i) => ({ ...x, hint: i === 0 ? t("Double-click") : undefined })),
     actions.length > 0 && { divider: true },
     { label: t("Show info"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "info" }) },
