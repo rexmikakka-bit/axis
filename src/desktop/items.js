@@ -72,34 +72,47 @@ export const fighterClassOf = (f) => { const a = fighterAttrs(f); return a?.figh
  * and the free drone slots (droneAddQty), else it waits in the bay; a drone already in the bay gets
  * another flight. `cap` is {bw, max}: bandwidth and max active drones.
  */
+//
+// Every decision is made INSIDE the state updater, off the latest list (`prev`), not off `s.drones`:
+// a run of fast clicks in the Browser is several adds before the window re-renders, and deciding off
+// that render's list made each add start its own stack (and could give two the same Date.now() id).
 export function addDrone(s, d, cap) {
-  const drones = s.drones ?? [];
-  const ex = drones.find(e => e.name === d.name && !e.mutaplasmid);
-  if (ex) { s.setDrones(prev => (prev ?? []).map(e => e.id === ex.id ? { ...e, qty: e.qty + DRONE_FLIGHT } : e)); return; }
   const rec = typeOf(d.typeID ?? tidByName(d.name)), a = rec?.attrs ?? null;
   const bwOf = (x) => typeOf(x.typeID ?? tidByName(x.name))?.attrs?.droneBandwidthUsed ?? x.bandwidth ?? 5;
-  const bwUsed = drones.filter(x => x.active).reduce((n, x) => n + x.qty * bwOf(x), 0);
-  const inSpace = drones.filter(x => x.active).reduce((n, x) => n + x.qty, 0);
   const bandwidth = a?.droneBandwidthUsed ?? d.bandwidth ?? 5;
-  const { qty, active } = droneAddQty({ bandwidth, bwFree: (cap?.bw ?? 0) - bwUsed, slotsFree: (cap?.max ?? 5) - inSpace });
-  s.setDrones(prev => [...(prev ?? []), { id: Date.now(), name: d.name, size: d.size, qty, active, range: a?.maxRange ?? d.maxRange ?? d.range ?? 0, falloff: a?.falloff ?? d.falloff ?? 0,
-    tracking: a?.trackingSpeed ?? d.tracking ?? 0, velocity: a?.maxVelocity ?? d.maxVelocity ?? d.velocity ?? 0, hp: a?.hp ?? d.hp ?? 0, dps: d.dps ?? 0,
-    bandwidth, volume: a?.volume ?? d.volume ?? 5, typeID: d.typeID }]);
+  s.setDrones(prev => {
+    const drones = prev ?? [];
+    const ex = drones.find(e => e.name === d.name && !e.mutaplasmid);
+    if (ex) return drones.map(e => e.id === ex.id ? { ...e, qty: e.qty + DRONE_FLIGHT } : e);
+    const bwUsed = drones.filter(x => x.active).reduce((n, x) => n + x.qty * bwOf(x), 0);
+    const inSpace = drones.filter(x => x.active).reduce((n, x) => n + x.qty, 0);
+    const { qty, active } = droneAddQty({ bandwidth, bwFree: (cap?.bw ?? 0) - bwUsed, slotsFree: (cap?.max ?? 5) - inSpace });
+    return [...drones, { id: freshId(drones), name: d.name, size: d.size, qty, active, range: a?.maxRange ?? d.maxRange ?? d.range ?? 0, falloff: a?.falloff ?? d.falloff ?? 0,
+      tracking: a?.trackingSpeed ?? d.tracking ?? 0, velocity: a?.maxVelocity ?? d.maxVelocity ?? d.velocity ?? 0, hp: a?.hp ?? d.hp ?? 0, dps: d.dps ?? 0,
+      bandwidth, volume: a?.volume ?? d.volume ?? 5, typeID: d.typeID }];
+  });
 }
+
+// A new entry's id: the time, but never one already in the list (two adds in the same millisecond).
+const freshId = (list) => Math.max(Date.now(), ...list.map(e => (typeof e.id === "number" ? e.id + 1 : 0)));
 
 /**
  * The phone's fighter rule: a new squadron launches only with BOTH a free tube and a free slot of
  * its own class (launched squadrons count), else it waits in the bay. `shipFighter` is the hull's
  * {tubes, light, heavy, support}; `classOf(f, i)` may supply calcFitStats' class for fitted ones.
  */
+// Decided inside the updater for the same reason as addDrone: fast adds must each see the tubes the
+// one before took.
 export function addFighter(s, f, shipFighter, classOf = (x) => fighterClassOf(x)) {
-  const fighters = s.fighters ?? [];
-  const launched = { Light: 0, Heavy: 0, Support: 0 };
-  fighters.forEach((x, i) => { if (x.active !== false) launched[classOf(x, i)] += x.qty ?? 1; });
-  const tubesUsed = fighters.reduce((n, x) => n + (x.active !== false ? (x.qty ?? 1) : 0), 0);
   const cls = fighterClassOf(f);
-  const free = ((shipFighter?.tubes ?? 0) - tubesUsed) > 0 && ((shipFighter?.[cls.toLowerCase()] ?? 0) - launched[cls]) > 0;
-  s.setFighters(prev => [...(prev ?? []), { id: Date.now(), name: f.name, tier: f.tier, typeID: f.typeID, role: f.role || null, qty: 1, active: free, abilities: {} }]);
+  s.setFighters(prev => {
+    const fighters = prev ?? [];
+    const launched = { Light: 0, Heavy: 0, Support: 0 };
+    fighters.forEach((x, i) => { if (x.active !== false) launched[classOf(x, i)] += x.qty ?? 1; });
+    const tubesUsed = fighters.reduce((n, x) => n + (x.active !== false ? (x.qty ?? 1) : 0), 0);
+    const free = ((shipFighter?.tubes ?? 0) - tubesUsed) > 0 && ((shipFighter?.[cls.toLowerCase()] ?? 0) - launched[cls]) > 0;
+    return [...fighters, { id: freshId(fighters), name: f.name, tier: f.tier, typeID: f.typeID, role: f.role || null, qty: 1, active: free, abilities: {} }];
+  });
 }
 
 /** Into its own slot, replacing what is there (the phone's implant picker). */
@@ -114,7 +127,7 @@ export function addCargo(s, item, qty = 1) {
   s.setCargoItems(prev => {
     const list = prev ?? [];
     if (list.some(e => e.name === item.name)) return list.map(e => e.name === item.name ? { ...e, qty: e.qty + qty } : e);
-    return [...list, { id: Date.now(), name: item.name, qty, vol: item.vol ?? cargoUnitVolume(item), icon: item.icon, typeID: item.typeID }];
+    return [...list, { id: freshId(list), name: item.name, qty, vol: item.vol ?? cargoUnitVolume(item), icon: item.icon, typeID: item.typeID }];
   });
 }
 

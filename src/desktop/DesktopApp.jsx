@@ -24,7 +24,7 @@ import { IconClipboard, IconCharacter } from "../components/glyphs.jsx";
 import Workspace, { useLayoutState, openWindow, dockWindow, detachWindow, toggleWindow, openInspector, Button, reopenClosed, CLOSED_EVENT } from "./Workspace.jsx";
 import Menu from "./Menu.jsx";
 import DeskBrowser from "./Browser.jsx";
-import { FirepowerPanel } from "./Firepower.jsx";
+import { FirepowerPanel, RemoteRepsPanel } from "./Firepower.jsx";
 import ExportDialog from "./ExportDialog.jsx";
 import CargoPanel from "./Cargo.jsx";
 import GraphsPanel from "./Graphs.jsx";
@@ -42,6 +42,8 @@ import { InspectorView, inspectorTitle } from "./Inspector.jsx";
 import { useSessionSync } from "./sync.js";
 import { IS_TAURI, openOsWindow, closeThisWindow, onThisWindowClosing } from "./os-window.js";
 import { TitleButton } from "./DeskWindow.jsx";
+import { UpdateBanner } from "./update-check.jsx";
+import { ACTIONS as KEY_ACTIONS, GROUPS as KEY_GROUPS, FIXED as KEY_FIXED, keysFor, keysText, actionFor, onKeymapChange } from "./keymap.js";
 import { ResourcesPanel, CapacitorPanel, TargetingPanel, DefensePanel, ValidationPanel, ValidityBadge, fitIssues, useFitStats } from "./stat-panels.jsx";
 import { useActiveShip, useDeskStats, STAT_SECTIONS, StatsWindow, FittingWindow, GraphsWindow, BrowserWindow,
          CargoWindow, DronesWindow, ImplantsWindow, EffectsWindow, NotesWindow } from "./windows.jsx";
@@ -103,36 +105,22 @@ function useBanner() {
   return { notify, view };
 }
 
-// Ctrl+1…8, in pyfa's additions-pane order; fighters live in the Drones window here.
-const ADDITIONS = ["drones", "drones", "cargo", "implants", "boosters", "projected", "command", "notes"];
-// The Windows menu's key hints: the window each shortcut brings up.
-const WINDOW_KEYS = { graphs: "Ctrl+G", browser: "Ctrl+F", drones: "Ctrl+1", cargo: "Ctrl+3", implants: "Ctrl+4",
-                      boosters: "Ctrl+5", projected: "Ctrl+6", command: "Ctrl+7", notes: "Ctrl+8", settings: "Ctrl+," };
-// The keyboard shortcuts, for the F1 sheet. A function so t() runs at render (lib/i18n.js).
+// The Windows menu's key hints: the first key bound to bringing each window up (keymap.js).
+const windowKey = (id) => keysFor(id === "browser" ? "browserSearch" : `win:${id}`)[0];
+// The keyboard shortcuts, for the F1 sheet: the live bindings (keymap.js), then the fixed ones and the
+// mouse. A function so t() runs at render (lib/i18n.js).
 const SHORTCUTS = () => [
-  [t("Fits"), [
-    ["Ctrl+T", t("New tab")], ["Ctrl+W", t("Close tab")], ["Ctrl+Tab · Ctrl+PgDn", t("Next tab")], ["Ctrl+Shift+Tab · Ctrl+PgUp", t("Previous tab")],
-    ["Ctrl+Z", t("Undo")], ["Ctrl+Y · Ctrl+Shift+Z", t("Redo")],
-    ["Ctrl+V", t("Paste an EFT fit")], ["Ctrl+C", t("Copy the fit as EFT")], ["Ctrl+O", t("Import a fit")], ["Ctrl+S", t("Export the fit")],
-    ["Ctrl+B", t("Import from your EVE character")], ["Ctrl+E", t("Save to your in-game fittings")],
-    ["Ctrl+D", t("Optimize the fit's price")], ["Ctrl+K", t("Pick the pilot")],
-  ]],
-  [t("Windows"), [
-    ["Ctrl+G", t("Graphs")], ["Ctrl+F", t("Search the Browser")], ["Ctrl+Space", t("Browser: switch Ships and Market")],
-    ["Ctrl+1 … 8", t("Drones, Fighters, Cargo, Implants, Boosters, Projected, Command links, Notes")],
-    ["Ctrl+I", t("Implants")], ["Ctrl+,", t("Settings")],
-  ]],
-  [t("Layouts"), [
-    ["Alt+1 … 9", t("Switch to a layout, in the order they appear at the bottom")], ["Ctrl+Shift+L", t("Lock layout")],
-    ["Ctrl+Shift+T", t("Reopen the last closed window")],
-  ]],
+  ...KEY_GROUPS.filter(([g]) => g !== "help").map(([g, label]) => [label(), [
+    ...KEY_ACTIONS.filter(a => a.group === g && keysFor(a.id).length).map(a => [keysText(a.id), a.label()]),
+    ...(g === "fits" ? KEY_FIXED() : []),
+  ]]),
   [t("Module state dot"), [
     [t("Click"), t("Run or stop")], [t("Double-click · right-click"), t("Overheat")], [t("Hold · Ctrl-click"), t("Offline")],
   ]],
   [t("Fitting window"), [
     [t("Double-click"), t("Unfit a module")], ["Delete", t("Remove what is selected")], ["Esc", t("Clear the selection")],
   ]],
-  [t("This list"), [["F1 · ?", t("Keyboard shortcuts")]]],
+  [t("This list"), [[keysText("shortcuts") || "—", t("Keyboard shortcuts")], [t("Settings › Keyboard"), t("Change any of these")]]],
 ];
 function ShortcutsSheet({ onClose }) {
   return (
@@ -155,18 +143,12 @@ function ShortcutsSheet({ onClose }) {
 }
 
 /** What every window shows, for the main app and for a popped-out window alike. */
-function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode, openWindowFor } = {}) {
+function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCols, openValidation, openProfilePicker, selection, windows, setFloatTab, inspect, bd, notify, browserMode, openWindowFor, browseRack, browseFor } = {}) {
   const ship = useActiveShip(s);
   // One full calculation for every native stat window (stat-panels.jsx).
   const cs = useFitStats(s, ship);
   const issues = useMemo(() => fitIssues(cs, s.slots, s.drones), [cs, s.slots, s.drones]);
-  const stats = useDeskStats(s, {
-    // Only what reads them: the Drones window (bay, bandwidth, drone stats) and the two sheets. Cargo
-    // and Projected never did, and a Drones tab hidden behind another tab is not drawn — computing
-    // two extra full fit calculations for it on every edit was part of the booster lag.
-    snapshot: isOpen("drones") || sheet === "snapshot",
-    drones: isOpen("drones"),
-  });
+  const stats = useDeskStats(cs);
   const hullAttrs = TYPES[tidByName(s.activeFit?.ship)]?.attrs ?? null;
   const shipFighter = { cap: hullAttrs?.fighterCapacity ?? 0, tubes: hullAttrs?.fighterTubes ?? 0, light: hullAttrs?.fighterLightSlots ?? 0,
                         heavy: hullAttrs?.fighterHeavySlots ?? 0, support: hullAttrs?.fighterSupportSlots ?? 0 };
@@ -178,6 +160,8 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     // A short message on the app's banner, for windows that refuse something (Fitting's Paste).
     notify: (msg, ms = 3000) => notify?.("none", msg, ms),
     accepts: (to, item) => itemAccepts(to, item, { hasFighters }),
+    // Bring up the Browser narrowed to what `to` takes (opts.slot: one implant slot).
+    browse: (to, opts) => browseFor?.(to, opts),
     add: (item, to, extra) => {
       // Whatever took the item comes up (Owen): its window opens, or its tab comes to the front.
       // Fighters live in the Drones window.
@@ -198,7 +182,7 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
     if (STAT_SECTIONS[id]) return <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS[id]} id={id} />;
     switch (id) {
       case "browser": return <DeskBrowser s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} modeRequest={browserMode} />;
-      case "fitting": return <FittingWindow s={s} ship={ship} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} />;
+      case "fitting": return <FittingWindow s={s} ship={ship} cs={cs} adderRef={adderRef} cols={cols?.fitting} setCols={(c) => setCols?.("fitting", c)} onBrowseRack={browseRack} />;
       case "graphs": return <GraphsPanel s={s} />;
       case "resources": return <ResourcesPanel s={s} ship={ship} cs={cs} />;
       case "capacitor": return <CapacitorPanel cs={cs} />;
@@ -206,12 +190,15 @@ function useWindowContents(s, isOpen, sheet, { adderRef, remoteAdd, cols, setCol
       case "defense": return <DefensePanel s={s} cs={cs} onPickProfile={() => openProfilePicker?.()} />;
       // Remote reps and mining sit under the firepower they belong with, only on fits that have them.
       case "firepower": return (
-        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-          <div style={{ flex: 1, minHeight: 0 }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>
-          {((cs?.remoteRepModules?.length ?? 0) > 0 || (cs?.mining?.totalM3S ?? 0) > 0) &&
-            <div style={{ flex: "none", maxHeight: "45%", overflowY: "auto", borderTop: `1px solid ${C.border}` }}>
-              <StatsWindow s={s} ship={ship} sections={STAT_SECTIONS.repsmining} id="repsmining" />
-            </div>}
+        // Straight under the firepower figures, the window scrolling as one, rather than pinned to its
+        // bottom: on a logistics fit the firepower is all zeros and the reps are the point.
+        <div style={{ height: "100%", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+          {((cs?.remoteRepModules?.length ?? 0) > 0 || (cs?.mining?.totalM3S ?? 0) > 0) ? <>
+            <div style={{ flex: "none" }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>
+            <RemoteRepsPanel cs={cs} />
+            {(cs?.mining?.totalM3S ?? 0) > 0 && <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <StatsWindow s={s} ship={ship} sections={["mining"]} id="mining" /></div>}
+          </> : <div style={{ flex: 1, minHeight: 0 }}><FirepowerPanel s={s} ship={ship} cs={cs} /></div>}
         </div>
       );
       case "validation": return <ValidationPanel cs={cs} issues={issues} />;
@@ -370,11 +357,33 @@ function DesktopApp() {
   const insp = useInspectorState(s, { setLayoutState, post: sync.post, adderRef, remoteAdd });
   // Ship info is a floating window on the desktop (an inspector on the hull's type, which draws the
   // phone's Ship info sheet inside it), not the phone's full-screen sheet. One per hull.
+  // Which windows have something ACTIVE on the fit, for the red line on their tab when stacked: a
+  // link, projection or booster switched on, a system effect, an implant plugged in, a drone or
+  // fighter out. Something merely listed but switched off doesn't count.
+  const windowLive = (id) => {
+    if (!s.activeFit?.ship) return false;
+    const on = (x) => x && x.active !== false;
+    switch (id) {
+      case "command": return (s.cmdFits ?? []).some(on);
+      case "projected": return (s.projFits ?? []).some(on);
+      case "boosters": return (s.boosters ?? []).some(b => b?.active);
+      case "environment": return !!s.slots?.environment;
+      case "implants": return (s.implants ?? []).some(i => i?.name && i.name !== "[Empty]");
+      case "drones": return (s.drones ?? []).some(d => d?.active && (d.qty ?? 0) > 0) || (s.fighters ?? []).some(f => on(f) && (f.qty ?? 1) > 0);
+      default: return false;
+    }
+  };
   const openShipInfo = () => { if (s.activeFit?.ship) openWindow(setLayoutState, "shipinfo"); };
+  // An empty module slot's double-click: the Browser, on Market, filtered to that rack, search focused.
+  // What is picked there fits into the rack's first free slot (adderRef), as a Market double-click does.
+  const browseRack = (rack) => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "market", rack, n: Date.now(), focus: true }); };
+  // A window's "+" (Drones, Cargo, Boosters, an empty implant slot): the same Browser, narrowed to what
+  // goes there; its double-click then adds to that window.
+  const browseFor = (dest, { slot = null } = {}) => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "market", dest, slot, n: Date.now(), focus: true }); };
   const setFloatTab = (id, tab) => setLayoutState(st => st.windows[id] ? { ...st, windows: { ...st.windows, [id]: { ...st.windows[id], tab } } } : st);
   const { ship, stats, renderWindow, windowTitle, windowExtra } = useWindowContents(s, isOpen, sheet,
     { adderRef, remoteAdd, cols: layoutState.cols, setCols, openValidation: () => openWindow(setLayoutState, "validation"), openWindowFor: (id) => openWindow(setLayoutState, id), openProfilePicker: () => setSheet("dmgprofile"),
-      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash, browserMode });
+      selection: insp.value.selection, windows: layoutState.windows, setFloatTab, inspect: insp.value.inspect, bd, notify: flash, browserMode, browseRack, browseFor });
   // Windows left detached by a previous session have no OS window any more: bring them home.
   useEffect(() => {
     for (const id of Object.keys(layoutState.windows)) if (layoutState.windows[id]?.detached) dockWindow(setLayoutState, id);
@@ -396,53 +405,47 @@ function DesktopApp() {
   // session's own (use-fit-session.js). Ctrl+T, Ctrl+W and Ctrl+Tab are the browser's own in
   // `npm run dev`; they work in the installed app, which has no browser chrome to claim them.
   const keysRef = useRef(null);
+  const [, keymapTick] = useState(0);
+  useEffect(() => onKeymapChange(() => keymapTick(x => x + 1)), []);
   useEffect(() => {
     const typing = (el) => !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
     const onKey = (e) => {
       const { s: cur, hasFit, sheet: open, newTab: startTab } = keysRef.current;
-      const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey;
-      const go = (fn) => { e.preventDefault(); fn(); };
-      // Ctrl+F: the Browser's search box, opened and focused, whatever has focus now.
-      if (ctrl && !e.altKey && !e.shiftKey && k === "f") return go(() => { openWindow(setLayoutState, "browser"); setBrowserMode({ n: Date.now(), focus: true }); });
-      if (typing(e.target)) return;
-      // F1 or ? : the list of shortcuts.
-      if (e.key === "F1" || (e.key === "?" && !ctrl && !e.altKey)) return go(() => setSheet("shortcuts"));
-      // Alt+1…9: the n-th layout chip (built-in presets, then saved layouts).
-      const digit = /^Digit([1-9])$/.exec(e.code)?.[1];
-      if (e.altKey && !ctrl && digit) return go(() => requestLayout(Number(digit) - 1));
-      if (!ctrl || e.altKey) return;
-      // Ctrl+1…8: pyfa's additions-pane order (Drones, Fighters, Cargo, Implants, Boosters,
-      // Projected, Command, Notes); fighters live in the Drones window here.
-      if (digit && !e.shiftKey) { const w = ADDITIONS[Number(digit) - 1]; if (w) go(() => openWindow(setLayoutState, w)); return; }
+      // What the press is bound to (keymap.js: the defaults, with the user's changes on top).
+      const a = actionFor(e);
+      if (!a) return;
+      if (typing(e.target) && a.when !== "anywhere") return;
+      if (a.when === "fit" && !hasFit) return;
+      if (a.when === "noSelection" && (!hasFit || open || window.getSelection()?.toString())) return;
       const tabs = cur.openFitTabs ?? [];
       const at = tabs.findIndex(tb => tb.ship === cur.activeFit?.ship && tb.name === cur.activeFit?.fitName);
       const step = (d) => { if (tabs.length > 1) { const tb = tabs[(Math.max(at, 0) + d + tabs.length) % tabs.length]; cur.loadFit(tb.ship, tb.name, undefined, true); } };
-      if (e.key === "Tab") return go(() => step(e.shiftKey ? -1 : 1));
-      if (e.key === "PageDown") return go(() => step(1));
-      if (e.key === "PageUp") return go(() => step(-1));
-      if (e.shiftKey) {
-        if (k === "l") go(() => requestLockToggle());
+      // Windows come to the front, never away: open if closed, raised if open, and if it is a tab in
+      // another window, made that window's shown tab, in place. Fighters live in the Drones window.
+      if (a.id.startsWith("win:")) { const w = a.id.slice(4); e.preventDefault(); openWindow(setLayoutState, w === "fighters" ? "drones" : w); return; }
+      if (a.id.startsWith("layout:")) { e.preventDefault(); requestLayout(Number(a.id.slice(7))); return; }
+      const run = {
+        newTab: startTab,
+        closeTab: () => { if (at >= 0) cur.closeFitTab(tabs[at]); },
+        nextTab: () => step(1),
+        prevTab: () => step(-1),
+        copyEft: () => setSheet("exporteft"),
+        importFit: () => setSheet("import"),
+        exportFit: () => setSheet("export"),
+        esiImport: () => setSheet("esiimport"),
+        esiExport: () => setSheet("esiexport"),
+        optimizePrice: () => cur.optimizeFitPrice(),
+        pickPilot: () => setSheet("pilot"),
+        browserSearch: () => { openWindow(setLayoutState, "browser"); setBrowserMode({ n: Date.now(), focus: true }); },
+        browserToggle: () => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "toggle", n: Date.now() }); },
+        lockLayout: () => requestLockToggle(),
         // Reopen the last closed window, where and how it was (Workspace.jsx's closed stack).
-        if (k === "t") go(() => { if (!reopenClosed(setLayoutState, keysRef.current.windows)) flash("none", t("No closed window to reopen"), 2000); });
-        return;
-      }
-      // Graphs to the front, never away: open it if closed, raise it if open, and if it is a tab in
-      // another window, make it that window's shown tab, in place (Owen: it is often stacked with
-      // the Fitting window).
-      if (k === "g") return go(() => openWindow(setLayoutState, "graphs"));
-      if (k === "t") return go(startTab);
-      if (k === "w") { if (at >= 0) go(() => cur.closeFitTab(tabs[at])); return; }
-      if (k === " ") return go(() => { openWindow(setLayoutState, "browser"); setBrowserMode({ mode: "toggle", n: Date.now() }); });
-      if (k === "o") return go(() => setSheet("import"));
-      if (k === "b") return go(() => setSheet("esiimport"));
-      if (k === "i") return go(() => openWindow(setLayoutState, "implants"));
-      if (k === ",") return go(() => openWindow(setLayoutState, "settings"));
-      if (!hasFit) return;
-      if (k === "d") return go(() => cur.optimizeFitPrice());
-      if (k === "s") return go(() => setSheet("export"));
-      if (k === "e") return go(() => setSheet("esiexport"));
-      if (k === "k") return go(() => setSheet("pilot"));
-      if (k === "c" && !open && !window.getSelection()?.toString()) return go(() => setSheet("exporteft"));
+        reopenWindow: () => { if (!reopenClosed(setLayoutState, keysRef.current.windows)) flash("none", t("No closed window to reopen"), 2000); },
+        shortcuts: () => setSheet("shortcuts"),
+      }[a.id];
+      if (!run) return;
+      e.preventDefault();
+      run();
     };
     const onPaste = (e) => {
       if (typing(e.target) || keysRef.current.sheet) return;
@@ -560,7 +563,7 @@ function DesktopApp() {
           </Button>}
           <Menu label={<>{t("Windows")} <span aria-hidden="true" style={{ fontSize: 9 }}>▼</span></>} items={WINDOWS.map(w => ({
             label: t(w.title), checked: !!(layoutState.windows[w.id]?.open),
-            hint: layoutState.windows[w.id]?.detached ? t("popped out") : WINDOW_KEYS[w.id], onSelect: () => toggleWindow(setLayoutState, w.id),
+            hint: layoutState.windows[w.id]?.detached ? t("popped out") : windowKey(w.id), onSelect: () => toggleWindow(setLayoutState, w.id),
             // Right-click: straight into its own OS window, open or not (as its title bar's pop-out button).
             context: [{ label: layoutState.windows[w.id]?.detached ? t("Bring its window to the front") : t("Pop out"), onSelect: () => popOut(w.id) }],
           }))} />
@@ -579,12 +582,14 @@ function DesktopApp() {
           ]} />
         </header>
 
-        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra}
+        <Workspace state={layoutState} setState={setLayoutState} renderWindow={renderWindow} windowTitle={windowTitle} windowExtra={windowExtra} windowLive={windowLive}
           backgroundItems={hasFit ? [{ heading: s.activeFit.ship }, { label: t("Ship info"), icon: eveIcon(tidByName(s.activeFit.ship), 32), onSelect: openShipInfo }] : null}
           onPopOut={popOut} onDock={dock} backdrop={<Backdrop url={bd.url} settings={bd.settings} />} />
       </div>
 
       {banner.view}
+      {/* A newer desktop release on GitHub: a card in the corner (update-check.jsx). Main window only. */}
+      <UpdateBanner />
 
       {/* "EFT" and "EVE" stay as they are — one is a file format's name, the other the game's. */}
       {sheet === "shortcuts" && <ShortcutsSheet onClose={close} />}
@@ -603,7 +608,7 @@ function DesktopApp() {
       {sheet === "dmgprofile" && <DamageProfileSheet current={s.dmgProfile} onSelect={s.setDmgProfile} onClose={close} />}
       {sheet === "pilot" && <PilotSheet pilot={s.slots?.pilot ?? null} setPilot={p => s.setSlots(prev => ({ ...prev, pilot: p || undefined }))}
         missing={s.skillCheck.missing} appSkills={s.skills} skillProfiles={s.skillProfiles} onClose={close} />}
-      {sheet === "snapshot" && <SnapshotModal onClose={close} assist={s.projectedEffects?.assist} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}
+      {sheet === "snapshot" && <SnapshotModal onClose={close} projectedEffects={s.projectedEffects} cargoItems={s.cargoItems} fitName={s.activeFit?.fitName}
         shipName={s.activeFit?.ship} shipTypeID={tidByName(s.activeFit?.ship)} shipFaction={shipMeta.faction} shipClass={shipMeta.cls} slots={s.slots}
         cs={stats.snapshot} drones={s.drones} fighters={s.fighters} implants={s.implants} boosters={s.boosters} cmdFits={s.cmdFits} projFits={s.projFits}
         fitsDB={s.fitsDB} sourceSkills={s.sourceSkills} skillLabel={s.fitSkillLabel} dmgProfile={s.dmgProfile} priceHub={s.priceHub} priceSource={s.priceSource} />}

@@ -36,7 +36,6 @@ import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS, dismissKeybo
 import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
-import { PRERELEASE_DESCRIPTIONS, isPrereleaseType } from "../data/sisi-patch.js";
 import { parseItemLink, resolveItemLink } from "../lib/abyssal-paste.js";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
@@ -44,7 +43,7 @@ function useTypeDescriptions() {
   useEffect(() => {
     if (_typeDescsCache) { setDescs(_typeDescsCache); return; }
     import("../data/type-descriptions.json").then(m => {
-      _typeDescsCache = { ...m.default, ...PRERELEASE_DESCRIPTIONS };
+      _typeDescsCache = m.default;
       setDescs(_typeDescsCache);
     });
   }, []);
@@ -704,7 +703,6 @@ function ModRow({mod,onAdd,onInfo,headroom,disabled=false,actions,children,badge
                 tap, and an explanation you have to go looking for arrives after the confusion it
                 exists to prevent. They never shrink the name — it ellipses first. */}
             {badges?.map(b=><span key={b.label} style={{flexShrink:0}}><SourceBadge label={b.label} color={b.color}/></span>)}
-            {isPrereleaseType(mod.typeID)&&<span style={{flexShrink:0}}><SourceBadge label={t("Pre-release")} color={C.warning}/></span>}
           </div>
           {/* Between the name and the fitting cost, which is where the variations tab puts it — there
               it shares a line with the price, and this row has no price to share. Its own line rather
@@ -933,9 +931,36 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
                     rigs:t("Add Module - Rig Slot"),services:t("Add Module - Service Slot")};
   const searchInputRef=useRef(null);
   const[searchFocused,setSearchFocused]=useState(false);
+  const deskSheet=useContext(SheetFrame)!=null;
   // Inline (desktop) does not grab focus on mount: the panel is always there rather than opened on
   // purpose, and focusing its search box scrolled the whole workspace to bring the box into view.
   useSuppressAccessoryBar({focusRef:inline?null:searchInputRef});
+  // The phone keeps the search at the BOTTOM, right above the keyboard (below). The desktop has no
+  // on-screen keyboard to sit above, and every other desktop picker searches from the top, so there it
+  // goes in the header under the resource strip.
+  const searchOnTop=inline||deskSheet;
+  const searchRow=(
+    // Phone: moved down here from the top of the scroller. With the search box up top, a short
+    // result list left most of a tall sheet empty above the keyboard instead of showing more
+    // results — the exact space Tritanium uses well and we didn't. Down here it sits right
+    // above the keyboard (see BottomSheet's footerExtra note) and results get the space back.
+    <div style={{padding:"8px 14px",...(searchOnTop?{borderBottom:`1px solid ${C.border}`}:{borderTop:`1px solid ${C.border}`})}}>
+      {/* The only sheet that passes onDismiss: it suppresses the stock accessory bar for its
+          whole lifetime (see setAccessoryBarVisible above), so without this chevron there is no
+          way to collapse the keyboard short of scrolling a long enough list. */}
+      {/* The sheet opens ready to type, but the focus is driven by useSuppressAccessoryBar
+          above rather than by autoFocus here — it has to wait for the stock bar to actually be
+          gone, see the note on that hook. Reaching the keyboard from JS at all works because
+          Capacitor calls setKeyboardShouldRequireUserInteraction(false) on the WKWebView; a
+          plain WKWebView focuses the field but withholds the keyboard outside a user gesture.
+          Mount-only, so re-targeting the sheet at the next empty slot (which deliberately keeps
+          it mounted, see tabs.jsx) doesn't yank focus back out of a list you were browsing. */}
+      <SheetSearchBar value={search} onChange={setSearch} onPaste={onSearchPaste}
+        inputRef={searchInputRef} onDismiss={searchFocused&&!searchOnTop?()=>searchInputRef.current?.blur():null}
+        inputProps={{onFocus:()=>setSearchFocused(true),onBlur:()=>setSearchFocused(false)}}
+        placeholder={t("Search all modules, or paste an abyssal...")}/>
+    </div>
+  );
   return(
     <>
     {/* height="100vh", not 88vh: with fillHeight the sheet's box is min(height,100%) where 100% is the
@@ -950,6 +975,7 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
         // of sticky across a transformed ancestor (the sheet itself is always under a transform, for
         // the drag-to-dismiss gesture, even at rest) and would silently stop tracking the scroll.
         // Living in the header instead needs no sticky/scroll math at all — it just never scrolls.
+        <>
         <ResourceStrip ship={ship} slots={slots} skills={skills} implants={implants} boosters={boosters} drones={drones} factorInReload={factorInReload}>
           {/* C.danger, not META_COLORS.Abyssal — that constant colors the META TIER badge (T1/T2/
               Faction/...) and Abyssal's tier color is pink, a different thing from the red used for
@@ -957,29 +983,10 @@ function ModuleBrowserSheet({slotType,isStructure,hullRigSize,onSelect,onClose,r
               ▲ marker, drones.jsx) — this toast should match THAT red, not the tier pink. */}
           {justAdded&&<div key={justAdded.key} className="vv-in" style={{position:"absolute",top:8,right:10,zIndex:20,background:justAdded.abyssal?C.danger:C.accent,color:"#fff",fontSize:11,fontWeight:700,padding:"5px 10px",borderRadius:99,boxShadow:"0 2px 8px rgba(0,0,0,.35)",pointerEvents:"none",maxWidth:"65%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{justAdded.note?justAdded.name:<>+ {justAdded.abyssal?`${t("Abyssal")} `:""}{justAdded.name}{justAdded.count>1?` (x${justAdded.count})`:""}</>}</div>}
         </ResourceStrip>
+        {searchOnTop&&searchRow}
+        </>
       }
-      footerExtra={
-        // Moved down here from the top of the scroller: with the search box up top, a short
-        // result list left most of a tall sheet empty above the keyboard instead of showing more
-        // results — the exact space Tritanium uses well and we didn't. Down here it sits right
-        // above the keyboard (see BottomSheet's footerExtra note) and results get the space back.
-        <div style={{padding:"8px 14px",borderTop:`1px solid ${C.border}`}}>
-          {/* The only sheet that passes onDismiss: it suppresses the stock accessory bar for its
-              whole lifetime (see setAccessoryBarVisible above), so without this chevron there is no
-              way to collapse the keyboard short of scrolling a long enough list. */}
-          {/* The sheet opens ready to type, but the focus is driven by useSuppressAccessoryBar
-              above rather than by autoFocus here — it has to wait for the stock bar to actually be
-              gone, see the note on that hook. Reaching the keyboard from JS at all works because
-              Capacitor calls setKeyboardShouldRequireUserInteraction(false) on the WKWebView; a
-              plain WKWebView focuses the field but withholds the keyboard outside a user gesture.
-              Mount-only, so re-targeting the sheet at the next empty slot (which deliberately keeps
-              it mounted, see tabs.jsx) doesn't yank focus back out of a list you were browsing. */}
-          <SheetSearchBar value={search} onChange={setSearch} onPaste={onSearchPaste}
-            inputRef={searchInputRef} onDismiss={searchFocused?()=>searchInputRef.current?.blur():null}
-            inputProps={{onFocus:()=>setSearchFocused(true),onBlur:()=>setSearchFocused(false)}}
-            placeholder={t("Search all modules, or paste an abyssal...")}/>
-        </div>
-      }>
+      footerExtra={searchOnTop?undefined:searchRow}>
       {/* Sticky: this bar lives inside the sheet's scroller, so it used to scroll out of reach the
           moment you started looking through a long category. top:0 since ResourceStrip moved out of
           the scroller (into headerExtra) — this is now the first sticky element in here. */}
@@ -1511,7 +1518,6 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
         <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',fontSize:12.5,color:C.textMid,marginBottom:12}}>
           <span>{td.gn}</span>
           {grade && <AbyssalBadge grade={grade}/>}
-          {isPrereleaseType(typeID) && <SourceBadge label={t("Pre-release")} color={C.warning}/>}
         </div>
       ) : (
       <div style={{display:'flex',alignItems:'center',gap:12,paddingBottom:12,borderBottom:`1px solid ${C.border}`,marginBottom:12}}>
@@ -1525,7 +1531,6 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
                 recognisable as the same module wherever it appears. Sits beside the meta badge
                 because it is the other half of "what item is this" — the name alone cannot say. */}
             {grade && <AbyssalBadge grade={grade}/>}
-            {isPrereleaseType(typeID) && <SourceBadge label={t("Pre-release")} color={C.warning}/>}
           </div>
         </div>
       </div>
@@ -1536,9 +1541,6 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
           {desc}
         </div>
       )}
-      {/* A pre-release item shows its bonus text (the in-game Traits tab) right where you are reading
-          about it. */}
-      {isPrereleaseType(typeID) && hasTraits(typeID) && <div style={{marginBottom:2}}><TraitsPanel typeID={typeID}/></div>}
       {/* Under the description, above the skills — it is a fact about the item, not a stat. */}
       {priceContent??(mutaplasmid?<div style={{fontSize:11,color:C.textMute,marginBottom:12}}>{t('no price')}</div>:<ItemPrice typeID={typeID}/>)}
       {/* Required skills */}

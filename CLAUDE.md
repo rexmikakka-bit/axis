@@ -35,14 +35,14 @@ Feature work should extend the existing design unless Owen requests a redesign.
 
 A React + Vite ship-fitting calculator for EVE Online, targeting mobile. It implements EVE's dogma
 system in JavaScript. **pyfa with all skills at V is the reference implementation** (currently master
-c9671de, client build 3579973, ahead of any pyfa release) — when our numbers disagree with pyfa, we are
+b79cd90, client build 3687575, a day ahead of pyfa's v2.70.0 release) — when our numbers disagree with pyfa, we are
 wrong until proven otherwise. The one standing exception is **remote-assistance impedance**: Siege,
 Triage, Bastion and Industrial Cores make a ship nearly immune to incoming reps, cap and sensor
 boosts. eos computes the impedance attributes but never applies them, so pyfa reps a sieged dread in
 full; we apply them (`assistanceFactors` in `calc.js`). The Paladin/Golem `agility` override retired
 when CCP fixed the SDE on 2026-10-06; `docs/data-pipeline.md` explains the bar for data overrides.
-pyfa master has not yet implemented the Akoman's or the Harvest boosters' new effects, so eos cannot
-confirm those (CRIMSON HARVEST section of the suite).
+pyfa master now implements the Akoman's effects (its laser role bonus is confirmed against eos) and
+every Fractured Skies effect, Synchronizers included; the Harvest boosters have expired out of the data.
 
 **This file is the always-loaded index.** Deep technical detail — full postmortems, evidence,
 worked examples — lives in `docs/*.md` and is loaded on demand. Follow the pointers when you're

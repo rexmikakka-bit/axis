@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useEffect, useRef, useState } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { eveIcon } from "../lib/icons.js";
@@ -16,6 +16,8 @@ import { abyssalGrade, mutaplasmidName } from "../lib/eft-export.js";
 import { parsePastedModule, resolveItemLink, pastedSlot, moduleToText } from "../lib/abyssal-paste.js";
 import { checkFitRestriction } from "../components/tabs.jsx";
 import { getCachedPrices } from "../prices.js";
+import { useAbyssalData } from "../lib/use-abyssal-data.js";
+import { abyssalValue } from "../lib/abyssal-value.js";
 
 // The desktop Fitting window's table (docs/desktop-handoff.md section 3, "Fitting"). Drawn by
 // FitTab through its `TableView` prop: FitTab keeps every piece of editing logic — the module menu,
@@ -86,6 +88,9 @@ const PER_CYCLE_KEY = "axis_desk_info_percycle";
 // A copied roll leaves its abyssalItemId behind: the one rolled item cannot be fitted twice, but its
 // roll can.
 let deskClip = null;   // { text, secKey, slot }
+// The module groups whose Info cell shows the DPS they add (damage mods, turret and launcher alike).
+const DPS_GROUPS = new Set(["Gyrostabilizer", "Heat Sink", "Magnetic Field Stabilizer", "Ballistic Control System", "Entropic Radiation Sink",
+                            "Drone Damage Modules", "Vorton Projector Upgrade"]);
 function infoOf(e, perCycle) {
   if (!e) return null;
   if (e.strengthText && e.strengthCycleS) {
@@ -98,7 +103,9 @@ function infoOf(e, perCycle) {
   if (e.strengthText) return { text: e.strengthText, color: C.warning };
   if (e.isASB) return e.hasCharges ? { text: `${k(e.totalEHP ?? e.totalHP)} / ${e.totalS}s`, color: C.high } : { text: `${k(e.ehpS)} EHP/s`, color: C.textMid };
   if (e.isAAR) return e.hasPaste ? { text: `${k(e.totalEHP ?? e.totalHP)} / ${e.totalS}s`, color: C.high } : { text: `${k(e.ehpS ?? 0)} EHP/s`, color: C.textMid };
-  if (e.isRAH && e.rahResistPct) return { node: e.rahResistPct.map((v, i) => <span key={i} style={{ color: [DMG.em.color, DMG.th.color, DMG.kin.color, DMG.exp.color][i] }}>{i ? " " : ""}{Number(v.toFixed(0))}</span>) };
+  // EM / TH / KIN / EXP, slash-separated as the phone shows them; the slashes stay muted.
+  if (e.isRAH && e.rahResistPct) return { node: e.rahResistPct.map((v, i) => <span key={i}>{i ? <span style={{ color: C.textMute }}>/</span> : null}<span style={{ color: [DMG.em.color, DMG.th.color, DMG.kin.color, DMG.exp.color][i] }}>{Number(v.toFixed(0))}</span></span>),
+    title: `EM / TH / KIN / EXP: ${e.rahResistPct.map(v => `${Number(v.toFixed(1))}%`).join(" / ")}` };
   if (e.isBreacher && !e.noPod) return { text: `${k(e.totalAbs)} / ${Math.round(e.totalPct)}%`, color: C.danger };
   return null;
 }
@@ -179,6 +186,25 @@ export function FitTable({ api }) {
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
             removeMod, duplicateMod, duplicateRoom, updateMod, hardpointRoom, fillHardpoints,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
+  // An abyssal module's ISK cell: its Mutamarket asking price when it was fitted from a listing
+  // (lib/abyssal-value.js, the valuation the Stats tab, the Price window and the snapshot card use).
+  // An owned roll or an unknown one has no market price, and says why.
+  const abyssalData = useAbyssalData(slots);
+  // A damage module's own DPS bonus, as its show-info reads: damage multiplier over rate-of-fire
+  // multiplier (a Republic Fleet Gyrostabilizer's 1.12 / 0.89 is +25.8%), the same on every copy and
+  // before stacking penalties. From the engine's item, so an abyssal roll shows its own figure. A drone
+  // damage amplifier is its droneDamageBonus; a ballistic control system's damage is
+  // missileDamageMultiplierBonus.
+  const dpsBonusOf = (row) => {
+    if (row.type === "empty") return null;
+    const tid = row.typeID ?? tidByName(row.name);
+    if (!DPS_GROUPS.has(TYPES[tid]?.gn)) return null;
+    const it = item(row.id), a = TYPES[tid]?.attrs ?? {};
+    const get = (k) => it?.get?.(k) ?? a[k];
+    const dmg = get("damageMultiplier") ?? get("missileDamageMultiplierBonus") ?? (get("droneDamageBonus") != null ? 1 + get("droneDamageBonus") / 100 : 1);
+    const rof = get("speedMultiplier") || 1;
+    return dmg / rof - 1;
+  };
 
     // ── Desktop mouse model: left click SELECTS (ctrl/cmd adds or removes one, shift extends within the
     // rack), double click UNFITS it (one module of a grouped row per double-click, so it can be repeated;
@@ -438,8 +464,11 @@ export function FitTable({ api }) {
                   const capNeed = it?.get?.("capacitorNeed"), dur = it?.get?.("duration") || it?.get?.("speed");
                   const running = row.state === "active" || row.state === "overheated";
                   const capS = running && capNeed > 0 && dur > 0 ? capNeed / (dur / 1000) : null;
-                  const rng = rangeOf(e, row), info = infoOf(e, perCycle);
+                  const bonus = dpsBonusOf(row);
+                  const rng = rangeOf(e, row), info = infoOf(e, perCycle) ?? (bonus > 0.0005 ? { text: `+${(bonus * 100).toFixed(1)}%`, color: C.accent,
+                    title: t("{pct}% more DPS per module, before stacking penalties", { pct: (bonus * 100).toFixed(1) }) } : null);
                   const price = row.mutaplasmid ? null : priceOf(row.typeID);
+                  const abyssalVal = row.mutaplasmid ? abyssalValue(row, abyssalData) : null;
                   const isDragSrc = dragUI?.secKey === sec.key && dragUI?.fromIdx === rowIdx;
                   const isDragOver = dragUI?.secKey === sec.key && dragUI?.overIdx === rowIdx && dragUI?.fromIdx !== rowIdx;
                   const charge = row.ammo ? row.ammo.replace(/\s*\(\d+\)$/, "") : null;
@@ -486,7 +515,7 @@ export function FitTable({ api }) {
                         {/* Which roll: the mutaplasmid's grade (Decayed, Gravid, Unstable…), quiet beside
                             the name; the full mutaplasmid in its tooltip. */}
                         {row.mutaplasmid && <span title={t("Abyssal: {muta}", { muta: mutaplasmidName(row.mutaplasmid) ?? t("mutated module") })}
-                          style={{ fontSize: 12, color: C.danger, opacity: 0.85, whiteSpace: "nowrap", flex: "none" }}>{abyssalGrade(row.mutaplasmid)}</span>}
+                          style={{ fontSize: 12, color: resourceColor("pg"), whiteSpace: "nowrap", flex: "none" }}>{abyssalGrade(row.mutaplasmid)}</span>}
                         {row.state === "overheated" && <span style={{ fontSize: 11, fontWeight: 500, color: C.overheat, flex: "none" }}>{t("OH")}</span>}
                         {charge && !chargeRows && <span title={`${charge} · ${row.charges}/${row.maxCharges}`} style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "0 1000 auto", minWidth: 24 }}>· {charge}</span>}
                         {charge && !chargeRows && <button type="button" title={row.count > 1 ? t("Unload charge from all {n}", { n: row.count }) : t("Unload charge")}
@@ -500,7 +529,11 @@ export function FitTable({ api }) {
                       <span style={{ ...cell, color: info?.color ?? C.textMid, cursor: info?.toggle ? "pointer" : undefined }} title={info?.title ?? info?.text}
                         onClick={info?.toggle ? (ev => { ev.stopPropagation(); togglePerCycle(); }) : undefined}
                         onDoubleClick={info?.toggle ? (ev => ev.stopPropagation()) : undefined}>{info?.node ?? info?.text ?? ""}</span>
-                      <span style={{ ...cell, color: C.textMid }} title={row.mutaplasmid ? t("Abyssal module — value depends on the roll, not the base type") : undefined}>{row.mutaplasmid ? "?" : isk(price)}</span>
+                      {/* A Mutamarket price is coloured like the abyssal grade beside the name: it is the
+                          roll's own asking price, not the base type's market price. */}
+                      {abyssalVal?.price != null
+                        ? <span style={{ ...cell, color: resourceColor("pg") }} title={t("Mutamarket asking price for this roll")}>{isk(abyssalVal.price)}</span>
+                        : <span style={{ ...cell, color: C.textMid }} title={row.mutaplasmid ? (abyssalVal?.source === "owned" || abyssalVal?.source === "custom" ? t("Your own abyssal module — no market price") : t("Abyssal module — value depends on the roll, not the base type")) : undefined}>{row.mutaplasmid ? "?" : isk(price)}</span>}
                       <span onPointerDown={sec.key === "subsystems" ? undefined : startRowDrag(sec.key, rowIdx)} onPointerMove={moveRowDrag} onPointerUp={endRowDrag} onPointerCancel={endRowDrag}
                         onClick={ev => ev.stopPropagation()} title={t("Drag to reorder")}
                         style={{ cursor: sec.key === "subsystems" ? "default" : "grab", touchAction: "none", color: C.textMid, textAlign: "center", fontSize: 13 }}>{sec.key === "subsystems" ? "" : "≡"}</span>

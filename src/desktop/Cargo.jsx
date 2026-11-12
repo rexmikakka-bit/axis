@@ -1,24 +1,22 @@
-import { useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { cargoVolume } from "../lib/core.js";
-import { CargoBrowserSheet } from "../components/cargo.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
 import { typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
-import { addCargo } from "./items.js";
-import { useItemDrop, DropHint } from "./items-context.jsx";
+import { useItemDrop, DropHint, useItems } from "./items-context.jsx";
 
 // The desktop Cargo window: the hold as an Item / Qty table (docs/desktop-handoff.md, "Cargo") with
-// the quantity typed straight into its cell. Items are added through the phone's cargo picker and
+// the quantity typed straight into its cell. Items are added from the Browser ("+ Add" narrows it to cargo) and
 // stored in the same shape the phone's CargoScreen writes ({id, name, qty, vol, typeID}), so a hold
 // packed on either app reads the same on the other.
 
 export default function CargoPanel({ s, capacity }) {
-  const [picker, setPicker] = useState(false);
+  // "+ Add" opens the Browser narrowed to what cargo takes; its double-click (or a drag) lands here.
+  const itemOps = useItems();
   const insp = useInspect();
   const setInfo = (tid) => insp.inspect(typeTarget(tid), "info");
   const rs = useRowSelect();
@@ -31,7 +29,6 @@ export default function CargoPanel({ s, capacity }) {
   const setQty = (id, qty) => s.setCargoItems(prev => (prev ?? []).map(e => e.id === id ? { ...e, qty: Math.max(1, Math.round(qty) || 1) } : e));
   const remove = (id) => s.setCargoItems(prev => (prev ?? []).filter(e => e.id !== id));
   // As the phone's addItem: a second pick of the same item adds one to its stack.
-  const add = (item) => addCargo(s, item);
   // m³ per stack rides in the row tooltip: the window is narrow by default and the name is what you read.
   const cols = "18px minmax(0,1fr) 52px 16px";
   return (
@@ -43,7 +40,7 @@ export default function CargoPanel({ s, capacity }) {
           {used.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span style={{ color: C.textMid }}>/ {cap.toLocaleString()} m³</span>
         </span>
         <span style={{ flex: 1 }} />
-        <button type="button" onClick={() => setPicker(true)}
+        <button type="button" onClick={() => itemOps.browse("cargo")}
           style={{ height: 26, padding: "0 12px", borderRadius: 6, fontSize: 12.5, cursor: "pointer", background: C.surfaceAlt, border: `1px solid ${C.borderStrong}`, color: C.text }}>
           + {t("Add")}
         </button>
@@ -57,10 +54,10 @@ export default function CargoPanel({ s, capacity }) {
         {items.map(e => {
           const tid = e.typeID ?? tidByName(e.name);
           const vol = (e.vol ?? TYPES[tid]?.attrs?.volume ?? 0) * (e.qty ?? 0);
-          const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: tid ? () => setInfo(tid) : undefined, items: [
-            { label: t("Show info"), hint: t("Double-click"), disabled: !tid, onSelect: () => setInfo(tid) },
+          const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: () => remove(e.id), items: [
+            { label: t("Show info"), disabled: !tid, onSelect: () => setInfo(tid) },
             { divider: true },
-            { label: t("Remove"), hint: "Del", danger: true, onSelect: () => remove(e.id) },
+            { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(e.id) },
           ] });
           return (
             <div key={e.id} {...rp} title={`${e.name} · ${vol.toLocaleString(undefined, { maximumFractionDigits: 1 })} m³`} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 28, padding: "0 12px", borderBottom: `1px solid ${C.border}99` }}>
@@ -77,7 +74,6 @@ export default function CargoPanel({ s, capacity }) {
         })}
       </div>
       {rs.view}
-      {picker && <CargoBrowserSheet slots={s.slots} onAdd={add} onClose={() => setPicker(false)} />}
     </div>
   );
 }

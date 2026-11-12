@@ -1,31 +1,42 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { calcFitStats, peakRegen, PEAK_REGEN_AT_PCT, TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { cargoVolume, canLoadCharge, DMG } from "../lib/core.js";
 import { resourceColor } from "../components/ui.jsx";
-import { KV, UsageBar, SectionLabel, Empty, TYPE } from "./kit.jsx";
+import { KV, UsageBar, SectionLabel, Empty, TYPE, WEIGHT } from "./kit.jsx";
+import { fitStatsOptions } from "../lib/stats-opts.js";
 
 // Desktop-native stat windows. Display only: every figure comes from ONE calcFitStats call made
 // with exactly the options the phone's Stats page passes (tabs.jsx StatsTab `csOpts`), so a number
 // here and the same number on the phone cannot differ. If StatsTab's options change, change them
 // here too.
 
-/** The fit's full stats, as the phone's Stats page computes them. Null with no fit. */
+/**
+ * The fit's full stats, as the phone's Stats page computes them. Null with no fit.
+ *
+ * THE desktop calculation: every stat window, the Fitting table, the Drones and Cargo windows and the
+ * snapshot card read this one result (useWindowContents hands it round). They each used to run their
+ * own, so one click ran calcFitStats up to five times before it could paint.
+ *
+ * And it is DEFERRED (useDeferredValue), the phone Stats page's trick: an edit renders first with the
+ * previous numbers, so the state dot or the new module appears on the next frame, and React then
+ * computes the stats in a background render it can throw away if another edit lands first. The
+ * inputs travel as one object so the ship and its modules always arrive together; a fit switch never
+ * computes the new hull on the old fit's modules.
+ */
 export function useFitStats(s, ship) {
+  const live = useMemo(() => ({ ship, slots: s.slots, drones: s.drones, fighters: s.fighters, implants: s.implants, boosters: s.boosters,
+    fitSkills: s.fitSkills, factorInReload: s.factorInReload, externalBursts: s.externalBursts, projectedEffects: s.projectedEffects,
+    dmgProfile: s.dmgProfile, tgtProfile: s.tgtProfile }),
+  [ship, s.slots, s.drones, s.fighters, s.implants, s.boosters, s.fitSkills, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile]);
+  const d = useDeferredValue(live);
   return useMemo(() => {
-    if (!ship || !s.slots) return null;
-    const pe = s.projectedEffects;
+    if (!d.ship || !d.slots) return null;
     try {
-      return calcFitStats(ship, s.slots, s.drones ?? [], s.fitSkills, {
-        implants: s.implants, boosters: s.boosters, factorInReload: s.factorInReload, externalBursts: s.externalBursts,
-        projectedWebMult: pe?.webMult, projectedNeutGJs: pe?.neutGJs, projectedCapGJs: pe?.capGJs, projectedDebuffs: pe?.debuffs,
-        projectedBoosts: pe?.boosts, projectedEcm: pe?.ecm, damageProfile: s.dmgProfile?.p, targetResists: s.tgtProfile?.r,
-        pilotSec: s.slots?.pilotSec, systemSecurity: s.slots?.systemSecurity,
-        fighters: (s.fighters ?? []).map(f => ({ name: f.name, qty: f.qty ?? 1, active: f.active, abilities: f.abilities })),
-      }) ?? null;
+      return calcFitStats(d.ship, d.slots, d.drones ?? [], d.fitSkills, fitStatsOptions(d)) ?? null;
     } catch { return null; }
-  }, [ship, s.slots, s.drones, s.fitSkills, s.implants, s.boosters, s.factorInReload, s.externalBursts, s.projectedEffects, s.dmgProfile, s.tgtProfile, s.fighters]);
+  }, [d]);
 }
 
 const fmtN = (n) => (n == null || n === 0) ? "0" : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
@@ -69,8 +80,8 @@ export function ResourcesPanel({ s, ship, cs }) {
       <UsageBar {...bar} label={t("Drone bay")} used={d.bay} total={cs.droneBay ?? 0} unit="m³" fmt={int} />
       <UsageBar {...bar} label={t("Bandwidth")} used={d.bandwidth} total={cs.droneBandwidth ?? 0} unit="Mbit/s" fmt={int} />
       <UsageBar {...bar} label={t("Active drones")} used={d.inSpace} total={cs.maxActiveDrones ?? 0} fmt={int} />
-      <UsageBar {...bar} label={t("Turrets")} used={hard.turrets} total={ship.turrets ?? 0} fmt={int} />
-      <UsageBar {...bar} label={t("Launchers")} used={hard.launchers} total={ship.launchers ?? 0} fmt={int} />
+      <UsageBar {...bar} pips label={t("Turrets")} used={hard.turrets} total={ship.turrets ?? 0} fmt={int} />
+      <UsageBar {...bar} pips label={t("Launchers")} used={hard.launchers} total={ship.launchers ?? 0} fmt={int} />
     </div>
   );
 }
@@ -231,16 +242,30 @@ export function DefensePanel({ s, cs, onPickProfile }) {
           <span style={{ textAlign: "right", fontSize: TYPE.label, color: C.rig, fontVariantNumeric: "tabular-nums" }} title={t("Resist multiplier — HP × this = EHP against {profile}", { profile: s.dmgProfile?.name ?? "Uniform" })}>{l.m.toFixed(2)}</span>
         </div>
       ))}
-      <SectionLabel style={{ borderTop: `1px solid ${C.border}`, marginTop: 4 }}>{t("Recharge Rates")}</SectionLabel>
-      <KV min={180} rows={[
-        [t("Shield regen"), eps(peak.regen), { color: dim(peak.regen) }],
-        [t("Shield rep"), eps(peak.shield), { color: dim(peak.shield) }],
-        [t("Armor rep"), eps(peak.armor), { color: dim(peak.armor) }],
-        [t("Hull rep"), eps(peak.hull), { color: dim(peak.hull) }],
-        showSus && [t("Shield, sustained"), eps(sus.shield), { color: dim(sus.shield) }],
-        showSus && [t("Armor, sustained"), eps(sus.armor), { color: dim(sus.armor) }],
-        showSus && [t("Hull, sustained"), eps(sus.hull), { color: dim(sus.hull) }],
-      ]} />
+      {/* pyfa's grid: a column per layer, a row per kind of recharge, so peak and sustained for the
+          same layer sit one above the other. Passive is the shield's own regen; Sustained shows only
+          when the cap can't keep the reps running. The unit is said once, beside the heading. */}
+      <SectionLabel style={{ borderTop: `1px solid ${C.border}`, marginTop: 4 }}
+        right={<span style={{ fontSize: TYPE.small, color: C.textMid }}>EHP/s</span>}>{t("Recharge Rates")}</SectionLabel>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(72px, auto) repeat(3, minmax(0, 1fr))", columnGap: 14, padding: "0 12px 8px", alignItems: "center" }}>
+        <span />
+        {[["shield", t("Shield")], ["armor", t("Armor")], ["hull", t("Hull")]].map(([k, l]) => (
+          <span key={k} style={{ textAlign: "right", fontSize: TYPE.small, letterSpacing: ".04em", textTransform: "uppercase", color: C.textMid, padding: "2px 0 4px" }}>{l}</span>
+        ))}
+        {[
+          [t("Passive"), { shield: peak.regen }, t("The shield's own regeneration, at its peak (25% shield)")],
+          [t("Peak"), peak, t("Every repairer and booster running, cap or no cap (and any remote reps)")],
+          showSus && [t("Sustained"), sus, t("What the capacitor can keep running indefinitely")],
+        ].filter(Boolean).map(([label, row, tip]) => [
+          <span key={`${label}:l`} title={tip} style={{ fontSize: TYPE.label, color: C.textMid, minHeight: 26, display: "flex", alignItems: "center" }}>{label}</span>,
+          ...["shield", "armor", "hull"].map(k => {
+            const v = row[k];
+            return <span key={`${label}:${k}`} title={v != null ? eps(v) : undefined}
+              style={{ textAlign: "right", fontSize: TYPE.value, fontWeight: v > 0.05 ? WEIGHT.value : undefined, color: v == null ? C.textMute : dim(v) ?? C.text, fontVariantNumeric: "tabular-nums" }}>
+              {v == null ? "—" : fmtF(v)}</span>;
+          }),
+        ])}
+      </div>
     </>
   );
 }

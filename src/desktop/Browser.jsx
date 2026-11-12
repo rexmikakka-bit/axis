@@ -4,16 +4,17 @@ import { t } from "../lib/i18n.js";
 import { TYPES, tidByName, usesTurretHardpoint, usesLauncherHardpoint } from "../calc.js";
 import { checkFitRestriction } from "../components/tabs.jsx";
 import { eveIcon } from "../lib/icons.js";
-import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS, MT_ALL_ITEMS,
+import { REAL_MODULE_BROWSER, REAL_STRUCTURE_MODULE_BROWSER, OFF_MARKET_MODULES, MT_ROOTS, MT_CHILDREN, MT_ITEMS,
          generateEmptySlots, lookupShip } from "../lib/core.js";
 import marketTreeData from "../data/market-tree.json";
-import { jargonSearch } from "../lib/jargon.js";
+import { jargonSearch, nameMatchesQuery, searchScore } from "../lib/jargon.js";
+import { tagsOf } from "../lib/fit-tags.js";
 import { metaOf, META_COLORS, compareForBrowser } from "../lib/meta.js";
 import { buildShipTaxonomy, shipsUnder } from "../lib/ship-taxonomy.js";
 import { nextFitId } from "../lib/fit-tabs.js";
 import { getCachedPrices } from "../prices.js";
 import { FitCost, fitCostParts } from "../components/ui.jsx";
-import { variantCostFits, fitCostRatioOf } from "../lib/core.js";
+import { variantCostFits, fitCostRatioOf, getCompatibleCharges, implantSetMembers, applyImplantSet } from "../lib/core.js";
 import { fetchPrices } from "../prices.js";
 import { useHeadroom } from "./Inspector.jsx";
 import Menu from "./Menu.jsx";
@@ -65,9 +66,9 @@ function TreeRow({ depth, open, leaf, selected, icon, iconSize = 16, label, sub,
 }
 
 // With an ✕ to clear it once there is something in it; Escape in the box clears it too.
-const SearchBox = ({ value, onChange, placeholder }) => (
+const SearchBox = ({ value, onChange, placeholder, inputRef }) => (
   <div style={{ position: "relative", margin: "8px 10px 6px", flex: "none" }}>
-    <input data-desk-search value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+    <input ref={inputRef} data-desk-search value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
       onKeyDown={e => { if (e.key === "Escape" && value) { e.stopPropagation(); onChange(""); } }}
       style={{ height: 28, boxSizing: "border-box", width: "100%", padding: value ? "0 30px 0 10px" : "0 10px", borderRadius: 6, fontSize: 13.5,
                background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" }} />
@@ -99,17 +100,23 @@ function useMarketTree(rack, isStructure, hullRigSize) {
   }, [rack, isStructure, hullRigSize]);
 }
 
-// CCP's market groups (market-tree.json, the cargo picker's tree) in the module tree's node shape.
+// CCP's market groups (market-tree.json, the cargo picker's tree) in the module tree's node shape,
+// less what a fit can't use. Ships are opened from the Ships tab, not added to a fit. Of Structures,
+// only the Deployable Structures carry (mobile depots, tractor units, cyno inhibitors…), so that group
+// takes the Structures root's place and the structure hulls (citadels, engineering complexes,
+// refineries, FLEX) go. Structure Equipment and Modifications stay: a structure fit needs them.
+const MG_SHIPS = 4, MG_STRUCTURES = 477, MG_DEPLOYABLES = 404;
 let everything = null;
 function marketEverything() {
   if (everything) return everything;
   const node = (gid) => ({ id: `mt:${gid}`, name: marketTreeData.g[gid]?.n ?? String(gid), iconTid: marketTreeData.g[gid]?.i ?? null,
                            mods: MT_ITEMS[gid] ?? [], children: (MT_CHILDREN[gid] ?? []).map(node) });
-  return (everything = MT_ROOTS.map(node));
+  const roots = MT_ROOTS.map(Number).flatMap(gid => gid === MG_SHIPS ? [] : gid === MG_STRUCTURES ? [MG_DEPLOYABLES] : [gid]);
+  return (everything = roots.map(node).sort((x, y) => x.name.localeCompare(y.name)));
 }
-// Every item the All search reaches: the market tree, plus the fittable modules CCP does not sell.
+// Every item the All search reaches: what that tree holds, plus the fittable modules CCP does not sell.
 let searchable = null;
-const allItems = () => searchable ??= [...MT_ALL_ITEMS, ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
+const allItems = () => searchable ??= [...allMods(marketEverything()), ...Object.values(OFF_MARKET_MODULES).flat().filter(m => m.typeID != null && !marketTreeData.t[String(m.typeID)])];
 const RACK_KEY = "axis_desk_browser_rack";
 const LEGAL_KEY = "axis_desk_browser_legal";
 // "Legal": could this module EVER go on this hull, whatever else is fitted? The phone's own fitting
@@ -143,6 +150,8 @@ function pruneTree(nodes, ok) {
   return out;
 }
 const RECENT_KEY = "axis_desk_recent_shown";
+// How many saved fits a Ships search lists before it says how many more matched.
+const FIT_HIT_CAP = 100;
 const KIND_LABEL = { module: "Module", charge: "Charge", drone: "Drone", fighter: "Fighter", implant: "Implant", booster: "Booster", ship: "Ship" };
 
 const allMods = (nodes) => nodes.flatMap(n => [...(n.mods ?? []), ...allMods(n.children ?? [])]);
@@ -156,7 +165,7 @@ function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind, headroom }
   const a = TYPES[String(mod.typeID)]?.a ?? {};
   const meta = metaOf(mod.typeID, mod.meta);
   const primary = actions[0];
-  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, kind === "module" ? rack : undefined) : undefined, onOpen: () => primary?.onSelect(), items: [
+  const rp = rowProps(mod.typeID ?? mod.name, { target: mod.typeID ? typeTarget(mod.typeID, kind === "module" ? rack : undefined) : undefined, onOpen: () => primary?.onSelect(), repeat: true, items: [
     ...actions.map((x, i) => ({ ...x, hint: i === 0 ? t("Double-click") : undefined })),
     actions.length > 0 && { divider: true },
     { label: t("Show info"), onSelect: () => onInfo({ typeID: mod.typeID, tab: "info" }) },
@@ -184,7 +193,26 @@ function ItemRow({ mod, price, actions, onInfo, rowProps, rack, kind, headroom }
   );
 }
 
-function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
+// A destination the Market can be narrowed to ("+" in that window): what goes there, and what to call it.
+const DESTS = {
+  drones:   { label: () => t("Drones"),   ok: (k) => k.kind === "drone" },
+  fighters: { label: () => t("Fighters"), ok: (k) => k.kind === "fighter" },
+  implants: { label: () => t("Implants"), ok: (k, slot) => k.kind === "implant" && (!slot || k.slot === slot) },
+  boosters: { label: () => t("Boosters"), ok: (k) => k.kind === "booster" },
+  cargo:    { label: () => t("Cargo"),    ok: (k) => k.kind !== "ship" },
+};
+const SPLIT_KEY = "axis_desk_browser_split";
+// The charges the fitted modules can load, by typeID (the phone cargo browser's "For active fit").
+function fitChargeIds(slots) {
+  const ids = new Set();
+  for (const sec of ["high", "mid", "low"]) for (const m of slots?.[sec] ?? []) {
+    if (m.type === "empty" || !m.name) continue;
+    for (const c of getCompatibleCharges(m)) if (c.typeID != null) ids.add(Number(c.typeID));
+  }
+  return ids;
+}
+
+function MarketPane({ s, ship, cs, adderRef, remoteAdd, request }) {
   const headroom = useHeadroom(s, ship, cs);
   const isStructure = (TYPES[ship?.typeID]?.c ?? TYPES[ship?.typeID]?.category) === 65;
   // null = no rack: everything. Remembered, like the window's other choices.
@@ -195,9 +223,40 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
   const insp = useInspect();
+  // What the list is narrowed to when a window's "+" asked for it ({to, slot}), or null. Cleared by
+  // its chip's ✕ or by picking a rack; not remembered, since it answers one request.
+  const [dest, setDest] = useState(null);
+  const [fitOnly, setFitOnly] = useState(false);   // cargo: just the charges the fit can load
+  // A request ({rack} from an empty module slot, {dest, slot} from a window's "+"): that rack or that
+  // destination, a fresh search, and the cursor in this pane's own search box. Focused from here, after
+  // this pane has rendered, and retried for a moment: the Ships pane's box was still the one on screen
+  // when the request arrived, and the double-click that sent it can still move focus as the Browser
+  // comes to the front.
+  const searchRef = useRef(null);
+  useEffect(() => {
+    if (!request?.rack && !request?.dest) return;
+    if (request.rack) { setRack(request.rack); setDest(null); }
+    else { setRack(null); setDest({ to: request.dest, slot: request.slot ?? null }); setFitOnly(false); }
+    setSelected(null); setOpen(new Set()); setSearch("");
+    let tries = 0;
+    const id = setInterval(() => { const el = searchRef.current; if (el && document.activeElement !== el) el.focus(); if (++tries >= 6) clearInterval(id); }, 50);
+    return () => clearInterval(id);
+  }, [request?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   // A market row opens as a type with its rack, so its Variations window can fit a variant.
   const setInfo = ({ typeID, tab }) => insp.inspect(typeTarget(typeID, rack && itemKind({ typeID }).kind === "module" ? rack : undefined), tab);
   const rs = useRowSelect();
+  // The tree's share of the space above the item list (0.15–0.85), dragged on the line between them and
+  // remembered.
+  const [split, setSplitState] = useState(() => { try { const v = Number(localStorage.getItem(SPLIT_KEY)); return v >= 0.15 && v <= 0.85 ? v : 0.5; } catch { return 0.5; } });
+  const setSplit = (v) => { const c = Math.min(0.85, Math.max(0.15, v)); setSplitState(c); try { localStorage.setItem(SPLIT_KEY, String(c)); } catch { /* private mode */ } };
+  const splitBox = useRef(null);
+  const startSplit = (e) => {
+    const box = splitBox.current?.getBoundingClientRect(); if (!box || !(box.height > 0)) return;
+    e.preventDefault();
+    const move = (ev) => setSplit((ev.clientY - box.top) / box.height);
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
   // "abyssal": the My Abyssals chip, your saved rolls (AbyssalPane) in place of a rack's tree.
   const abyssal = rack === "abyssal" && !isStructure;
   const rackTree = useMarketTree(rack && rack !== "abyssal" ? rack : "high", isStructure, TYPES[ship?.typeID]?.a?.rigSize ?? null);
@@ -206,8 +265,18 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   const [legal, setLegalState] = useState(() => { try { return localStorage.getItem(LEGAL_KEY) !== "0"; } catch { return true; } });
   const setLegal = (v) => { setLegalState(v); try { localStorage.setItem(LEGAL_KEY, v ? "1" : "0"); } catch { /* private mode */ } };
   const okFor = useMemo(() => legal && ship ? legalOn(ship, s.slots?.subsystems) : null, [legal, ship, s.slots?.subsystems]);
+  const chargeIds = useMemo(() => dest?.to === "cargo" && fitOnly ? fitChargeIds(s.slots) : null, [dest?.to, fitOnly, s.slots]);
+  const destOk = useMemo(() => {
+    if (!dest || rack) return null;
+    const rule = DESTS[dest.to]?.ok;
+    return rule ? (m) => rule(itemKind(m), dest.slot) && (!chargeIds || chargeIds.has(Number(m.typeID))) : null;
+  }, [dest, rack, chargeIds]);
+  const keep = useMemo(() => okFor && destOk ? (m) => okFor(m) && destOk(m) : okFor ?? destOk, [okFor, destOk]);
   const fullTree = rack ? rackTree : marketEverything();
-  const tree = useMemo(() => okFor ? pruneTree(fullTree, okFor) : fullTree, [fullTree, okFor]);
+  const tree = useMemo(() => keep ? pruneTree(fullTree, keep) : fullTree, [fullTree, keep]);
+  // Narrowed to a destination, its few top categories start open, so the first click is on an item.
+  const treeRoots = tree.map(nd => nd.id).join(",");
+  useEffect(() => { if (destOk && tree.length <= 3) setOpen(new Set(tree.map(nd => nd.id))); }, [treeRoots, !!destOk]);   // eslint-disable-line react-hooks/exhaustive-deps
   // Prices for what is on screen, fetched as the list changes (the shared cache answers what it has at
   // once); nothing is fetched for the whole tree.
   const prices = getCachedPrices(s.priceHub, s.priceSource);
@@ -215,7 +284,9 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   const priceOf = (id) => fetched.get(Number(id)) ?? fetched.get(String(id)) ?? prices.get(String(id)) ?? prices.get(Number(id)) ?? null;
 
   const find = (nodes, id) => { for (const n of nodes) { if (n.id === id) return n; const f = find(n.children ?? [], id); if (f) return f; } return null; };
-  const q = search.trim().toLowerCase();
+  // Deferred: the search box shows each keystroke on the next frame, and the result list follows in
+  // an interruptible render, so fast typing never waits on a list it is about to replace.
+  const q = useDeferredValue(search).trim().toLowerCase();
   // Ordered as on the phone (lib/meta.js compareForBrowser): T2 first, then T1, faction, deadspace,
   // officer, each by meta level. A rack's tree is already built in that order (with its ancillary-first
   // rule); the full market tree is stored A–Z, so its lists are sorted here. A search is the phone's
@@ -223,9 +294,9 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   // Memoised on what the list depends on, which is not the fit: re-running the search on every edit
   // (adding a booster, say) cost ~70 ms a time.
   const items = useMemo(() => q
-    ? (jargonSearch(q, rack ? allMods(tree) : okFor ? allItems().filter(okFor) : allItems()) ?? []).slice(0, 200)
+    ? (jargonSearch(q, rack ? allMods(tree) : keep ? allItems().filter(keep) : allItems()) ?? []).slice(0, 200)
     : (selected ? (rack ? find(tree, selected)?.mods ?? [] : [...(find(tree, selected)?.mods ?? [])].sort(compareForBrowser)) : []),
-    [q, rack, tree, selected, okFor]);   // eslint-disable-line react-hooks/exhaustive-deps
+    [q, rack, tree, selected, keep]);   // eslint-disable-line react-hooks/exhaustive-deps
   // The rows' "won't fit" marks trail the fit by a render: their cost-ratio probe is a whole-fit pass,
   // and deferring it lets the edit itself paint first.
   const rowHeadroom = useDeferredValue(headroom);
@@ -249,9 +320,13 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
   const actionsFor = (m) => {
     const it = { typeID: m.typeID, name: m.name, vol: m.vol };
     if (rack) return [{ label: t("Fit"), onSelect: () => fit(m) }, { label: t("Add to cargo"), onSelect: () => itemOps.add(it, "cargo") }];
-    const d = defaultAction(it, { slots: s.slots, hasFighters: itemOps.hasFighters });
+    const d = dest && itemOps.accepts(dest.to, it) ? { to: dest.to, label: DEST_LABEL[dest.to] } : defaultAction(it, { slots: s.slots, hasFighters: itemOps.hasFighters });
     const out = d.to ? [{ label: d.label, onSelect: () => itemOps.add(it, d.to) }] : [];
     for (const to of Object.keys(DEST_LABEL)) if (to !== d.to && to !== "fitting" && itemOps.accepts(to, it)) out.push({ label: DEST_LABEL[to], onSelect: () => itemOps.add(it, to) });
+    // A set implant can bring its whole set, as the Implants window's "+ set" does: every member into
+    // its own slot, the other slots left as they are.
+    const set = itemKind(it).kind === "implant" ? implantSetMembers(m.name) : null;
+    if (set && s.setImplants) out.push({ label: t("+ {set} set", { set: set.setName }), onSelect: () => s.setImplants(prev => applyImplantSet(prev ?? [], set)) });
     return out;
   };
   const toggle = (n) => {
@@ -277,13 +352,13 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
       <div style={{ display: "flex", gap: 6, padding: "8px 10px 0", flex: "none", flexWrap: "wrap" }}>
         {(isStructure ? STRUCTURE_RACKS : RACKS).map(([k, label]) => (
           <button key={k} type="button" aria-pressed={rack === k} title={rack === k ? t("Show everything") : undefined}
-            onClick={() => { setRack(rack === k ? null : k); setSelected(null); setOpen(new Set()); }}
+            onClick={() => { setRack(rack === k ? null : k); setDest(null); setSelected(null); setOpen(new Set()); }}
             style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
                      background: rack === k ? C.accentLight : "transparent", border: `1px solid ${rack === k ? C.accent : C.borderStrong}`,
                      color: rack === k ? C.accent : C.textMid }}>{t(label)}</button>
         ))}
         {!isStructure && <button type="button" aria-pressed={abyssal} title={abyssal ? t("Show everything") : t("Your saved abyssal modules")}
-          onClick={() => { setRack(abyssal ? null : "abyssal"); setSelected(null); setOpen(new Set()); }}
+          onClick={() => { setRack(abyssal ? null : "abyssal"); setDest(null); setSelected(null); setOpen(new Set()); }}
           style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
                    background: abyssal ? `${C.danger}22` : "transparent", border: `1px solid ${abyssal ? C.danger : C.borderStrong}`,
                    color: abyssal ? C.danger : C.textMid }}>{t("My Abyssals")}</button>}
@@ -293,18 +368,49 @@ function MarketPane({ s, ship, cs, adderRef, remoteAdd }) {
                    background: legal ? C.accentLight : "transparent", border: `1px solid ${legal ? C.accent : C.borderStrong}`,
                    color: legal ? C.accent : C.textMid }}>{t("Legal")}</button>}
       </div>
-      <SearchBox value={search} onChange={setSearch} placeholder={abyssal ? t("Search your rolls") : rack ? t("Search modules") : t("Search everything")} />
+      {destOk && <div style={{ display: "flex", gap: 6, padding: "6px 10px 0", flex: "none", flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 4px 0 10px", borderRadius: 11, fontSize: 12.5,
+                       background: C.accentLight, border: `1px solid ${C.accent}`, color: C.accent }}>
+          {t("For {dest}", { dest: DESTS[dest.to].label() })}
+          <button type="button" onClick={() => { setDest(null); setSelected(null); setOpen(new Set()); }} aria-label={t("Show everything")} title={t("Show everything")}
+            style={{ width: 16, height: 16, padding: 0, border: "none", borderRadius: 8, background: "transparent", color: C.accent, cursor: "pointer", fontSize: 12, lineHeight: "16px" }}>✕</button>
+        </span>
+        {/* Its own chip, so the slot can go while the implants stay: every slot's implants, searchable. */}
+        {dest.slot && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 22, padding: "0 4px 0 10px", borderRadius: 11, fontSize: 12.5,
+                       background: C.accentLight, border: `1px solid ${C.accent}`, color: C.accent }}>
+          {t("Slot {n}", { n: dest.slot })}
+          <button type="button" onClick={() => setDest(d => ({ ...d, slot: null }))} aria-label={t("Every slot")} title={t("Every slot")}
+            style={{ width: 16, height: 16, padding: 0, border: "none", borderRadius: 8, background: "transparent", color: C.accent, cursor: "pointer", fontSize: 12, lineHeight: "16px" }}>✕</button>
+        </span>}
+        {dest.to === "cargo" && <button type="button" aria-pressed={fitOnly} onClick={() => setFitOnly(v => !v)} title={t("Only the charges this fit's modules can load")}
+          style={{ height: 22, padding: "0 10px", borderRadius: 11, fontSize: 12.5, cursor: "pointer",
+                   background: fitOnly ? C.accentLight : "transparent", border: `1px solid ${fitOnly ? C.accent : C.borderStrong}`, color: fitOnly ? C.accent : C.textMid }}>{t("Fit's charges")}</button>}
+      </div>}
+      <SearchBox inputRef={searchRef} value={search} onChange={setSearch}
+        placeholder={abyssal ? t("Search your rolls") : rack ? t("Search modules") : destOk ? t("Search {dest}", { dest: DESTS[dest.to].label().toLowerCase() }) : t("Search everything")} />
       {abyssal && <AbyssalPane s={s} ship={ship} search={search} rowProps={rs.rowProps} TreeRow={TreeRow} headroom={headroom}
         fit={(rk, mod) => { if (!ship) return; if (adderRef?.current) adderRef.current(rk, mod); else remoteAdd?.(rk, mod); }} />}
-      {!abyssal && <>
-      {!q && <div role="tree" style={{ flex: "1 1 50%", minHeight: 80, overflowY: "auto", borderBottom: `1px solid ${C.border}` }}>{renderNodes(tree, 0)}</div>}
-      <div style={{ flex: q ? "1 1 auto" : "1 1 50%", minHeight: 80, overflowY: "auto" }}>
+      {!abyssal && <div ref={splitBox} style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      {!q && <>
+        <div role="tree" style={{ flex: `0 0 ${split * 100}%`, minHeight: 60, overflowY: "auto" }}>{renderNodes(tree, 0)}</div>
+        {/* Drag to share the window between the categories and their items; double-click for half and half. */}
+        <div role="separator" aria-orientation="horizontal" aria-label={t("Resize")} title={t("Drag to resize · double-click to reset")}
+          onPointerDown={startSplit} onDoubleClick={() => setSplit(0.5)}
+          onPointerEnter={e => { e.currentTarget.firstChild.style.background = C.accent; }} onPointerLeave={e => { e.currentTarget.firstChild.style.background = C.border; }}
+          style={{ flex: "none", height: 9, margin: "-4px 0", position: "relative", zIndex: 2, cursor: "row-resize", touchAction: "none",
+                   display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ position: "absolute", left: 0, right: 0, top: 4, height: 1, background: C.border }} />
+          {/* A grip, so the line reads as something to drag. */}
+          <div style={{ position: "relative", width: 28, height: 5, borderRadius: 3, background: C.surface, border: `1px solid ${C.borderStrong}` }} />
+        </div>
+      </>}
+      <div style={{ flex: "1 1 0", minHeight: 60, overflowY: "auto" }}>
         {items.length
           ? items.map(m => <ItemRow key={m.typeID ?? m.name} mod={m} price={priceOf(m.typeID)} actions={actionsFor(m)} onInfo={setInfo} rowProps={rs.rowProps} rack={rack}
               kind={rack ? "module" : itemKind(m).kind} headroom={rowHeadroom} />)
           : <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{q ? (rack ? t("No modules found") : t("Nothing found")) : t("Pick a category above.")}</div>}
       </div>
-      </>}
+      </div>}
       {rs.view}
     </>
   );
@@ -336,6 +442,9 @@ function ShipsPane({ s }) {
     while (taken.has(name)) name = `${base} ${n++}`;
     const copy = { ...structuredClone(fit), id: nextFitId(fitsDB), name };
     s.setFitsDB(prev => ({ ...prev, [ship]: [...(prev[ship] || []), copy] }));
+    // Opened straight away, in a new tab, so the copy is what you edit next. Handed over whole: the
+    // library has not taken the copy yet, and looking it up there would open an empty fit.
+    s.openFitInNewTab(ship, name, copy);
   };
   const rename = (ship, id, name) => {
     name = name.trim(); setRenaming(null);
@@ -402,18 +511,29 @@ function ShipsPane({ s }) {
     );
   };
 
-  const q = search.trim().toLowerCase();
-  const hits = q ? Object.entries(fitsDB).flatMap(([ship, fits]) => [
-    ...(ship.toLowerCase().includes(q) ? [{ ship, fit: null }] : []),
-    ...fits.filter(f => f.name.toLowerCase().includes(q)).map(fit => ({ ship, fit })),
-  ]) : [];
-  const shipHits = q ? tree.flatMap(n => shipsUnder(n)).filter(sh => sh.name.toLowerCase().includes(q)).slice(0, 60) : [];
+  // The phone's search (FittingsScreen): hulls through nameMatchesQuery, so initialisms work (BNI is
+  // the Brutix Navy Issue, ONI both Navy Issue hulls), and fits by name or tag. Each list is ranked
+  // with searchScore, so "raven" leads with the Raven rather than Raven Navy Issue.
+  //
+  // Deferred like the Market pane's, and the fit list is capped: "f" matches every saved fit, and
+  // laying out 1,500 rows on one keystroke froze the window for over a second on a big library.
+  const dSearch = useDeferredValue(search);
+  const q = dSearch.trim().toLowerCase();
+  const { hits, moreHits, shipHits } = useMemo(() => {
+    if (!q) return { hits: [], moreHits: 0, shipHits: [] };
+    const ranked = (rows, nameOf) => rows.map((r, i) => ({ r, i, sc: searchScore(nameOf(r), dSearch) }))
+      .sort((a, b) => b.sc - a.sc || nameOf(a.r).length - nameOf(b.r).length || a.i - b.i).map(x => x.r);
+    const all = ranked(Object.entries(fitsDB).flatMap(([ship, fits]) =>
+      fits.filter(f => f.name.toLowerCase().includes(q) || tagsOf(f).some(tag => tag.toLowerCase().includes(q))).map(fit => ({ ship, fit }))), h => h.fit.name);
+    return { hits: all.slice(0, FIT_HIT_CAP), moreHits: Math.max(0, all.length - FIT_HIT_CAP),
+      shipHits: ranked(tree.flatMap(n => shipsUnder(n)).filter(sh => nameMatchesQuery(sh.name, dSearch)), sh => sh.name).slice(0, 60) };
+  }, [q, dSearch, fitsDB, tree]);
   // The fits you opened last (the session's recentFits, newest first), above the tree; a toggle hides
   // them and is remembered. Each is a normal fit row, labelled with its hull since it sits outside it.
   const [showRecent, setShowRecent] = useState(() => { try { return localStorage.getItem(RECENT_KEY) !== "0"; } catch { return true; } });
   const flipRecent = () => setShowRecent(v => { try { localStorage.setItem(RECENT_KEY, v ? "0" : "1"); } catch { /* private mode */ } return !v; });
   const recent = (s.recentFits ?? []).map(r => ({ ship: r.ship, fit: (fitsDB[r.ship] ?? []).find(f => (r.id != null && f.id === r.id) || f.name === r.name) }))
-    .filter(r => r.fit);
+    .filter((r, i, all) => r.fit && all.findIndex(o => o.fit && o.ship === r.ship && o.fit === r.fit) === i);
   return (
     <>
       <SearchBox value={search} onChange={setSearch} placeholder={t("Search ships and fits")} />
@@ -426,7 +546,8 @@ function ShipsPane({ s }) {
           </div>
         )}
         {q
-          ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.filter(h => h.fit).map(h => fitRow(h.ship, h.fit, 0))}
+          ? <>{shipHits.map(sh => hullRow(sh, 0))}{hits.map(h => fitRow(h.ship, h.fit, 0))}
+              {moreHits > 0 && <div style={{ padding: "6px 12px", fontSize: 12, color: C.textMute }}>{t("{n} more fits match. Keep typing to narrow it down.", { n: moreHits })}</div>}
               {!shipHits.length && !hits.length && <div style={{ padding: "10px 12px", fontSize: 13, color: C.textMid }}>{t("No ships or fits found")}</div>}</>
           : tree.map(n => nodeRow(n, 0))}
       </div>
@@ -437,14 +558,15 @@ function ShipsPane({ s }) {
 
 // `modeRequest` ({mode, n, focus}): switch to that mode now — the header's "+" asks for Ships,
 // Ctrl+Space for "toggle" (pyfa's ship/market switch) — and with `focus`, put the cursor in the
-// search box (Ctrl+F).
+// search box (Ctrl+F). With `rack`, the Market pane switches to that rack (an empty slot's double-click).
 export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequest }) {
   const [mode, setMode] = useState("ships");
   const rootRef = useRef(null);
   useEffect(() => {
     if (modeRequest?.mode === "toggle") setMode(m => (m === "ships" ? "market" : "ships"));
     else if (modeRequest?.mode) setMode(modeRequest.mode);
-    if (modeRequest?.focus) requestAnimationFrame(() => { const el = rootRef.current?.querySelector("[data-desk-search]"); el?.focus(); el?.select?.(); });
+    // Two frames: a request that also switches to Market has to wait for that pane to mount.
+    if (modeRequest?.focus) requestAnimationFrame(() => requestAnimationFrame(() => { const el = rootRef.current?.querySelector("[data-desk-search]"); el?.focus(); el?.select?.(); }));
   }, [modeRequest?.n]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div ref={rootRef} style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -455,7 +577,7 @@ export default function DeskBrowser({ s, ship, cs, adderRef, remoteAdd, modeRequ
                      background: mode === id ? C.accentLight : "transparent", color: mode === id ? C.accent : C.textMid }}>{label}</button>
         ))}
       </div>
-      {mode === "market" ? <MarketPane s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} /> : <ShipsPane s={s} />}
+      {mode === "market" ? <MarketPane s={s} ship={ship} cs={cs} adderRef={adderRef} remoteAdd={remoteAdd} request={modeRequest?.rack || modeRequest?.dest ? modeRequest : null} /> : <ShipsPane s={s} />}
     </div>
   );
 }

@@ -144,7 +144,13 @@ const SectionLabel = ({ children }) => (
 // `backdrop` (optional) is drawn behind the workspace and does not scroll with it — the user's
 // background picture (Backdrop.jsx).
 // `backgroundItems` (optional): the right-click menu on bare workspace (DesktopApp: the hull's info).
-export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, onPopOut, onDock, backdrop, backgroundItems }) {
+// Window and layout titles are translated by name — t(WINDOWS[i].title), t(PRESETS[i].title) — which
+// scripts/check-i18n.mjs cannot see. These are the titles no other literal t() call already names, so
+// their catalog entries count as used (and an edited title is caught as an orphan, as a literal is).
+export const windowTitleKeys = () => [t("Environment"), t("Resources"), t("Defense"), t("Targeting and mobility"), t("Fit price"),
+  t("Mutaplasmid"), t("Standard"), t("Mirrored"), t("Focus")];
+
+export default function Workspace({ state, setState, renderWindow, windowTitle, windowExtra, windowLive, onPopOut, onDock, backdrop, backgroundItems }) {
   const layout = state.windows;
   // `extra` rides along only when the windows actually changed, so a pointer move that snaps to the
   // same spot re-renders nothing.
@@ -339,7 +345,7 @@ export default function Workspace({ state, setState, renderWindow, windowTitle, 
       <DeskWindow key={id} id={id} title={stack.length > 1 ? titleOf(active) : title} rect={g} z={g.z} focused={isTop} locked={state.locked} floating={!!g.float}
         onFocus={focus} onDragStart={onDragStart} onDrag={onDrag} onDragEnd={onDragEnd} onDragCancel={onDragCancel}
         onKeyNudge={onKeyNudge} onClose={close} onPopOut={popOut} extra={windowExtra?.(active)}
-        tabs={stack.length > 1 ? stack.map(x => ({ id: x, title: titleOf(x) })) : null} activeTab={active}
+        tabs={stack.length > 1 ? stack.map(x => ({ id: x, title: titleOf(x), live: !!windowLive?.(x) })) : null} activeTab={active}
         onTab={onTab} onCloseTab={onCloseTab} onTabOut={onTabOut} onTabMove={onTabMove} onTabMenu={(e, x) => setTabMenu({ x: e.clientX, y: e.clientY, id: x })}
         collapsed={!g.float && !!g.collapsed} onToggleCollapse={g.float ? undefined : onToggleCollapse} dropTarget={dropTarget?.id === id} ghost={dropTarget?.from === id}>
         {renderWindow(active)}

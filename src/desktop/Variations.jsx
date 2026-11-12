@@ -49,21 +49,42 @@ const LABELS = { cpu: "CPU", power: "Powergrid", upgradeCost: "Calibration" };
 const colLabel = (k) => t(LABELS[k] ?? mutaLabel(k));
 const num = (v) => typeof v === "number" && Number.isFinite(v);
 const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.+-eE]/g, "")); return Number.isFinite(n) ? n : null; };
+// A price as people type it: "8m", "7.5b", "250k", "1,200,000", "8m isk". null when empty or unreadable.
+const parseIsk = (s) => {
+  const m = /^(\d+(?:\.\d+)?)([kmb])?$/.exec(String(s ?? "").trim().toLowerCase().replace(/[\s,_]/g, "").replace(/isk$/, ""));
+  if (!m) return null;
+  const v = Number(m[1]) * ({ k: 1e3, m: 1e6, b: 1e9 }[m[2]] ?? 1);
+  return Number.isFinite(v) && v >= 0 ? v : null;
+};
+// And back, short: 8000000 -> "8m", 7500000000 -> "7.5b".
+const fmtIsk = (v) => {
+  if (!num(v)) return "";
+  for (const [d, u] of [[1e9, "b"], [1e6, "m"], [1e3, "k"]]) if (Math.abs(v) >= d) return `${+(v / d).toFixed(3)}${u}`;
+  return String(+v.toFixed(2));
+};
 
 // Module scope, so a re-render (prices or contracts arriving) never remounts a box being typed in.
 // Uncontrolled and applied on blur / Enter; keyed on the applied value so Clear filters empties it.
-function FilterBox({ k, value, onSet, onAtLeastRef }) {
+// The price column reads and shows ISK the short way (8m, 7b), and its button is a ≤: "no dearer
+// than the reference", where every other column's ≥ is "no worse".
+function FilterBox({ k, value, onSet, onAtLeastRef, onAtMostRef, atMostOn = false, atLeastOn = false }) {
+  const show = (v) => v == null ? "" : k === "price" ? fmtIsk(v) : v;
   return (
     <div style={{ display: "flex", gap: 2, alignItems: "center", justifyContent: "flex-end" }}>
       {["min", "max"].map(side => (
-        <input key={`${side}:${value?.[side] ?? ""}`} defaultValue={value?.[side] ?? ""} placeholder={side === "min" ? t("min") : t("max")}
+        <input key={`${side}:${value?.[side] ?? ""}`} defaultValue={show(value?.[side])} placeholder={side === "min" ? t("min") : t("max")}
+          title={k === "price" ? t("ISK; 250k, 8m and 7b work") : undefined}
           aria-label={`${colLabel(k)} ${side === "min" ? t("min") : t("max")}`}
-          onBlur={e => onSet(k, side, e.target.value)} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          onBlur={e => { if (e.target.value !== String(show(value?.[side]))) onSet(k, side, e.target.value); }} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
           style={{ width: 50, height: 20, boxSizing: "border-box", padding: "0 4px", fontSize: 11.5, textAlign: "right", borderRadius: 4,
                    background: C.bg, border: `1px solid ${value?.[side] != null ? C.accent : C.border}`, color: C.text, outline: "none" }} />
       ))}
-      {onAtLeastRef ? <button type="button" title={t("No worse than the reference")} aria-label={t("No worse than the reference")} onClick={onAtLeastRef}
-        style={{ width: 18, height: 20, padding: 0, border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 11.5 }}>≥</button>
+      {onAtLeastRef ? <button type="button" aria-pressed={atLeastOn} onClick={onAtLeastRef}
+        title={atLeastOn ? t("Clear the reference's limit") : t("No worse than the reference")} aria-label={t("No worse than the reference")}
+        style={{ width: 18, height: 20, padding: 0, border: "none", borderRadius: 4, background: atLeastOn ? C.accentLight : "none", color: atLeastOn ? C.accent : C.textMid, cursor: "pointer", fontSize: 11.5 }}>≥</button>
+        : onAtMostRef ? <button type="button" aria-pressed={atMostOn} onClick={onAtMostRef}
+        title={atMostOn ? t("Clear the reference's price cap") : t("No more expensive than the reference")} aria-label={t("No more expensive than the reference")}
+        style={{ width: 18, height: 20, padding: 0, border: "none", borderRadius: 4, background: atMostOn ? C.accentLight : "none", color: atMostOn ? C.accent : C.textMid, cursor: "pointer", fontSize: 11.5 }}>≤</button>
         : <span aria-hidden="true" style={{ width: 18, flex: "none" }} />}
     </div>
   );
@@ -113,6 +134,8 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
 
   // ── Settings that outlive one item: sort, columns per item group, bars ───────────────────────
   const [sort, setSort] = useState(() => readJSON(SORT_KEY, { by: "price", dir: "asc" }));
+  // Each column's filter as it was before its ≥ / ≤ was pressed, so pressing it again puts it back.
+  const priorFilter = useRef({});
   useEffect(() => writeJSON(SORT_KEY, sort), [sort]);
   const [colsByGroup, setColsByGroup] = useState(() => readJSON(COLS_KEY, {}));
   useEffect(() => writeJSON(COLS_KEY, colsByGroup), [colsByGroup]);
@@ -251,16 +274,26 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
     ] });
   };
   const setFilter = (k, side, text) => setFilters(f => {
-    const v = parseNum(text), cur = { ...(f[k] ?? {}) };
+    const v = k === "price" ? parseIsk(text) : parseNum(text), cur = { ...(f[k] ?? {}) };
     if (v == null) delete cur[side]; else cur[side] = v;
     const out = { ...f };
     if (cur.min == null && cur.max == null) delete out[k]; else out[k] = cur;
     return out;
   });
-  // The phone's padlock: "no worse than the reference" on one attribute, as a min or a max.
+  // The phone's padlock: "no worse than the reference" on one attribute, as a min or a max. A toggle:
+  // pressed again, the column's filter goes back to what it was before.
+  const refBound = (k) => { const v = disp(k, ref?.values?.[k]); return v == null || !span[k] ? null : span[k].highGood ? { min: v } : { max: v }; };
+  const atLeastOn = (k) => { const b = refBound(k), cur = filters[k]; return !!b && !!cur && cur.min === b.min && cur.max === b.max; };
   const atLeastRef = (k) => {
-    const v = disp(k, ref?.values?.[k]); if (v == null || !span[k]) return;
-    setFilters(f => ({ ...f, [k]: span[k].highGood ? { min: v } : { max: v } }));
+    const b = refBound(k); if (!b) return;
+    setFilters(f => {
+      const out = { ...f }, cur = f[k];
+      if (cur && cur.min === b.min && cur.max === b.max) {
+        const prior = priorFilter.current[k];
+        if (prior) out[k] = prior; else delete out[k];
+      } else { priorFilter.current[k] = cur ?? null; out[k] = b; }
+      return out;
+    });
   };
   const toggleCol = (k) => setColsByGroup(m => {
     const cur = m[group] ?? attributes.slice(0, 8);
@@ -294,7 +327,20 @@ const VariationsTable = memo(function VariationsTable({ typeID, baseline, fitted
                textTransform: "uppercase", color: C.textMid, fontWeight: 500, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${C.border}`, cursor: "pointer", userSelect: "none" };
   const fth = { position: "sticky", top: 27, zIndex: 2, background: C.surface, padding: "3px 4px", borderBottom: `1px solid ${C.border}` };
   const sortMark = (k) => activeSort === k ? <span style={{ color: C.accent }}>{sort.dir === "asc" ? " ▲" : " ▼"}</span> : null;
-  const filterBox = (k) => <FilterBox k={k} value={filters[k]} onSet={setFilter} onAtLeastRef={k !== "price" && span[k] ? () => atLeastRef(k) : null} />;
+  const filterBox = (k) => <FilterBox k={k} value={filters[k]} onSet={setFilter} onAtLeastRef={k !== "price" && span[k] ? () => atLeastRef(k) : null} atLeastOn={k !== "price" && atLeastOn(k)}
+    onAtMostRef={k === "price" && refPrice != null ? toggleAtMostRef : null} atMostOn={k === "price" && refPrice != null && filters.price?.max === refPrice} />;
+  // The price ≤ is a toggle: on, the max is the reference's price; pressed again, the max goes back to
+  // whatever it was before (usually empty).
+  function toggleAtMostRef() {
+    setFilters(f => {
+      const cur = { ...(f.price ?? {}) };
+      if (cur.max === refPrice) { const prior = priorFilter.current.price; if (prior == null) delete cur.max; else cur.max = prior; }
+      else { priorFilter.current.price = cur.max ?? null; cur.max = refPrice; }
+      const out = { ...f };
+      if (cur.min == null && cur.max == null) delete out.price; else out.price = cur;
+      return out;
+    });
+  }
   const cards = width > 0 && width < Math.min(CARD_MAX, NAME_W + COL_W * (shownCols.length + 1));
   const sortLabel = (k) => k === "meta" ? t("Meta level") : k === "price" ? t("Price") : colLabel(k);
   const sortItems = ["meta", "price", ...attributes].map(k => ({

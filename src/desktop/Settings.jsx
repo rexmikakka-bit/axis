@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import KeysSettings from "./KeysSettings.jsx";
+import { UpdateCheckRow } from "./update-check.jsx";
 import { createPortal } from "react-dom";
 import { C, THEMES, THEME_LABELS } from "../theme.js";
 import { availableLocales, t } from "../lib/i18n.js";
@@ -28,7 +30,7 @@ import { TYPE, WEIGHT } from "./kit.jsx";
 // second copy of those would be a second place for them to go wrong. Only the drawing is the desktop's.
 
 const SECTIONS = [
-  ["skills", "Skills"], ["interface", "Interface"], ["market", "Market"],
+  ["skills", "Skills"], ["interface", "Interface"], ["keyboard", "Keyboard"], ["market", "Market"],
   ["backup", "Backup"], ["esi", "ESI"], ["about", "About"],
 ];
 const SECTION_KEY = "axis_desk_settings_section";
@@ -110,9 +112,6 @@ function InterfaceSection({ s, bd }) {
       </Row>
       <Row label={t("Auto-fill hardpoints")} note={t("On: picking a turret or launcher from the browser fills every free matching hardpoint, not just the slot you tapped. Off: it fills only that one slot — use Fill Hardpoints on an existing module to fill the rest by hand.")}>
         <Switch on={s.autoFillHardpoints ?? true} onChange={s.setAutoFillHardpoints} label={t("Auto-fill hardpoints")} />
-      </Row>
-      <Row label={t("Close the module picker after adding one module")} note={t("On: the picker for an empty slot closes as soon as you pick something. Off: it stays open and moves to the next empty slot in the rack.")}>
-        <Switch on={!!s.closeBrowserOnAdd} onChange={s.setCloseBrowserOnAdd} label={t("Close the module picker after adding one module")} />
       </Row>
     </>
   );
@@ -568,6 +567,7 @@ function AboutSection() {
   return (
     <>
       <Heading first>{t("About Axis")}</Heading>
+      <UpdateCheckRow />
       <div style={{ fontSize: TYPE.label, color: C.text, lineHeight: 1.5 }}>{before}<a href="https://github.com/pyfa-org/Pyfa" target="_blank" rel="noreferrer" style={{ color: C.accent }}>pyfa</a>{after}</div>
       <Note>{t("Unofficial, fan-made tool — not affiliated with, endorsed by, or sponsored by Fenris Creations. EVE Online and all related materials are used with limited permission; all intellectual property belongs to Fenris Creations.")}</Note>
     </>
@@ -600,6 +600,7 @@ export default function DeskSettings({ s, bd }) {
         <div style={{ maxWidth: 720 }}>
           {cur === "skills" && <SkillsSection s={s} />}
           {cur === "interface" && <InterfaceSection s={s} bd={bd} />}
+          {cur === "keyboard" && <KeysSettings />}
           {cur === "market" && <MarketSection s={s} />}
           {cur === "backup" && <BackupSection />}
           {cur === "esi" && <EsiSection s={s} />}

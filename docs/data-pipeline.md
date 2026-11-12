@@ -79,10 +79,17 @@ npm test                                   # the full regression suite MUST stil
 It needs pyfa's `eve.db` (auto-detected in `Pyfa-master/`, or pass `--db`). Regeneration is
 idempotent: hand fixes live in `scripts/data-patches.json` and are re-applied on every build.
 
-**What eve.db cannot give you:** it has no effect `modifierInfo` and no `stackable` flag. Effect
-modifiers are preserved from the existing bundle; a genuinely new effect is written inert and
-reported loudly. Supply its modifier from CCP's FSD dump via `data-patches.json`, or write a custom
-handler in `dogma-engine.js`.
+**What eve.db cannot give you:** it has no effect `modifierInfo` and no `stackable` flag. Both come
+from CCP's FSD dump in the pyfa clone (`staticdata/fsd_built/dogmaeffects.0.json` and
+`dogmaattributes.0.json`): a NEW effect takes its modifiers and category from it, and a new attribute
+its `stackable` flag (since Fractured Skies, whose 67 new effects would otherwise all have arrived
+inert). Existing modifiers are preserved from the bundle unless refreshed as below. A new effect the
+dump has no modifiers for is still written inert and reported loudly: supply it via
+`data-patches.json`, or write a custom handler in `dogma-engine.js`.
+
+**Run `build-market.py` too.** It regenerates `modules.json` and `market-tree.json` (and each module's
+CCP `variationParent`, which joins new variants to their family). Skip it and a new item is in the
+engine but in no browser.
 
 **Existing modifier lists ARE refreshed from CCP's FSD dump** (`staticdata/fsd_built/dogmaeffects.0.json`
 in the pyfa clone beside the db, or `--fsd`). "Preserve" alone meant an effect CCP edits in place never
@@ -144,7 +151,7 @@ category filter excluded — fighter stats had been stale for months.
 
 The repo-root `eve.db` is a superseded leftover (client build **3383521**), as is the one inside the
 installed pyfa (**3424810**). The authoritative copy now lives beside the source clone at
-`Pyfa-master/app/eve.db` (**3579973**), so the engine code and the data it describes are upgraded by
+`Pyfa-master/app/eve.db` (**3687575**), so the engine code and the data it describes are upgraded by
 the same action. `find_db()` probed the repo-root copy **first**, and the only thing that had ever
 kept that from mattering was `Pyfa-master/` also existing. It carried no `eve.db` at the time, so a
 plain `python scripts/build-bundle.py` regenerated the entire bundle from the old client build —
@@ -152,7 +159,7 @@ reverting real attribute values (Aralez, Berserker SW-900, …) and invalidating
 baseline in one commit. The probe order is now clone-first, repo-root last.
 
 **Always check the first two lines the generator prints** — it echoes the db path and client build.
-If it does not say `3579973`, stop.
+If it does not say `3687575`, stop.
 
 ## Upgrading eve.db (a new EVE patch)
 
@@ -163,8 +170,9 @@ which one it came from in `src/data/bundle-version.json`, and the suite prints i
 data: EVE client build 3579973 (SDE 2026-10-06) — matches validated baselines
 ```
 
-We are currently on **pyfa master c9671de / client build 3579973**: no pyfa release had shipped
-Crimson Harvest's data yet, so the db was built from that commit (see "Ahead of a pyfa release"
+We are currently on **pyfa master b79cd90 / client build 3687575** (Fractured Skies, 2026-11-11): the
+db was built from that commit, which is newer than the v2.70.0 release and carries eos's Synchronizer
+fixes (see "Ahead of a pyfa release"
 below). When you move to a newer `eve.db`, the suite detects the mismatch and prints a loud banner.
 
 ### Ahead of a pyfa release: building eve.db from pyfa master

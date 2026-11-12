@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { calcFitStats, computeProjectedReps, calcAngularSpeed, tidByName, isT3Cruiser, t3cSlotLayout, TYPES } from "../calc.js";
@@ -13,6 +13,8 @@ import { FitPickerSheet } from "../components/effects.jsx";
 import { tabFits } from "./tab-fits.js";
 import Menu from "./Menu.jsx";
 import { TYPE } from "./kit.jsx";
+import { useFitDrop, DropHint } from "./items-context.jsx";
+import { ContextMenu } from "./ContextMenu.jsx";
 
 // The desktop Graphs window, after pyfa's graph window (docs/desktop.md, "Graphs"): several SOURCE
 // fits plotted against several TARGETS at once — every source x target pair is one line, colour by
@@ -113,10 +115,11 @@ function curveParams(cat, src, tgt, inp) {
 // A typed X maximum has to widen the curve's DATA, not just the axis, or a line stops dead where its
 // own domain ended. generateCurve already does that through xZoom (the phone's axis zoom); the zoom
 // that lands one curve exactly on `xTo` is its own auto range over xTo, so each curve gets its own.
+// `natXMax` is how far the curve runs on its own, before a typed X maximum stretched or cut it.
 function curveTo(cat, yKey, xKey, params, xTo) {
   const r = generateCurve(cat, yKey, xKey, params);
-  if (!(xTo > 0) || !(r.xMax > 0) || Math.abs(r.xMax - xTo) < 1e-9) return r;
-  return generateCurve(cat, yKey, xKey, { ...params, xZoom: r.xMax / xTo });
+  if (!(xTo > 0) || !(r.xMax > 0) || Math.abs(r.xMax - xTo) < 1e-9) return { ...r, natXMax: r.xMax };
+  return { ...generateCurve(cat, yKey, xKey, { ...params, xZoom: r.xMax / xTo }), natXMax: r.xMax };
 }
 
 /**
@@ -133,7 +136,10 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
   const charges = getCompatibleCharges(first).filter(c => chargeDamage(c.typeID) > 0).filter(c => {
     if (meta === "all") return true;
     const m = metaOf(c.typeID, "T1");
-    return meta === "navy" ? (m === "T1" || isNavy(c.name) || m === "Faction") : (m === "T1" && !isNavy(c.name));
+    // Navy is T1 plus the empire navy rounds (Imperial Navy, Republic Fleet, Caldari Navy, Federation
+    // Navy). Their meta group is "Faction", but so is every pirate round (Arch Angel, Shadow, Sansha…),
+    // which is why testing for Faction here let pirate ammo win the profile.
+    return meta === "navy" ? (m === "T1" || isNavy(c.name)) : (m === "T1" && !isNavy(c.name));
   });
   const curves = [];
   for (const c of charges) {
@@ -143,7 +149,7 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
     const cs = src.calc(slots);
     if (!cs) continue;
     const r = curveTo("damage", yKey, "dist", curveParams(APP_PROFILE, { ...src, cs }, tgt, inp), xTo);
-    curves.push({ name: c.name, pts: r.pts, xMax: r.xMax });
+    curves.push({ name: c.name, pts: r.pts, xMax: r.xMax, natXMax: r.natXMax });
   }
   if (!curves.length) return null;
   const xMax = Math.max(...curves.map(c => c.xMax));
@@ -157,7 +163,7 @@ function appProfile(s, fit, src, tgt, inp, yKey, meta, xTo = null) {
     if (!last || last.ammo !== best.name) segments.push({ ammo: best.name, color: ammoColor(best.name), from: x, to: x });
     else last.to = x;
   }
-  return { pts, segments, xMax, rack: `${rack.mounts.length}× ${rack.name}` };
+  return { pts, segments, xMax, natXMax: Math.max(...curves.map(c => c.natXMax)), rack: `${rack.mounts.length}× ${rack.name}` };
 }
 
 // ── The plot ─────────────────────────────────────────────────────────────────────────────────
@@ -167,10 +173,16 @@ function niceTicks(max, n = 5) {
   const out = []; for (let v = 0; v <= max + step * 1e-6; v += step) out.push(+v.toFixed(6));
   return [...new Set(out)];
 }
+// The readout X value: one decimal, grouped, never abbreviated (the axis ticks keep `fmt`'s 1.5k).
+const fmtX = (v) => v.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+// The readout's Y values: in full too (1,412.3, not 1.4k); a small one keeps a second decimal.
+const fmtY = (v) => v.toLocaleString(undefined, { maximumFractionDigits: Math.abs(v) < 10 ? 2 : 1 });
 const fmt = (v) => Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1)}k` : Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
 
 // `xFixed` / `yFixed` are typed axis maximums (null = fit to the data). Lines past them are clipped.
-function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) {
+// `pinX` is a point the user clicked to keep: its line and readout stay put when the pointer leaves,
+// and the hover readout takes over only while the pointer is on the plot. Clicking the pin clears it.
+function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null, pinX = null, onPin, onContextMenu }) {
   const box = useRef(null);
   const [size, setSize] = useState({ w: 600, h: 360 });
   useLayoutEffect(() => {
@@ -190,14 +202,26 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) 
   const X = (x) => pad.l + (x / xMax) * iw, Y = (y) => pad.t + ih - ((y - yMin) / (yMax - yMin)) * ih;
   const path = (pts) => pts.filter(p => p[1] != null).map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
   const xt = niceTicks(xMax), yt = niceTicks(yMax).filter(v => v >= yMin);
-  const onMove = (e) => {
+  const xAt = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - r.left - pad.l) / iw) * xMax;
-    setHx(x >= 0 && x <= xMax ? x : null);
+    return x >= 0 && x <= xMax ? x : null;
   };
+  const onMove = (e) => setHx(xAt(e));
+  const pin = pinX != null && pinX >= 0 && pinX <= xMax ? pinX : null;
+  // From the click's own position, not `hx`: a click can land before the hover state has rendered.
+  const onClick = (e) => {
+    const cx = xAt(e);
+    if (cx == null || !onPin) return;
+    onPin(pin != null && Math.abs(X(cx) - X(pin)) <= 6 ? null : cx);
+  };
+  // The readout follows the pointer while it is on the plot, and falls back to the pin.
+  const tipX = hx ?? pin;
   return (
-    <div ref={box} style={{ flex: 1, minHeight: 0, position: "relative" }}>
-      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHx(null)} style={{ display: "block" }}>
+    <div ref={box} onContextMenu={onContextMenu} style={{ flex: 1, minHeight: 0, position: "relative" }}>
+      <svg width={W} height={H} onMouseMove={onMove} onMouseLeave={() => setHx(null)} onClick={onClick}
+        style={{ display: "block", cursor: onPin ? "crosshair" : undefined }}>
+        <title>{pin != null ? t("Click to move the pin; click the pin to clear it") : t("Click to pin this point")}{" · "}{t("right-click for display options")}</title>
         {yt.map(v => <g key={`y${v}`}><line x1={pad.l} x2={W - pad.r} y1={Y(v)} y2={Y(v)} stroke={C.border} />
           <text x={pad.l - 6} y={Y(v) + 4} textAnchor="end" fontSize="11" fill={C.textMid}>{fmt(v)}</text></g>)}
         {xt.map(v => <g key={`x${v}`}><line x1={X(v)} x2={X(v)} y1={pad.t} y2={pad.t + ih} stroke={`${C.border}88`} />
@@ -216,27 +240,60 @@ function Plot({ series, xLabel, yLabel, showY0, xFixed = null, yFixed = null }) 
             })
           : <path key={s.key} d={path(s.pts)} fill="none" stroke={s.color} strokeWidth="2" strokeDasharray={s.dash} />)}
         </g>
+        {pin != null && <line x1={X(pin)} x2={X(pin)} y1={pad.t} y2={pad.t + ih} stroke={C.accent} strokeWidth="1.5" />}
+        {pin != null && series.map(s => { const y = interpCurveAt(s.pts, pin); return y == null ? null : <circle key={`p${s.key}`} cx={X(pin)} cy={Y(y)} r="3.5" fill={s.color} />; })}
         {hx != null && <line x1={X(hx)} x2={X(hx)} y1={pad.t} y2={pad.t + ih} stroke={C.textMid} strokeDasharray="3 3" />}
         {hx != null && series.map(s => { const y = interpCurveAt(s.pts, hx); return y == null ? null : <circle key={`c${s.key}`} cx={X(hx)} cy={Y(y)} r="3.5" fill={s.color} />; })}
       </svg>
-      {hx != null && (
-        <div style={{ position: "absolute", top: pad.t + 6, left: Math.min(X(hx) + 12, W - 250), pointerEvents: "none", background: `${C.surface}ee`,
-                      border: `1px solid ${C.borderStrong}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, lineHeight: 1.45, minWidth: 160, maxWidth: 240 }}>
-          <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmt(hx)}</span></div>
-          {series.map(s => {
-            const y = interpCurveAt(s.pts, hx);
-            const seg = s.segments?.find(g => hx >= g.from - 1e-9 && hx <= g.to + xMax / 200);
-            return y == null ? null : (
+      {tipX != null && (
+        <div style={{ position: "absolute", top: pad.t + 6, left: Math.max(pad.l, Math.min(X(tipX) + 12, W - 310)), pointerEvents: "none", background: `${C.surface}ee`,
+                      border: `1px solid ${hx == null ? C.accent : C.borderStrong}`, borderRadius: 6, padding: "6px 9px", fontSize: 12, lineHeight: 1.45, minWidth: 160, maxWidth: 300 }}>
+          <div style={{ color: C.textMid }}>{xLabel}: <span style={{ color: C.text }}>{fmtX(tipX)}</span></div>
+          {/* Grouped as the legend is: each fit's name once, then a line per target with its value, so a
+              long fit name can only cut itself short, never the target's. With no targets, one line a fit. */}
+          {[...new Set(series.map(s => s.i))].map(i => {
+            const group = series.filter(s => s.i === i);
+            const rows = group.map(s => {
+              const y = interpCurveAt(s.pts, tipX);
+              const seg = s.segments?.find(g => tipX >= g.from - 1e-9 && tipX <= g.to + xMax / 200);
+              return y == null ? null : { s, y, seg };
+            }).filter(Boolean);
+            if (!rows.length) return null;
+            const value = (y) => <span style={{ color: C.text, fontVariantNumeric: "tabular-nums", flex: "none" }}>{fmtY(y)}</span>;
+            const name = (text, color = C.textMid) => <span title={text} style={{ color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{text}</span>;
+            const swatch = (s, seg) => <span style={{ width: 8, height: 8, borderRadius: 2, background: seg?.color ?? s.color, flex: "none" }} />;
+            if (!group[0].tgtName) return rows.map(({ s, y, seg }) => (
               <div key={s.key} style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: seg?.color ?? s.color, flex: "none" }} />
-                <span style={{ color: C.textMid, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{s.short}{seg ? ` · ${seg.ammo}` : ""}</span>
-                <span style={{ color: C.text, fontVariantNumeric: "tabular-nums" }}>{fmt(y)}</span>
+                {swatch(s, seg)}{name(`${s.fitName}${seg ? ` · ${seg.ammo}` : ""}`)}{value(y)}
+              </div>
+            ));
+            return (
+              <div key={i} style={{ marginTop: 3 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>{swatch(group[0])}{name(group[0].fitName, C.text)}</div>
+                {rows.map(({ s, y, seg }) => (
+                  <div key={s.key} style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 14 }}>
+                    <svg width="14" height="6" style={{ flex: "none" }}><line x1="0" y1="3" x2="14" y2="3" stroke={seg?.color ?? s.color} strokeWidth="2" strokeDasharray={s.dash} /></svg>
+                    {name(`${s.tgtName}${seg ? ` · ${seg.ammo}` : ""}`)}{value(y)}
+                  </div>
+                ))}
               </div>
             );
           })}
         </div>
       )}
     </div>
+  );
+}
+
+// A graphed fit as the legend and readout name it: two fits of one hull differ only by fit name.
+const fitLabel = (sc) => `${sc.ship} · ${sc.fitName}`;
+// One legend entry. Long fit names are cut with an ellipsis and given whole on hover.
+function LegendItem({ swatch, label }) {
+  return (
+    <span title={label} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.textMid, minWidth: 0, maxWidth: 280 }}>
+      <span style={{ flex: "none", display: "inline-flex" }}>{swatch}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+    </span>
   );
 }
 
@@ -258,7 +315,7 @@ const ListRow = ({ swatch, label, onRemove, children }) => (
     {onRemove && <button type="button" onClick={onRemove} aria-label={t("Remove")} style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>}
   </div>
 );
-const addBtn = () => ({ height: 24, padding: "0 9px", borderRadius: 5, fontSize: 12, cursor: "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid });
+const addBtn = (disabled = false) => ({ height: 24, padding: "0 9px", whiteSpace: "nowrap", borderRadius: 5, fontSize: 12, cursor: disabled ? "default" : "pointer", background: "transparent", border: `1px solid ${C.borderStrong}`, color: C.textMid, opacity: disabled ? 0.45 : 1 });
 const fieldStyle = () => ({ width: 64, height: 24, boxSizing: "border-box", padding: "0 6px", borderRadius: 5, fontSize: 12.5, textAlign: "right",
                      fontVariantNumeric: "tabular-nums", background: C.bg, border: `1px solid ${C.borderStrong}`, color: C.text, outline: "none" });
 
@@ -266,7 +323,8 @@ const fieldStyle = () => ({ width: 64, height: 24, boxSizing: "border-box", padd
 // same frame: east is along the line between the ships), drawn larger and with the desktop's readout.
 // Speeds stay a PERCENT of each fit's own top speed, as the sliders were, because one setting drives
 // every source and target on the graph; the wheel shows it in m/s against the first of them.
-function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct }) {
+// `mixed`: the lines it drives have different top speeds, so no one m/s is true and only the % shows.
+function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct, mixed = false }) {
   const vel = Math.round(refVel * pct / 100);
   const cardinal = COMPASS_DIRS[((Math.round((angle + 90) / 45) % 8) + 8) % 8];
   return (
@@ -277,7 +335,7 @@ function Wheel({ label, angle, pct, refVel, enemyPos, onAngle, onPct }) {
       <span style={{ fontSize: 12, color: C.text, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
         {refVel > 0 ? `${angle}° ${cardinal}` : "—"}</span>
       <span style={{ fontSize: 11.5, color: C.textMid, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-        {refVel > 0 ? `${vel} m/s · ${Math.round(pct)}%` : t("immobilised")}</span>
+        {refVel > 0 ? (mixed ? `${Math.round(pct)}%` : `${vel} m/s · ${Math.round(pct)}%`) : t("immobilised")}</span>
     </div>
   );
 }
@@ -308,7 +366,11 @@ export default function GraphsPanel({ s }) {
   // Typed axis maximums, per graph and axis pair: a range scale that suits Damage vs distance means
   // nothing on Capacitor vs time. {"damage|dps|dist": {x: 60, y: null}}; null is Auto.
   const [scales, setScales] = useState(saved.scales ?? {});
+  // The clicked-in point on the X axis, {key: "<graph>|<x axis>", x}. Keyed because an x of 20 means
+  // 20 km on one graph and 20 s on the next; a pin from another graph or axis is simply not shown.
+  const [pin, setPin] = useState(saved.pin ?? null);
   const [picker, setPicker] = useState(null);   // "source" | "target"
+  const [plotMenu, setPlotMenu] = useState(null);   // the plot's right-click menu, {x, y}
   // Compact (plot only) or expanded (controls under it). The controls sit BELOW the plot so the plot
   // keeps the window's full width, which a distance or time axis needs far more than height. "auto"
   // follows the window: under 460 px tall the controls fold away, so the graph can sit small in a
@@ -323,7 +385,7 @@ export default function GraphsPanel({ s }) {
     ro.observe(el); return () => ro.disconnect();
   }, []);
   const showPanel = panelMode === "shown" || (panelMode === "auto" && rootH >= 460);
-  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular]);
+  useEffect(() => { writePrefs({ cat, y: yKey, x: xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular, pin }); }, [cat, yKey, xKey, sources, targets, inp, meta, ignoreResists, showY0, panelMode, scales, angular, pin]);
 
   // With no sources chosen, graph the fit being edited.
   const srcList = sources.length ? sources : (s.activeFit?.ship ? [{ ship: s.activeFit.ship, fitName: s.activeFit.fitName, auto: true }] : []);
@@ -337,11 +399,15 @@ export default function GraphsPanel({ s }) {
   const scaleKey = `${cat}|${y}|${x}`, scale = scales[scaleKey] ?? {};
   const setScale = (axis, v) => setScales(m => ({ ...m, [scaleKey]: { ...(m[scaleKey] ?? {}), [axis]: v > 0 ? v : null } }));
 
+  // Every edit autosaves into the fit library, and each plotted fit and target is a whole-fit
+  // calculation off it. Reading the library DEFERRED lets the edit paint first and the graph follow in
+  // an interruptible render (the Fitting window's stats work the same way).
+  const fitsDB = useDeferredValue(s.fitsDB);
   const srcData = useMemo(() => srcList.map(sc => {
-    const fit = s.fitsDB?.[sc.ship]?.find(f => f.name === sc.fitName);
-    return fit ? { sc, fit, d: sourceData(s, sc.ship, fit, ignoreResists ? {} : { targetResists: s.tgtProfile?.r }) } : null;
-  }), [JSON.stringify(srcList), s.fitsDB, s.sourceSkills, s.factorInReload, s.tgtProfile, ignoreResists]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const tgtData = useMemo(() => tgtList.map(tg => tg ? targetData(s, tg) : null), [JSON.stringify(tgtList), s.fitsDB, s.sourceSkills]);   // eslint-disable-line react-hooks/exhaustive-deps
+    const fit = fitsDB?.[sc.ship]?.find(f => f.name === sc.fitName);
+    return fit ? { sc, fit, d: sourceData({ ...s, fitsDB }, sc.ship, fit, ignoreResists ? {} : { targetResists: s.tgtProfile?.r }) } : null;
+  }), [JSON.stringify(srcList), fitsDB, s.sourceSkills, s.factorInReload, s.tgtProfile, ignoreResists]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const tgtData = useMemo(() => tgtList.map(tg => tg ? targetData({ ...s, fitsDB }, tg) : null), [JSON.stringify(tgtList), fitsDB, s.sourceSkills]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ordinary curves are cheap enough to compute in the render; the application profile is one
   // whole-fit calculation per round, so it runs off the render and lands when ready.
@@ -352,8 +418,8 @@ export default function GraphsPanel({ s }) {
       const td = tgtData[j];
       if (hasTargets && !td) return;
       const r = curveTo(cat, y, x, curveParams(cat, sd.d, td, inp), scale.x);
-      out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
-                 short: hasTargets ? `${sd.sc.ship} → ${td.label}` : `${sd.sc.ship} · ${sd.sc.fitName}`, i, j });
+      out.push({ key: `${i}:${j}`, pts: r.pts, xMax: r.xMax, natXMax: r.natXMax, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length],
+                 short: hasTargets ? `${fitLabel(sd.sc)} → ${td.label}` : fitLabel(sd.sc), fitName: fitLabel(sd.sc), tgtName: hasTargets ? td.label : null, i, j });
     }); });
     return out;
   }, [cat, y, x, srcData, tgtData, inp, hasTargets, scale.x]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -371,7 +437,7 @@ export default function GraphsPanel({ s }) {
       const [sd, i, td, j] = jobs[k];
       const r = appProfile(s, sd.fit, sd.d, td, inp, y, meta, scale.x);
       // Round names only on each fit's first target: its other targets' curves run alongside and the labels pile up.
-      if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${sd.sc.ship} → ${td.label}` });
+      if (r) done.push({ key: `${i}:${j}`, ...r, labels: !done.some(d => d.i === i), i, color: SRC_COLORS[i % SRC_COLORS.length], dash: DASHES[j % DASHES.length], short: `${fitLabel(sd.sc)} → ${td.label}`, fitName: fitLabel(sd.sc), tgtName: td.label });
       setTimeout(() => step(k + 1), 0);
     };
     setTimeout(() => step(0), 0);
@@ -379,24 +445,79 @@ export default function GraphsPanel({ s }) {
   }, [profKey, srcData, tgtData]);   // eslint-disable-line react-hooks/exhaustive-deps
   const series = cat === APP_PROFILE ? (profiles.key === profKey ? profiles.series : []) : plain;
   const busy = cat === APP_PROFILE && profiles.key !== profKey;
+  // Adding a fit or a target re-checks the typed axis maximums once its curves land: an axis goes
+  // back to Auto when the new lines reach past BOTH the typed maximum and everything already on the
+  // graph. So an added fit is never hidden past the edge, but a deliberate zoom (10 km on curves that
+  // run to 45) survives adding another fit that also runs to 45. X is tested on each curve's natural
+  // extent, since a typed X maximum stretches every curve to exactly that width.
+  const grow = useRef(null);
+  const extent = (list) => ({ x: Math.max(0, ...list.map(sr => sr.natXMax ?? sr.xMax ?? 0)),
+                              y: Math.max(0, ...list.flatMap(sr => sr.pts.map(p => p[1] ?? 0))) });
+  const added = (fn) => (...a) => { grow.current = extent(series); return fn(...a); };
+  useEffect(() => {
+    if (!grow.current || busy || !series.length) return;
+    const before = grow.current, now = extent(series);
+    grow.current = null;
+    const over = { x: scale.x > 0 && now.x > Math.max(scale.x, before.x) * 1.0001,
+                   y: scale.y > 0 && now.y > Math.max(scale.y, before.y) * 1.0001 };
+    if (over.x || over.y) setScales(m => ({ ...m, [scaleKey]: { ...(m[scaleKey] ?? {}), ...(over.x && { x: null }), ...(over.y && { y: null }) } }));
+  }, [series, busy]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const firstCs = srcData.find(Boolean)?.d.cs;
   const showRange = cat !== APP_PROFILE && usesEngRange(cat, x);
   const showWindow = cat !== APP_PROFILE && usesTimeWindow(cat, y, x);
   const setI = (k, v) => setInp(p => ({ ...p, [k]: v }));
-  // The wheels read in m/s against the first fit and the first target; the percent applies to all.
-  const selfRef = firstCs?.maxVelocityAB ?? firstCs?.maxVelocity ?? srcData.find(Boolean)?.d.ship?.maxVelocity ?? 0;
-  const tgtRef = tgtData.find(Boolean)?.vel ?? 0;
-  const transversal = Math.abs(selfRef * inp.atkSpeed / 100 * Math.sin(inp.atkAngle * Math.PI / 180) - tgtRef * inp.tgtSpeed / 100 * Math.sin(inp.tgtAngle * Math.PI / 180));
-  // Angular velocity at the engagement distance: the Range field where it is shown, else the fit's
-  // weapon reach — the phone's angularDistM, so the two quote the same engagement.
-  const angDistM = showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
-  const angularDeg = calcAngularSpeed(selfRef * inp.atkSpeed / 100, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtRef * inp.tgtSpeed / 100, inp.tgtAngle, 0) * 180 / Math.PI;
+  // The pin, if it belongs to this graph and axis and is still on the plot.
+  const pinKey = `${cat}|${x}`;
+  const xShown = scale.x > 0 ? scale.x : Math.max(0, ...series.map(sr => sr.xMax ?? 0));
+  const pinX = pin?.key === pinKey && pin.x <= xShown ? pin.x : null;
+  // The wheels' speeds are a PERCENT of each fit's own top speed, so one setting can mean several
+  // m/s. The m/s, the transversal and the angular readout are quoted only when every line on the
+  // graph shares them: one top speed among the fits (or your ship parked), and one target speed.
+  const velOf = cs => cs?.maxVelocityAB ?? cs?.maxVelocity ?? 0;
+  const srcVels = [...new Set(srcData.filter(Boolean).map(sd => Math.round(velOf(sd.d.cs) || sd.d.ship?.maxVelocity || 0)))];
+  // An Ideal target (stationary, infinite signature, or a custom one typed that way) is perfect
+  // application at any transversal, so the Target wheel has nothing to say about it: the wheel and
+  // the readouts follow the targets that can move, and Ideal's line stays flat at full damage.
+  const moving = tgtData.filter(td => td && !(td.vel === 0 && td.sig >= IDEAL_SIG));
+  const tgtVels = [...new Set(moving.map(td => Math.round(td.vel ?? 0)))];
+  const selfRef = srcVels.length === 1 ? srcVels[0] : (velOf(firstCs) || srcData.find(Boolean)?.d.ship?.maxVelocity || 0);
+  const tgtRef = moving[0]?.vel ?? 0;
+  const selfMixed = srcVels.length > 1, tgtMixed = tgtVels.length > 1;
+  // On a target-speed axis the graph sweeps the target's speed and ignores the Target wheel's, so the
+  // target speed is the PINNED one: absolute m/s is the same for every target; a percent is only one
+  // m/s if the targets share a top speed. Unpinned there is no single speed to quote.
+  const tgtSpeedNow = x === "tgtSpeedMs" ? pinX
+    : x === "tgtSpeedPct" ? (pinX != null && !tgtMixed ? tgtRef * pinX / 100 : null)
+    : !tgtMixed ? tgtRef * inp.tgtSpeed / 100 : null;
+  const selfSpeedNow = inp.atkSpeed === 0 ? 0 : !selfMixed ? selfRef * inp.atkSpeed / 100 : null;
+  const showTransversal = tgtSpeedNow != null && selfSpeedNow != null;
+  const transversal = showTransversal ? Math.abs(selfSpeedNow * Math.sin(inp.atkAngle * Math.PI / 180) - tgtSpeedNow * Math.sin(inp.tgtAngle * Math.PI / 180)) : 0;
+  // Angular velocity at the engagement distance: a pinned point on a distance axis, else the Range
+  // field where it is shown, else the fit's weapon reach (the phone's angularDistM).
+  const angDistM = x === "dist" && pinX != null ? pinX * 1000
+    : showRange ? (inp.rangeKm ?? defaultEngRangeKm(cat, firstCs)) * 1000 : engagementDistanceM(firstCs);
+  const angularDeg = showTransversal ? calcAngularSpeed(selfSpeedNow, inp.atkAngle, firstCs?.shipRadius ?? 0, angDistM, tgtSpeedNow, inp.tgtAngle, 0) * 180 / Math.PI : NaN;
   const fmtAngular = v => !Number.isFinite(v) ? "--" : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
+  // Adding a fit, from the picker or "+ Current fit". One already on the graph is not added twice: two
+  // identical lines say nothing, and the pair is the line's identity (its React key and legend entry).
+  // The first explicit source keeps the auto-graphed open fit, so adding a second one compares them.
+  const addSource = (ship, fitName) => setSources(l => {
+    const base = l.length ? l : srcList.map(({ ship: a, fitName: b }) => ({ ship: a, fitName: b }));
+    return base.some(q => q.ship === ship && q.fitName === fitName) ? base : [...base, { ship, fitName }];
+  });
+  const addTarget = (ship, fitName) => setTargets(l => l.some(q => q.kind === "fit" && q.ship === ship && q.fitName === fitName) ? l : [...l, { kind: "fit", ship, fitName }]);
+  // A saved fit dragged from the ship browser: onto Fits it is graphed, onto Targets it is shot at.
+  const hasFit = (ship, name) => !!s.fitsDB?.[ship]?.some(f2 => f2.name === name);
+  const srcDrop = useFitDrop(hasFit, (ship, name) => added(() => addSource(ship, name))());
+  const tgtDrop = useFitDrop(hasFit, (ship, name) => added(() => addTarget(ship, name))());
+  const cur = s.activeFit?.ship && s.activeFit?.fitName ? { ship: s.activeFit.ship, fitName: s.activeFit.fitName } : null;
+  const curIsSource = !!cur && srcList.some(q => q.ship === cur.ship && q.fitName === cur.fitName);
+  const curIsTarget = !!cur && targets.some(q => q.kind === "fit" && q.ship === cur.ship && q.fitName === cur.fitName);
   const setTarget = (j, patch) => setTargets(l => l.map((x2, k) => k === j ? { ...x2, ...patch } : x2));
   // A custom target starts from whatever the first target presents, so it is a tweak, not a blank.
-  const addCustom = () => { const td = tgtData.find(Boolean);
-    setTargets(l => [...l, { kind: "custom", sig: td && td.sig < IDEAL_SIG ? Math.round(td.sig) : 150, vel: Math.round(td?.vel ?? 300) }]); };
+  const addCustom = added(() => { const td = tgtData.find(Boolean);
+    setTargets(l => [...l, { kind: "custom", sig: td && td.sig < IDEAL_SIG ? Math.round(td.sig) : 150, vel: Math.round(td?.vel ?? 300) }]); });
   const swatch = (i) => <span style={{ width: 14, height: 3, borderRadius: 2, background: SRC_COLORS[i % SRC_COLORS.length], flex: "none" }} />;
   const dashSwatch = (j) => <svg width="18" height="6" style={{ flex: "none" }}><line x1="0" y1="3" x2="18" y2="3" stroke={C.text} strokeWidth="2" strokeDasharray={DASHES[j % DASHES.length]} /></svg>;
   const xLabel = xAxes.find(a => a.key === x)?.label() ?? "";
@@ -422,29 +543,46 @@ export default function GraphsPanel({ s }) {
         </div>
         {!series.length && !busy
           ? <div style={{ margin: "auto", fontSize: 13, color: C.textMid }}>{t("Nothing to graph for these fits.")}</div>
-          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null} />}
+          : <Plot series={series} xLabel={xLabel} yLabel={cat === APP_PROFILE ? `${yLabel} · ${t("best ammo")}` : yLabel} showY0={showY0} xFixed={scale.x ?? null} yFixed={scale.y ?? null}
+              pinX={pinX} onPin={v => setPin(v == null ? null : { key: pinKey, x: v })}
+              onContextMenu={e => { e.preventDefault(); setPlotMenu({ x: e.clientX, y: e.clientY }); }} />}
+        {/* The legend names each fit once (its colour) and each target once (its dash) rather than every
+            fit × target line, so six lines from three fits and two targets is five short entries. */}
         {series.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", padding: "6px 4px 0", fontSize: 12 }}>
-            {series.map(sr => (
-              <span key={sr.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.textMid }}>
-                <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={sr.color} strokeWidth="2.5" strokeDasharray={sr.dash} /></svg>
-                {sr.short}{sr.rack ? ` · ${sr.rack}` : ""}
-              </span>
-            ))}
+            {srcData.map((sd, i) => {
+              if (!sd || !series.some(sr => sr.i === i)) return null;
+              const rack = series.find(sr => sr.i === i && sr.rack)?.rack;
+              const label = fitLabel(sd.sc) + (rack ? ` · ${rack}` : "");
+              return <LegendItem key={`s${i}`} label={label}
+                swatch={<span style={{ width: 16, height: 3, borderRadius: 2, background: SRC_COLORS[i % SRC_COLORS.length] }} />} />;
+            })}
+            {hasTargets && tgtData.some(Boolean) && <span style={{ width: 1, alignSelf: "stretch", background: C.border }} />}
+            {hasTargets && tgtData.map((td, j) => td && series.some(sr => sr.j === j) ? (
+              <LegendItem key={`t${j}`} label={td.label}
+                swatch={<svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={C.text} strokeWidth="2" strokeDasharray={DASHES[j % DASHES.length]} /></svg>} />
+            ) : null)}
           </div>
         )}
       </div>
 
       {/* The controls, as columns that wrap: one row on a wide window, two or more on a narrow one.
-          Capped at half the window and scrolled past that, so the plot always keeps its share. */}
+          Capped at half the window and scrolled past that, so the plot always keeps its share. The
+          flight-vector wheels are the tallest control, so they sit in their own column pinned to the
+          right edge instead of wrapping under the rest. */}
       {showPanel && <div style={{ flex: "none", maxHeight: "50%", overflowY: "auto", padding: "0 12px 12px", borderTop: `1px solid ${C.border}`,
-                                  display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", columnGap: 22, alignItems: "start" }}>
-        <div>
+                                  display: "flex", gap: 22, alignItems: "flex-start" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexWrap: "wrap", columnGap: 22, alignItems: "flex-start" }}>
+        {/* Grows into a row of its own when Fits and Targets wrap beneath it, and lays Y and X side by
+            side there, rather than leaving the width beside it empty. Beside them it barely grows (1 to
+            their 10), so the spare width goes to the fit and target names. */}
+        <div style={{ flex: "1 1 230px", minWidth: 190 }}>
         <Label>{t("Graph")}</Label>
         <select value={cat} onChange={e => setCat(e.target.value)} style={selectStyle()} aria-label={t("Graph")}>
           {GRAPH_TYPES.map(g => <option key={g.key} value={g.key}>{g.label()}</option>)}
         </select>
         {/* Each axis on one row: what it plots, then its maximum (empty is Auto). */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", columnGap: 16 }}>
         {[["y", y, setY, yAxes, t("Y axis")], ["x", x, setX, xAxes, t("X axis")]].map(([axis, val, set, axes, aria]) => (
           <div key={axis} style={{ display: "grid", gridTemplateColumns: "14px minmax(0,1fr) auto", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12.5 }}>
             <span style={{ color: C.textMid }}>{axis.toUpperCase()}</span>
@@ -453,24 +591,43 @@ export default function GraphsPanel({ s }) {
               title={t("Type the axis maximum, or press and slide sideways; empty fits it to the data")} onChange={v => setScale(axis, v)} />
           </div>
         ))}
-        <Label>{t("Display")}</Label>
-        {(cat === "damage" || cat === APP_PROFILE) && <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
-          <input type="checkbox" checked={ignoreResists} onChange={() => setIgnoreResists(v => !v)} style={{ accentColor: C.accent }} />{t("Ignore target resists")}
-        </label>}
-        <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: C.text, minHeight: 24 }}>
-          <input type="checkbox" checked={showY0} onChange={() => setShowY0(v => !v)} style={{ accentColor: C.accent }} />{t("Always show Y = 0")}
-        </label>
+        </div>
+        {/* What the curve is run at: range, time window, the application profile's ammo. Under the axes,
+            in the same column, since they belong to the graph rather than to a fit or a target. */}
+        {(showRange || showWindow || cat === APP_PROFILE) && <div style={{ marginTop: 8 }}>
+        {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
+        {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
+        {cat === APP_PROFILE && <>
+          <Label>{t("Ammo")}</Label>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[["t1", "T1"], ["navy", t("Navy")], ["all", t("All")]].map(([k, l]) => (
+              <button key={k} type="button" aria-pressed={meta === k} onClick={() => setMeta(k)}
+                style={{ ...addBtn(), flex: 1, color: meta === k ? C.accent : C.textMid, borderColor: meta === k ? C.accent : C.borderStrong, background: meta === k ? C.accentLight : "transparent" }}>{l}</button>
+            ))}
+          </div>
+        </>}
+        </div>}
         </div>
 
-        <div>
+        {/* Fits, then Targets: a pair that stays in that order (pyfa's: what is shooting on the left, what
+            it shoots at on the right). The grid around them used to wrap them apart, which on a medium
+            window put Targets under Graph with Fits up on the right. */}
+        <div style={{ flex: "10 1 340px", minWidth: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))", columnGap: 22, alignItems: "start" }}>
+        <div {...srcDrop.props} style={{ position: "relative" }}>
+        <DropHint over={srcDrop.over} ok={srcDrop.ok} label={t("Graph this fit")} />
         <Label>{t("Fits")}</Label>
         {srcList.map((sc, i) => <ListRow key={`${sc.ship}:${sc.fitName}`} swatch={swatch(i)} label={`${sc.ship} · ${sc.fitName}`}
           onRemove={sc.auto ? undefined : () => setSources(l => l.filter((_, k) => k !== i))} />)}
         {!srcList.length && <div style={{ fontSize: 12.5, color: C.textMid }}>{t("Open a fit, or add one.")}</div>}
-        <button type="button" style={{ ...addBtn(), marginTop: 4 }} onClick={() => setPicker("source")}>+ {t("Add fit")}</button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+          <button type="button" style={addBtn()} onClick={() => setPicker("source")}>+ {t("Fit")}</button>
+          <button type="button" style={addBtn(!cur || curIsSource)} disabled={!cur || curIsSource} title={curIsSource ? t("Already on the graph") : undefined}
+            onClick={added(() => addSource(cur.ship, cur.fitName))}>+ {t("Current fit")}</button>
+        </div>
         </div>
 
-        {hasTargets && <div>
+        {hasTargets && <div {...tgtDrop.props} style={{ position: "relative" }}>
+          <DropHint over={tgtDrop.over} ok={tgtDrop.ok} label={t("Graph against this fit")} />
           <Label>{t("Targets")}</Label>
           {targets.map((tg, j) => {
             const P = tg.kind === "profile" ? TARGET_PROFILES[tg.profile] : null;
@@ -495,53 +652,50 @@ export default function GraphsPanel({ s }) {
               </div>
             );
           })}
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
             <Menu label={`+ ${t("Profile")}`} align="left" buttonStyle={{ ...addBtn() }} items={Object.keys(TARGET_PROFILES).map(k => ({
-              label: TARGET_PROFILES[k].label(), onSelect: () => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }]) })).concat([
+              label: TARGET_PROFILES[k].label(), onSelect: added(() => setTargets(l => [...l, { kind: "profile", profile: k, mwd: false }])) })).concat([
               { divider: true }, { label: t("Custom sig and speed"), onSelect: addCustom }])} />
             <button type="button" style={addBtn()} onClick={() => setPicker("target")}>+ {t("Fit")}</button>
+            <button type="button" style={addBtn(!cur || curIsTarget)} disabled={!cur || curIsTarget} title={curIsTarget ? t("Already on the graph") : undefined}
+              onClick={added(() => addTarget(cur.ship, cur.fitName))}>+ {t("Current fit")}</button>
           </div>
         </div>}
+        </div>
 
-        {(hasTargets || cat === "damage" || showRange || showWindow || cat === APP_PROFILE) && <div>
-        {(hasTargets || cat === "damage") && <>
-          <Label>{t("Engagement")}</Label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-            <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
-            <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
-          </div>
-          {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range). */}
-          <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
-            style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
-            <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
-            <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
-              {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
-          </button>
-        </>}
-        {showRange && <Slider label={t("Range")} min={0} max={250} unit=" km" value={Math.round(inp.rangeKm ?? defaultEngRangeKm(cat, firstCs))} onChange={v => setI("rangeKm", v)} />}
-        {showWindow && <Slider label={t("Time window")} min={10} max={600} unit=" s" value={inp.windowS ?? DEFAULT_WINDOW_S} onChange={v => setI("windowS", v)} />}
-        {cat === APP_PROFILE && <>
-          <Label>{t("Ammo")}</Label>
-          <div style={{ display: "flex", gap: 4 }}>
-            {[["t1", "T1"], ["navy", t("Navy")], ["all", t("All")]].map(([k, l]) => (
-              <button key={k} type="button" aria-pressed={meta === k} onClick={() => setMeta(k)}
-                style={{ ...addBtn(), flex: 1, color: meta === k ? C.accent : C.textMid, borderColor: meta === k ? C.accent : C.borderStrong, background: meta === k ? C.accentLight : "transparent" }}>{l}</button>
-            ))}
-          </div>
-        </>}
-        </div>}
+      </div>
+
+      {(hasTargets || cat === "damage") && <div style={{ flex: "none", width: 230 }}>
+        <Label>{t("Engagement")}</Label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+          <Wheel label={t("Your ship")} angle={inp.atkAngle} pct={inp.atkSpeed} refVel={selfRef} mixed={selfMixed} enemyPos="E" onAngle={v => setI("atkAngle", v)} onPct={v => setI("atkSpeed", v)} />
+          <Wheel label={t("Target")} angle={inp.tgtAngle} pct={inp.tgtSpeed} refVel={tgtRef} mixed={tgtMixed} enemyPos="W" onAngle={v => setI("tgtAngle", v)} onPct={v => setI("tgtSpeed", v)} />
+        </div>
+        {/* Click to swap between transversal (m/s) and angular velocity (°/s at the engagement range).
+            Hidden when the lines on the graph do not share one speed each (see showTransversal). */}
+        {showTransversal && <button type="button" onClick={() => setAngular(v => !v)} title={angular ? t("Angular velocity — click for transversal") : t("Transversal — click for angular velocity")}
+          style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", width: "100%", marginTop: 6, fontSize: 12.5, color: C.textMid, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+          <span>{angular ? t("Angular velocity") : t("Transversal")}</span>
+          <span style={{ color: transversal < 50 ? C.success : transversal > 400 ? C.danger : C.warning, fontVariantNumeric: "tabular-nums" }}>
+            {angular ? `${fmtAngular(angularDeg)} °/s @ ${Math.round(angDistM / 100) / 10} km` : `${Math.round(transversal)} m/s`}</span>
+        </button>}
+      </div>}
       </div>}
 
+      {/* Display options, on a right-click of the plot (they were checkboxes under it). */}
+      {plotMenu && <ContextMenu x={plotMenu.x} y={plotMenu.y} onClose={() => setPlotMenu(null)} items={[
+        { heading: t("Display") },
+        (cat === "damage" || cat === APP_PROFILE) && { label: t("Ignore target resists"), checked: ignoreResists, onSelect: () => setIgnoreResists(v => !v) },
+        { label: t("Always show Y = 0"), checked: showY0, onSelect: () => setShowY0(v => !v) },
+        pinX != null && { divider: true },
+        pinX != null && { label: t("Clear the pin"), onSelect: () => setPin(null) },
+      ].filter(Boolean)} />}
       {picker && <FitPickerSheet title={picker === "source" ? t("Graph a fit") : t("Graph against a fit")} fitsDB={s.fitsDB} pinned={tabFits(s.openFitTabs, s.fitsDB)}
-        onSelect={(ship, fit) => {
+        onSelect={added((ship, fit) => {
           // A fit already on the graph is not added twice: two identical lines say nothing, and the
           // pair is the line's identity (its React key and its legend entry).
-          if (picker === "source") setSources(l => {
-            const cur = l.length ? l : srcList.map(({ ship: a, fitName: b }) => ({ ship: a, fitName: b }));
-            return cur.some(x => x.ship === ship && x.fitName === fit.name) ? cur : [...cur, { ship, fitName: fit.name }];
-          });
-          else setTargets(l => l.some(x => x.kind === "fit" && x.ship === ship && x.fitName === fit.name) ? l : [...l, { kind: "fit", ship, fitName: fit.name }]);
-        }} onClose={() => setPicker(null)} />}
+          if (picker === "source") addSource(ship, fit.name); else addTarget(ship, fit.name);
+        })} onClose={() => setPicker(null)} />}
     </div>
   );
 }

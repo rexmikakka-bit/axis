@@ -10,6 +10,7 @@ import { weaponRacks, rankAmmo } from "../lib/ammo-compare.js";
 import { moduleGestureHistory } from '../lib/module-gesture.js';
 import { fittedAbyssalIds } from '../lib/variation-items.js';
 import { enforceGroupLimit, groupFittedRoom, applyModUpdate, applyRemove, applyRowState, applySubsystemSwap } from '../lib/fit-ops.js';
+import { fitStatsOptions } from '../lib/stats-opts.js';
 import { abyssalValue } from '../lib/abyssal-value.js';
 import { useAbyssalData } from '../lib/use-abyssal-data.js';
 import { missileRangeTip, fmtPriceAge } from "../lib/fmt.js";
@@ -273,14 +274,23 @@ const histBtn=depth=>({display:"flex",alignItems:"center",gap:4,padding:"3px 10p
 // `TableView` (desktop only): a component that draws the racks in place of this tab's own rows and
 // resource strip. It gets `api` — the rows and every handler they need — while this tab keeps ALL
 // the logic, menus and sheets, so the desktop table edits a fit exactly as the phone does.
-function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,dense=false,TableView=null,MenuFrame=null}){
+// `onBrowseRack` (desktop only): (secKey, slotId) => void. An empty module slot asks for it instead of
+// opening the module picker sheet; the desktop answers with its Browser window, on that rack.
+function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implants,boosters,drones,factorInReload,externalBursts,projectedEffects,dmgProfile,autoFillHardpoints,closeBrowserOnAdd,adderRef,onBrowseRack=null,dense=false,TableView=null,MenuFrame=null,cs:csProp}){
   const gestureMemory=useRef(null);
+  // The fit as addMod last left it (see addMod). Every render resets it to the real state.
+  const slotsRef=useRef(slots);
+  slotsRef.current=slots;
   const _scroll=useScrollMemory("Fit");
   // Memoised on its inputs: this tab re-renders for menus, gestures and every unrelated session
   // update, and a full fit calculation on each of those was most of the lag adding a booster
   // (eight calculations for one change, on the desktop). Every input is replaced, never mutated.
-  const _cs=useMemo(()=>(ship&&slots)?calcFitStats(ship,slots,drones??[],skills,{implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity})??{}:{},
-    [ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);
+  const _csOpts=(sl)=>({implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile?.p,pilotSec:sl?.pilotSec,systemSecurity:sl?.systemSecurity});
+  // `cs` (desktop): the window's own deferred calculation (desktop/stat-panels.jsx useFitStats),
+  // handed in so the Fitting table does not run a second one on every edit. The phone passes none.
+  const _ownCs=useMemo(()=>(csProp===undefined&&ship&&slots)?calcFitStats(ship,slots,drones??[],skills,_csOpts(slots))??{}:null,
+    [csProp===undefined,ship,slots,drones,skills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const _cs=(csProp===undefined?_ownCs:csProp)??{};
   // Keyed by SLOT id, not typeID: two slots holding the same module can have genuinely different
   // stats. A missile launcher's range comes entirely from its charge (velocity x flight time), so an
   // unloaded launcher has no range at all — keying by typeID let a loaded launcher's range bleed onto
@@ -538,17 +548,22 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
     });
     setModuleMenu(null);
   };
+  // `cur`: the fit as of the LAST add, not as of the last render (slotsRef). Double-clicking a module
+  // in the desktop Browser six times fast is three adds before the Fitting window re-renders, and
+  // each read the same render's "first empty slot" and hardpoint counts, so every add after the first
+  // overwrote it: three clicks, one module. Each add now records its own result in the ref.
   const addMod=(secKey,id,modData)=>{
+    const cur=slotsRef.current;
     if(ship&&modData.typeID){
-      const fitErr=checkFitRestriction(modData.typeID,ship,slots.subsystems);
+      const fitErr=checkFitRestriction(modData.typeID,ship,cur.subsystems);
       if(fitErr){showFitError(fitErr);return;}
-      if(groupFittedRoom(slots,_cs.groupLimits,modData.typeID,id)<1){showFitError(groupFittedError(modData.typeID));return;}
+      if(groupFittedRoom(cur,_cs.groupLimits,modData.typeID,id)<1){showFitError(groupFittedError(modData.typeID));return;}
       if(secKey==='high'&&isTurretWeapon(modData.typeID)){
-        const used=(slots.high??[]).filter(s=>s.typeID&&isTurretWeapon(s.typeID)).length;
+        const used=(cur.high??[]).filter(s=>s.typeID&&isTurretWeapon(s.typeID)).length;
         if(used>=(ship.turrets??0)){showFitError(t('No turret hardpoints available'));return;}
       }
       if(secKey==='high'&&isMissileLauncher(modData.typeID)){
-        const used=(slots.high??[]).filter(s=>s.typeID&&isMissileLauncher(s.typeID)).length;
+        const used=(cur.high??[]).filter(s=>s.typeID&&isMissileLauncher(s.typeID)).length;
         if(used>=(ship.launchers??0)){showFitError(t('No launcher hardpoints available'));return;}
       }
     }
@@ -579,7 +594,7 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
     // preserveCharge — that path is Duplicate/Fill themselves, which already do their own explicit
     // fill and would otherwise double up.
     //
-    // Targets are decided HERE, off `slots` (this render's snapshot), rather than recomputed inside
+    // Targets are decided HERE, off `cur` (the fit as the last add left it), rather than recomputed inside
     // the second setSlots off `prev` — so the count hardpointRoom-style logic returns to the caller
     // (for the browser's "+ Module (x5)" toast) is provably the same set of ids actually filled,
     // not two independent calculations that could drift apart.
@@ -587,30 +602,32 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
     if(secKey==='high'&&autoFillHardpoints&&!modData.preserveCharge&&!modData.abyssalItemId&&ship&&(isTurretWeapon(modData.typeID)||isMissileLauncher(modData.typeID))){
       const match=isTurretWeapon(modData.typeID)?isTurretWeapon:isMissileLauncher;
       const total=(isTurretWeapon(modData.typeID)?ship.turrets:ship.launchers)??0;
-      const high=slots.high??[];
+      const high=cur.high??[];
       // Pre-add counts: the primary slot is still "empty" and unc­ounted in all three of these, so
       // each already includes room for it — same as hardpointRoom's own "no exceptId" reasoning,
       // just measured one step earlier (before vs. after the primary itself lands).
       const usedBefore=high.filter(s=>s.typeID&&match(s.typeID)).length;
       const roomTotal=Math.max(1,Math.min(total-usedBefore,high.filter(s=>s.type==="empty").length,
-        groupFittedRoom(slots,_cs.groupLimits,modData.typeID)));
+        groupFittedRoom(cur,_cs.groupLimits,modData.typeID)));
       fillIds=high.filter(s=>s.type==="empty"&&s.id!==id).slice(0,roomTotal-1).map(s=>s.id);
     }
     const clone={name:modData.name,icon:null,typeID:modData.typeID,type:modType,state,ammo,charges,maxCharges,optimal:modInfo?.optimal??undefined,falloff:modInfo?.falloff??undefined,tracking:modInfo?.tracking??undefined,mutaplasmid:modData.mutaplasmid??undefined,mutations:modData.mutations??undefined,abyssalItemId:modData.abyssalItemId??undefined};
-    setSlots(prev=>{
+    const place=prev=>{
       const targets=new Set([id,...fillIds]);
       const next={...prev,[secKey]:prev[secKey].map(m=>targets.has(m.id)?{...m,...clone}:m)};
       // The new module isn't in `_cs` yet, but the limit is a property of the GROUP and the fit, not
       // of the individual module — so the ceiling read from a same-group module already fitted is the
       // one that applies. With none fitted the count is zero and nothing can be over the limit.
       return enforceGroupLimit(next,_cs.groupLimits,id);
-    });
+    };
+    slotsRef.current=place(cur);
+    setSlots(place);
     return {count:1+fillIds.length,filledIds:[id,...fillIds]};
   };
   useEffect(()=>{
     if(!adderRef)return;
     adderRef.current=(secKey,mod)=>{
-      const empty=(slots[secKey]??[]).find(s=>s.type==="empty");
+      const empty=(slotsRef.current[secKey]??[]).find(s=>s.type==="empty");
       if(!empty){showFitError(t("No empty slot for that module"));return 0;}
       return addMod(secKey,empty.id,mod)?.count??0;
     };
@@ -738,7 +755,9 @@ function FitTab({undo,undoDepth,redo,redoDepth,ship,slots,setSlots,skills,implan
         </div>
       )}
       {TableView?<TableView api={{SECS,getDisplayRows,slots,setSlots,ship,cs:_cs,engineStatsBySlotID,StateDot,gestureMemory,validStatesFor,
-          openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),openEmpty:(secKey,id)=>setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
+          openMenu:(secKey,modId,tab)=>setModuleMenu({secKey,modId,tab}),
+          // The desktop picks modules in its Browser window (onBrowseRack); subsystems, and the phone, keep the sheet.
+          openEmpty:(secKey,id)=>onBrowseRack&&secKey!=="subsystems"?onBrowseRack(secKey,id):setEmptySlot({secKey,id}),hardpointRoom,fillHardpoints,
           openSubsystem:(row)=>setSubInfo({typeID:row.typeID,name:row.name,slotId:row.id}),
           setRowState,removeMod,duplicateMod,duplicateRoom,updateMod,startRowDrag,moveRowDrag,endRowDrag,dragUI,rowRefs,
           undo,redo,undoDepth,redoDepth,grouped,setGrouped}}/>:
@@ -1506,7 +1525,8 @@ function StatsTab({ship,slots,setSlots,skills,implants,boosters,drones,fighters,
   // lit half a second later. Deferring it lets React paint the pressed control against the previous
   // numbers, then land the new ones. Same total work, in the order a finger expects it.
   const dSlots=useDeferredValue(slots);
-  const csOpts=useMemo(()=>({implants,boosters,factorInReload,externalBursts,projectedWebMult:projectedEffects?.webMult,projectedNeutGJs:projectedEffects?.neutGJs,projectedCapGJs:projectedEffects?.capGJs,projectedDebuffs:projectedEffects?.debuffs,projectedBoosts:projectedEffects?.boosts,projectedEcm:projectedEffects?.ecm,damageProfile:dmgProfile.p,targetResists:tgtProfile?.r,pilotSec:dSlots?.pilotSec,systemSecurity:dSlots?.systemSecurity,fighters:(fighters??[]).map(f=>({name:f.name,qty:f.qty??1,active:f.active,abilities:f.abilities}))}),
+  // lib/stats-opts.js: the same builder the snapshot card and the desktop stat windows use.
+  const csOpts=useMemo(()=>fitStatsOptions({implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile,tgtProfile,slots:dSlots,fighters}),
     [implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile,tgtProfile,dSlots,fighters]);
   // Memoized on the full argument list, so a re-render that changed none of them — the autosave
   // write-back replacing `fitsDB` is one, and it lands after every single edit — doesn't pay for a

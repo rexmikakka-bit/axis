@@ -6,6 +6,7 @@ import { C } from "./theme.js";
 import { useFitSession } from "./use-fit-session.js";
 import { ImportFitSheet, initKeyboardTracking } from "./components/ui.jsx";
 import { SnapshotModal } from "./components/snapshot.jsx";
+import { fitStatsOptions } from "./lib/stats-opts.js";
 import { ShoppingListSheet } from "./components/shopping-list.jsx";
 import { ActiveFitBar, FittingsScreen, ShipInfoSheet } from "./components/FittingsScreen.jsx";
 import { CargoScreen } from "./components/cargo.jsx";
@@ -142,9 +143,11 @@ export default function App(){
       // lookupShip, not the bare {name,typeID} shape other calcFitStats calls below use — jamChance
       // needs ship.sensorType, which only lookupShip's fuller record carries.
       const sh=lookupShip(shipName)??{name:shipName,typeID:tidByName(shipName)};
-      return calcFitStats(sh,slots,drones??[],fitSkills,{fighters,implants,boosters,externalBursts,projectedEcm:projectedEffects?.ecm,pilotSec:slots?.pilotSec,systemSecurity:slots?.systemSecurity});
+      // The Stats page's own options (lib/stats-opts.js): the snapshot card reads these numbers, and
+      // without the projected webs its speed disagreed with the Stats tab.
+      return calcFitStats(sh,slots,drones??[],fitSkills,fitStatsOptions({implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile,tgtProfile,slots,fighters}));
     }catch{ return null; }
-  },[activeFit,slots,drones,fighters,fitSkills,implants,boosters,externalBursts,projectedEffects,wantsSnapshotStats]);
+  },[activeFit,slots,drones,fighters,fitSkills,implants,boosters,factorInReload,externalBursts,projectedEffects,dmgProfile,tgtProfile,wantsSnapshotStats]);
   const shipMeta=useMemo(()=>{
     const sh=activeFit?.ship?lookupShip(activeFit.ship):null;
     return {faction:sh?.race??"",cls:sh?.hullClass??sh?.groupName??""};
@@ -341,7 +344,7 @@ export default function App(){
     {showPilot&&<PilotSheet pilot={slots?.pilot??null} setPilot={p=>setSlots(prev=>({...prev,pilot:p||undefined}))}
                             missing={skillCheck.missing} appSkills={skills} skillProfiles={skillProfiles} onClose={()=>setShowPilot(false)}/>}
     {showExportFit&&<ExportFitModal activeFit={activeFit} slots={slots} implants={implants} boosters={boosters} drones={drones} fighters={fighters} cargo={cargoItems} onClose={()=>setShowExportFit(false)}/>}
-    {showSnapshot&&<SnapshotModal onClose={()=>setShowSnapshot(false)} assist={projectedEffects?.assist} cargoItems={cargoItems} fitName={activeFit?.fitName} shipName={activeFit?.ship} shipTypeID={tidByName(activeFit?.ship)} shipFaction={shipMeta.faction} shipClass={shipMeta.cls} slots={slots} cs={snapshotStats} drones={drones} fighters={fighters} implants={implants} boosters={boosters} cmdFits={cmdFits} projFits={projFits} fitsDB={fitsDB} sourceSkills={sourceSkills} skillLabel={fitSkillLabel} dmgProfile={dmgProfile} priceHub={priceHub} priceSource={priceSource}/>}
+    {showSnapshot&&<SnapshotModal onClose={()=>setShowSnapshot(false)} projectedEffects={projectedEffects} cargoItems={cargoItems} fitName={activeFit?.fitName} shipName={activeFit?.ship} shipTypeID={tidByName(activeFit?.ship)} shipFaction={shipMeta.faction} shipClass={shipMeta.cls} slots={slots} cs={snapshotStats} drones={drones} fighters={fighters} implants={implants} boosters={boosters} cmdFits={cmdFits} projFits={projFits} fitsDB={fitsDB} sourceSkills={sourceSkills} skillLabel={fitSkillLabel} dmgProfile={dmgProfile} priceHub={priceHub} priceSource={priceSource}/>}
     {showShoppingList&&<ShoppingListSheet slots={slots} onClose={()=>setShowShoppingList(false)}/>}
     {showSettings &&<SettingsOverlay onClose={()=>setShowSettings(false)} skills={skills} setSkills={setSkills} skillProfiles={skillProfiles} setSkillProfiles={setSkillProfiles} openInNewTab={openInNewTab} setOpenInNewTab={setOpenInNewTab} priceHub={priceHub} setPriceHub={setPriceHub} priceSource={priceSource} setPriceSource={setPriceSource} themePref={themePref} setThemePref={setThemePref} autoFillHardpoints={autoFillHardpoints} setAutoFillHardpoints={setAutoFillHardpoints} closeBrowserOnAdd={closeBrowserOnAdd} setCloseBrowserOnAdd={setCloseBrowserOnAdd} locale={locale} setLocale={setLocale}/>}
     {showImportFit&&<ImportFitSheet onClose={()=>{setShowImportFit(false);setImportFitInitial(null);}} onImport={importFit} initialText={importFitInitial?.text} initialErr={importFitInitial?.err}/>}

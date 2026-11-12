@@ -80,22 +80,40 @@ export function ContextMenu({ x, y, items, onClose }) {
 /**
  * The desktop list-row mouse model, for windows with one selection at a time (Implants, Drones,
  * Boosters, Cargo, the Market list): left click selects, double click does the row's main action,
- * right click selects and opens a menu. `rowProps(key, {onOpen, items, target})` spreads onto the row
+ * right click selects and opens a menu. `rowProps(key, {onOpen, items, target, repeat})` spreads onto the row
  * (`target`, an inspect.js target, also becomes the app-wide selection the item windows follow);
  * `view` renders the open menu. The Fitting table has its own multi-select version (FitTable.jsx).
  */
+// Two clicks this close together are a double-click; Windows' default double-click time.
+const RUN_GAP_MS = 500;
+
 export function useRowSelect() {
   const [sel, setSel] = useState(null);
   const [menu, setMenu] = useState(null);
   const { select } = useInspect();
-  const rowProps = (key, { onOpen, items, target } = {}) => {
+  const run = useRef(null);   // the current run of fast clicks: { key, at, n } (see `repeat`)
+  // `repeat`: every further pair of fast clicks repeats the action, so six quick clicks on a Browser
+  // module fit three of it, and sixteen put eight drones' worth in the bay. A browser sends ONE dblclick
+  // for a run of fast clicks (only when the click count reaches 2), and how far its click count
+  // (`e.detail`) climbs after that varies by platform, so the run is counted here: a click on the same
+  // row within RUN_GAP_MS of the last continues it, and the 2nd, 4th, 6th... click acts. For rows whose
+  // action ADDS and leaves the row in place. A removing row keeps plain double-click: the next row
+  // slides under the pointer, and a third and fourth click would remove a different item.
+  const rowProps = (key, { onOpen, items, target, repeat = false } = {}) => {
     const on = sel === key;
+    const free = (e) => !e.target.closest("input, button, select");
     return {
       "aria-selected": on,
       className: "no-select",
-      onClick: () => { setSel(key); if (target) select(target); },
-      onDoubleClick: onOpen ? (e) => { if (!e.target.closest("input, button, select")) onOpen(); } : undefined,
-      onContextMenu: items ? (e) => { e.preventDefault(); setSel(key); if (target) select(target); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
+      onClick: (e) => {
+        setSel(key); if (target) select(target);
+        if (!repeat || !onOpen || !free(e)) return;
+        const r = run.current, now = e.timeStamp;
+        run.current = r && r.key === key && now - r.at <= RUN_GAP_MS ? { key, at: now, n: r.n + 1 } : { key, at: now, n: 1 };
+        if (run.current.n % 2 === 0) onOpen();
+      },
+      onDoubleClick: onOpen && !repeat ? (e) => { if (free(e)) onOpen(); } : undefined,
+      onContextMenu: items ? (e) => { e.preventDefault(); e.stopPropagation(); setSel(key); if (target) select(target); setMenu({ x: e.clientX, y: e.clientY, items: typeof items === "function" ? items() : items }); } : undefined,
       style: { cursor: "default", background: on ? C.accentLight : "transparent", boxShadow: on ? `inset 2px 0 0 ${C.accent}` : "none" },
       onMouseEnter: (e) => { if (!on) e.currentTarget.style.background = C.surfaceAlt; },
       onMouseLeave: (e) => { e.currentTarget.style.background = on ? C.accentLight : "transparent"; },

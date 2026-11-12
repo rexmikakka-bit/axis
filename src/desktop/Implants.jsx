@@ -4,7 +4,7 @@ import { t } from "../lib/i18n.js";
 import { tidByName } from "../calc.js";
 import { eveIcon } from "../lib/icons.js";
 import { implantSetMembers, applyImplantSet, searchImplants } from "../lib/core.js";
-import { ImplantPicker, ImplantLoadoutSheet } from "../components/implants.jsx";
+import { ImplantLoadoutSheet } from "../components/implants.jsx";
 import Menu from "./Menu.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { useInspect } from "./inspect-context.jsx";
@@ -12,17 +12,19 @@ import { implantTarget, typeTarget } from "./inspect.js";
 import { Empty, TYPE } from "./kit.jsx";
 import { fetchPrices } from "../prices.js";
 import { fmtResource } from "../lib/fmt.js";
-import { useItemDrop, DropHint } from "./items-context.jsx";
+import { useItemDrop, DropHint, useItems } from "./items-context.jsx";
 
 // The desktop Implants window: the ten slots as a numbered list in two groups, a search across every
 // slot that fits straight into the right one, implant sets, and saved loadouts (save, load, rename,
-// delete). Same edits the phone's ImplantsScreen makes, through its own picker and loadout sheet.
+// delete). Same edits the phone's ImplantsScreen makes; an empty slot opens the Browser on that slot.
 
 const EMPTY = "[Empty]";
 const GROUPS = [{ id: "attrs", label: "Attribute Enhancers", slots: [1, 2, 3, 4, 5] }, { id: "hardwirings", label: "Hardwirings", slots: [6, 7, 8, 9, 10] }];
 
 export default function ImplantsPanel({ s }) {
-  const [picker, setPicker] = useState(null);
+  // An empty slot opens the Browser narrowed to that slot's implants; its double-click plugs one in.
+  const itemOps = useItems();
+  const browseSlot = (slot) => itemOps.browse("implants", { slot });
   const insp = useInspect();
   const [query, setQuery] = useState("");
   const [naming, setNaming] = useState(null);
@@ -133,16 +135,16 @@ export default function ImplantsPanel({ s }) {
                 return (
                   <div key={n} {...withRow(`s:${n}`, {
                     target: empty ? undefined : implantTarget(insp.fitRef, n, imp.typeID ?? tidByName(imp.name)),
-                    onOpen: () => empty ? setPicker({ slot: n, name: EMPTY }) : showDetail(imp, n, "info"),
+                    onOpen: () => empty ? browseSlot(n) : clearSlot(n),
                     items: () => empty
-                      ? [{ label: t("Add implant…"), hint: t("Double-click"), onSelect: () => setPicker({ slot: n, name: EMPTY }) }]
+                      ? [{ label: t("Add implant…"), hint: t("Double-click"), onSelect: () => browseSlot(n) }]
                       : [
-                          { label: t("Show info"), hint: t("Double-click"), onSelect: () => showDetail(imp, n, "info") },
+                          { label: t("Show info"), onSelect: () => showDetail(imp, n, "info") },
                           { label: t("Variations"), onSelect: () => showDetail(imp, n, "variations") },
-                          { label: t("Change implant…"), onSelect: () => setPicker({ slot: n, name: imp.name }) },
+                          { label: t("Change implant…"), onSelect: () => browseSlot(n) },
                           implantSetMembers(imp.name) && { label: t("+ {set} set", { set: implantSetMembers(imp.name).setName }), onSelect: () => fitSet(implantSetMembers(imp.name)) },
                           { divider: true },
-                          { label: t("Remove implant"), hint: "Del", danger: true, onSelect: () => clearSlot(n) },
+                          { label: t("Remove implant"), hint: t("double-click · Del"), danger: true, onSelect: () => clearSlot(n) },
                         ],
                   })}>
                     <span style={{ width: 22, fontSize: TYPE.small, color: C.textMid, textAlign: "right" }}>{n}</span>
@@ -158,9 +160,6 @@ export default function ImplantsPanel({ s }) {
             </div>
           ))}
       </div>
-      {picker && <ImplantPicker slot={picker.slot} current={picker.name}
-        onSelect={opt => set(prev => prev.map(i => i.slot === picker.slot ? { ...i, name: opt.name, bonus: opt.bonus ?? null } : i))}
-        onSelectSet={fitSet} onClear={() => clearSlot(picker.slot)} onClose={() => setPicker(null)} />}
       {rs.view}
       {loadoutsOpen && <ImplantLoadoutSheet loadouts={loadouts}
         onLoad={lo => lo.implants?.length && set(lo.implants.map(i => ({ ...i })))}

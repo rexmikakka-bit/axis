@@ -201,15 +201,32 @@ function setTrace(on) { _trace = !!on; }
 function tracing() { return _trace; }
 
 // ─── AttrMap ──────────────────────────────────────────────────────────────────
+// A type's attributes keyed by ID, built once per type (they never change) and shared. Every
+// calculate() rebuilds every item's AttrMap, and converting each name to an ID there was the largest
+// single cost in a fit calculation on the desktop.
+const _baseById = new WeakMap();
+function baseByIdOf(baseAttrs) {
+  if (!baseAttrs) return null;
+  let b = _baseById.get(baseAttrs);
+  if (!b) {
+    b = {};
+    for (const [k, v] of Object.entries(baseAttrs)) b[isNaN(k) ? (AID[k] ?? k) : Number(k)] = v;
+    // Not frozen: a frozen prototype's properties are read-only, and JS then refuses to SHADOW them
+    // by assignment on the item's own object, which is exactly how a skill level or a roll is set.
+    _baseById.set(baseAttrs, b);
+  }
+  return b;
+}
+
 class AttrMap {
   constructor(baseAttrs) {
     // baseAttrs may be { attrName: value } (from converted TYPES) or { attrID: value }
     // Normalize to { attrID: value } for internal use so applyMod(numericID) works.
-    this._base  = {};
-    for (const [k, v] of Object.entries(baseAttrs ?? {})) {
-      const id = isNaN(k) ? (AID[k] ?? k) : Number(k);
-      this._base[id] = v;
-    }
+    // The type's shared, frozen map is the PROTOTYPE: reads fall through to it, and a write (a
+    // mutated module's roll, a skill level, a direct PreMul folded into the base) lands on this
+    // item's own object and shadows it, never touching the shared one. Nothing enumerates _base.
+    const shared = baseByIdOf(baseAttrs);
+    this._base  = shared ? Object.create(shared) : {};
     this._orig_named = baseAttrs; // (unused for values; never mutate — it aliases shared TYPES data)
     this._pre   = {};   // attrID → forced pre-value (PreAssignment)
     this._add   = {};   // attrID → accumulated flat add (ModAdd/ModSub)
@@ -241,6 +258,7 @@ class AttrMap {
   // Override a base attribute value (used for abyssal/mutated modules). Modifiers still apply on top.
   setBase(attrNameOrId, value) {
     if (value == null || isNaN(value)) return;
+    this._cache = null;
     const id = isNaN(attrNameOrId) ? (AID[attrNameOrId] ?? attrNameOrId) : Number(attrNameOrId);
     this._base[id] = value;
     // NOTE: do NOT write to _orig_named here — it aliases the shared TYPES attrs object,
@@ -253,6 +271,7 @@ class AttrMap {
   // `source` is provenance only — a {name, kind} descriptor for the attribute panel's breakdown. It
   // never affects routing or arithmetic, and is ignored entirely unless setTrace(true) is in force.
   applyMod(attrID, op, value, direct = false, penaltyGroup = null, source = null) {
+    this._cache = null;
     const aid = Number(attrID);
     if (value == null || isNaN(value)) return;
     // `before` is only passed by the baseMul route, which multiplies _base IN PLACE — by the time
@@ -311,8 +330,16 @@ class AttrMap {
     }
   }
 
+  // Resolved values are cached until this map is next written (applyMod and setBase clear it). An
+  // attribute is read far more often than it changes: every effect reading a skill's or the hull's
+  // bonus re-ran the whole stacking resolution for it, and that was the second-largest cost in a fit
+  // calculation. A cap or floor is another attribute on THIS map, so the same write clears it too.
   get(attrIDorName, _capping = false) {
-    return this._resolve(attrIDorName, null, _capping);
+    if (_capping) return this._resolve(attrIDorName, null, true);
+    const c = (this._cache ??= new Map());
+    let v = c.get(attrIDorName);
+    if (v === undefined && !c.has(attrIDorName)) { v = this._resolve(attrIDorName, null, false); c.set(attrIDorName, v); }
+    return v;
   }
 
   /**
@@ -349,11 +376,15 @@ class AttrMap {
     // attribute's MODIFIED value on this item (its default if unset). This is what floors resists at
     // 0% for Polarized weapons: their forced resonance (>>1) is clamped to the *MaxDamageResonance
     // cap of 1.0 instead of running away to -9900%. _capping guards against cap-attr recursion.
+    //
+    // minAttributeID is the same rule from below (pyfa's max(val, floor)): speedFactor is floored by
+    // speedFactorFloor (-99), so a Vigilant's +50% on a -69% abyssal web reads -99%, not -103.5%.
     const capAid = _capping ? 0 : ATTRS[aid]?.x;
+    const floorAid = _capping ? 0 : ATTRS[aid]?.mn;
     const clamp = (v) => {
-      if (!capAid) return v;
-      const c = this.get(capAid, true);
-      return (c == null || isNaN(c)) ? v : Math.min(v, c);
+      if (capAid) { const c = this.get(capAid, true); if (c != null && !isNaN(c)) v = Math.min(v, c); }
+      if (floorAid) { const f = this.get(floorAid, true); if (f != null && !isNaN(f)) v = Math.max(v, f); }
+      return v;
     };
     if (aid in this._force) return clamp(this._force[aid]);
     const pre  = aid in this._pre ? this._pre[aid] : null;
@@ -430,10 +461,9 @@ class AttrMap {
     // the flag cannot mean one thing on a forced value and another on a multiplied one. Compared
     // against the same clamp get() applies, so the two cannot disagree about where the ceiling is.
     const cappedAt = (v) => {
-      const capAid = ATTRS[aid]?.x;
-      if (!capAid) return false;
-      const c = this.get(capAid, true);
-      return c != null && !isNaN(c) && v >= c;
+      const capAid = ATTRS[aid]?.x, floorAid = ATTRS[aid]?.mn;
+      const c = capAid ? this.get(capAid, true) : null, f = floorAid ? this.get(floorAid, true) : null;
+      return (c != null && !isNaN(c) && v >= c) || (f != null && !isNaN(f) && v <= f);
     };
 
     // PostAssignment wins over everything, exactly as _resolve returns early on it. Last writer wins
@@ -559,6 +589,17 @@ export class DogmaItem {
 // other two, deliberately NOT here: 6737 is charge-side and calc.js already reads warfare buffs off
 // the charge directly, and 11714 only sets activationBlocked, which we do not model.
 const OFFLINE_STATE_EFFECTS = new Set([854, 3046]);
+// Per-modifier lookups in Fit._applyEffect, hoisted: built once, not once per modifier per calculation.
+// overheat-source attrs (overloadDamageModifier etc.) fire only while overheated; IC_STACKED_SRC is the
+// mode modules' stacking-penalised carve-out (see its use in _applyEffect).
+const OVERHEAT_SRC = new Set([1206, 1208, 1209, 1210, 1211, 1212, 1231]);
+const IC_STACKED_SRC = new Set([
+  2607, 2347, // industrialCoreLocalLogisticsAmountBonus, siegeLocalLogisticsAmountBonus
+  548, 895,   // shieldBoostMultiplier, armorDamageAmountBonus (Bastion's local-rep boost)
+  267, 268, 269, 270, // armor em/explosive/kinetic/thermal DamageResonance
+  271, 272, 273, 274, // shield em/explosive/kinetic/thermal DamageResonance
+]);
+
 // Effects that write a Synchronizer's set count (rigSet*Bonus); see Fit._applyRigSetMarkers. Built in initEngine().
 const RIG_SET_EFFECTS = new Set();
 
@@ -763,7 +804,7 @@ export class Fit {
       // CCP's dogma effects use skillLevel as a multiplicative source:
       // e.g. Effect280: cpuOutputBonus2 = cpuOutputBonus2_base × skillLevel
       // Without this, all skill scaling effects produce zero.
-      skillItem.attrs._base[280] = level;
+      skillItem.attrs.setBase(280, level);
       // A skill's own bonus attributes are scaled by level by a PRESCALE effect on the skill itself
       // (bombLauncherReactivationDelayBonus ×= skillLevel). CCP's list order does not guarantee it
       // comes before the effect that reads the scaled value, and for 35 modifiers across ~24 skills
@@ -1148,7 +1189,9 @@ export class Fit {
       // Get the raw value from the source item
       // Use src.get() so that prior skill/module reductions to the source attr are applied.
       // e.g. Shield Rigging V reduces drawback via _mul before Effect2716 reads it.
-      let rawVal = src.get ? src.get(String(srcAttr)) : src.attrs.getBase(srcAttr);
+      // A number, not String(srcAttr): _resolve takes an ID as either, and the string form cost a regex
+      // test per modifier per calculation.
+      let rawVal = src.get ? src.get(Number(srcAttr)) : src.attrs.getBase(srcAttr);
       // An attribute the source doesn't carry reads as the attribute's DEFAULT, not 0 — but the
       // presence test has to be by NAME, because `_td.a` is name-keyed and a numeric ID is never
       // `in` it. Testing by ID made the branch fire for every source attribute that legitimately
@@ -1174,7 +1217,6 @@ export class Fit {
 
       // Gate: overheat-source attrs (overloadDamageModifier etc.) only fire when overheated.
       // CCP uses effectCategory=5 for these but they should only apply at state=overheated.
-      const OVERHEAT_SRC = new Set([1206, 1208, 1209, 1210, 1211, 1212, 1231]);
       if (OVERHEAT_SRC.has(srcAttr) && src.state !== 'overheated') continue;
 
       // For op=0 (PreMul) from modules: whether it goes to _post0 (stacking) or _base (direct)
@@ -1205,12 +1247,6 @@ export class Fit {
       // Without this carve-out Bastion's -30% resonance applies unpenalised on top of DC2's own
       // (also unpenalised, now alone in its pool) -15%/-12.5%, overstating a Vargur's shield/armor
       // resists in every damage type (pyfa: 82.0/83.2/85.8/88.0 shield, 81.7/65.4/54.3/45.2 armor).
-      const IC_STACKED_SRC = new Set([
-        2607, 2347, // industrialCoreLocalLogisticsAmountBonus, siegeLocalLogisticsAmountBonus
-        548, 895,   // shieldBoostMultiplier, armorDamageAmountBonus (Bastion's local-rep boost)
-        267, 268, 269, 270, // armor em/explosive/kinetic/thermal DamageResonance
-        271, 272, 273, 274, // shield em/explosive/kinetic/thermal DamageResonance
-      ]);
       // Members of eos's 'postPerc' penalty group route here instead of going fully direct.
       let postPercGroup = false;
       if (!effectiveDirect && MODE_MODULE_GROUPS.has(src.groupName) && !IC_STACKED_SRC.has(srcAttr)) {

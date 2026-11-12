@@ -11,16 +11,7 @@ import ATTRS_DATA   from './data/dogma-attrs.json'   with { type: 'json' };
 import SYSFX_DATA   from './data/system-effects.json' with { type: 'json' };
 
 import { initEngine } from './dogma-engine.js';
-import { applyNewShips } from './data/new-ships.js';
-import { applySisiPatch } from './data/sisi-patch.js';
-import { applyPrereleaseBalance } from './data/prerelease-balance.js';
 
-// Hulls CCP has shipped that our eve.db predates. Raw bundles, so it has to come first.
-applyNewShips(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA);
-// Fractured Skies' items from CCP's test-server data (Synchronizers, navy ABCs, implants, modules,
-// boosters). Same constraint. The 24.02 balance changes run last so they also reach anything added.
-applySisiPatch(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA);
-applyPrereleaseBalance(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA);
 initEngine(TYPES_DATA, EFFECTS_DATA, ATTRS_DATA, SYSFX_DATA.effects);
 
 export * from './dogma-engine.js';
