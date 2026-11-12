@@ -43,6 +43,8 @@ export default {
   "Abyssal (mutated) module": "Абиссальный (мутированный) модуль",
   "Abyssal Rolls (mutated modules)": "Абиссальные роллы (мутированные модули)",
   "Abyssal module — value depends on the roll, not the base type": "Абиссальный модуль — значение зависит от ролла, а не от базового типа",
+  "Mutamarket asking price for this roll": "Цена продажи этого ролла на Mutamarket",
+  "Your own abyssal module — no market price": "Ваш собственный абиссальный модуль — нет рыночной цены",
   "Active": "Активно",
   "Active squadron (in space)": "Активная эскадрилья (в космосе)",
   "Active:": "Активно:",

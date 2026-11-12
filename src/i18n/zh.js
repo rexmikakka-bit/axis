@@ -40,6 +40,8 @@ export default {
   "Abyssal (mutated) module": "深渊（变异）装备",
   "Abyssal Rolls (mutated modules)": "深渊改造（变异装备）",
   "Abyssal module — value depends on the roll, not the base type": "深渊装备——数值取决于改造结果，而非基础型号",
+  "Mutamarket asking price for this roll": "该词条在 Mutamarket 的挂单价",
+  "Your own abyssal module — no market price": "你自己的深渊模块 — 无市场价格",
   "Active": "激活",
   "Active squadron (in space)": "出击中的中队（太空中）",
   "Active:": "激活：",

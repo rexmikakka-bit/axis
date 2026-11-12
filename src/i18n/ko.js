@@ -41,6 +41,8 @@ export default {
   "Abyssal (mutated) module": "어비설(변이) 모듈",
   "Abyssal Rolls (mutated modules)": "어비설 롤(변이 모듈)",
   "Abyssal module — value depends on the roll, not the base type": "어비설 모듈 — 값은 기본 타입이 아니라 롤에 따라 결정됩니다",
+  "Mutamarket asking price for this roll": "이 롤의 Mutamarket 판매 호가",
+  "Your own abyssal module — no market price": "보유 중인 어비셜 모듈 — 시장 가격 없음",
   "Active": "활성",
   "Active squadron (in space)": "출격 중인 편대(우주)",
   "Active:": "활성:",

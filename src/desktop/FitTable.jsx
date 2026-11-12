@@ -16,6 +16,8 @@ import { abyssalGrade, mutaplasmidName } from "../lib/eft-export.js";
 import { parsePastedModule, resolveItemLink, pastedSlot, moduleToText } from "../lib/abyssal-paste.js";
 import { checkFitRestriction } from "../components/tabs.jsx";
 import { getCachedPrices } from "../prices.js";
+import { useAbyssalData } from "../lib/use-abyssal-data.js";
+import { abyssalValue } from "../lib/abyssal-value.js";
 
 // The desktop Fitting window's table (docs/desktop-handoff.md section 3, "Fitting"). Drawn by
 // FitTab through its `TableView` prop: FitTab keeps every piece of editing logic — the module menu,
@@ -184,6 +186,10 @@ export function FitTable({ api }) {
             openMenu, openEmpty, openSubsystem, setRowState, startRowDrag, moveRowDrag, endRowDrag, dragUI, rowRefs,
             removeMod, duplicateMod, duplicateRoom, updateMod, hardpointRoom, fillHardpoints,
             undo, redo, undoDepth, redoDepth, grouped, setGrouped } = api;
+  // An abyssal module's ISK cell: its Mutamarket asking price when it was fitted from a listing
+  // (lib/abyssal-value.js, the valuation the Stats tab, the Price window and the snapshot card use).
+  // An owned roll or an unknown one has no market price, and says why.
+  const abyssalData = useAbyssalData(slots);
   // A damage module's own DPS bonus, as its show-info reads: damage multiplier over rate-of-fire
   // multiplier (a Republic Fleet Gyrostabilizer's 1.12 / 0.89 is +25.8%), the same on every copy and
   // before stacking penalties. From the engine's item, so an abyssal roll shows its own figure. A drone
@@ -462,6 +468,7 @@ export function FitTable({ api }) {
                   const rng = rangeOf(e, row), info = infoOf(e, perCycle) ?? (bonus > 0.0005 ? { text: `+${(bonus * 100).toFixed(1)}%`, color: C.accent,
                     title: t("{pct}% more DPS per module, before stacking penalties", { pct: (bonus * 100).toFixed(1) }) } : null);
                   const price = row.mutaplasmid ? null : priceOf(row.typeID);
+                  const abyssalVal = row.mutaplasmid ? abyssalValue(row, abyssalData) : null;
                   const isDragSrc = dragUI?.secKey === sec.key && dragUI?.fromIdx === rowIdx;
                   const isDragOver = dragUI?.secKey === sec.key && dragUI?.overIdx === rowIdx && dragUI?.fromIdx !== rowIdx;
                   const charge = row.ammo ? row.ammo.replace(/\s*\(\d+\)$/, "") : null;
@@ -522,7 +529,11 @@ export function FitTable({ api }) {
                       <span style={{ ...cell, color: info?.color ?? C.textMid, cursor: info?.toggle ? "pointer" : undefined }} title={info?.title ?? info?.text}
                         onClick={info?.toggle ? (ev => { ev.stopPropagation(); togglePerCycle(); }) : undefined}
                         onDoubleClick={info?.toggle ? (ev => ev.stopPropagation()) : undefined}>{info?.node ?? info?.text ?? ""}</span>
-                      <span style={{ ...cell, color: C.textMid }} title={row.mutaplasmid ? t("Abyssal module — value depends on the roll, not the base type") : undefined}>{row.mutaplasmid ? "?" : isk(price)}</span>
+                      {/* A Mutamarket price is coloured like the abyssal grade beside the name: it is the
+                          roll's own asking price, not the base type's market price. */}
+                      {abyssalVal?.price != null
+                        ? <span style={{ ...cell, color: resourceColor("pg") }} title={t("Mutamarket asking price for this roll")}>{isk(abyssalVal.price)}</span>
+                        : <span style={{ ...cell, color: C.textMid }} title={row.mutaplasmid ? (abyssalVal?.source === "owned" || abyssalVal?.source === "custom" ? t("Your own abyssal module — no market price") : t("Abyssal module — value depends on the roll, not the base type")) : undefined}>{row.mutaplasmid ? "?" : isk(price)}</span>}
                       <span onPointerDown={sec.key === "subsystems" ? undefined : startRowDrag(sec.key, rowIdx)} onPointerMove={moveRowDrag} onPointerUp={endRowDrag} onPointerCancel={endRowDrag}
                         onClick={ev => ev.stopPropagation()} title={t("Drag to reorder")}
                         style={{ cursor: sec.key === "subsystems" ? "default" : "grab", touchAction: "none", color: C.textMid, textAlign: "center", fontSize: 13 }}>{sec.key === "subsystems" ? "" : "≡"}</span>

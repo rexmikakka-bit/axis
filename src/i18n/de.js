@@ -46,6 +46,8 @@ export default {
   "Abyssal (mutated) module": "Abyssal-Modul (mutiert)",
   "Abyssal Rolls (mutated modules)": "Abyssal-Rolls (mutierte Module)",
   "Abyssal module — value depends on the roll, not the base type": "Abyssal-Modul — der Wert hängt vom Roll ab, nicht vom Basistyp",
+  "Mutamarket asking price for this roll": "Mutamarket-Angebotspreis für diesen Roll",
+  "Your own abyssal module — no market price": "Dein eigenes Abyssal-Modul — kein Marktpreis",
   "Active": "Aktiv",
   "Active squadron (in space)": "Aktive Staffel (im All)",
   "Active:": "Aktiv:",

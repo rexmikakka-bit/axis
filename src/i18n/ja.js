@@ -42,6 +42,8 @@ export default {
   "Abyssal (mutated) module": "アビサル（変異）モジュール",
   "Abyssal Rolls (mutated modules)": "アビサルロール（変異モジュール）",
   "Abyssal module — value depends on the roll, not the base type": "アビサルモジュール — 値は基本タイプではなくロールで決まります",
+  "Mutamarket asking price for this roll": "このロールのMutamarket出品価格",
+  "Your own abyssal module — no market price": "自分のアビサルモジュール — 市場価格なし",
   "Active": "アクティブ",
   "Active squadron (in space)": "出撃中の飛行隊（宇宙空間）",
   "Active:": "アクティブ:",
