@@ -7,9 +7,9 @@ import { currentDrag, draggedItem, isItemDrag, currentFitDrag, draggedFit, isFit
 // window wired in), for any window to add to or take drops for. Provided by DesktopApp's
 // useWindowContents, so a popped-out window gets one too.
 //
-// value: {add(item, to?, extra?), accepts(to, item), browse(to, {slot}?), hasFighters}
+// value: {add(item, to?, extra?), accepts(to, item), browse(to, {slot}?), showInMarket(typeID), hasFighters}
 
-const NOOP = { add: () => null, accepts: () => false, browse: () => {}, hasFighters: false };
+const NOOP = { add: () => null, accepts: () => false, browse: () => {}, showInMarket: () => {}, hasFighters: false };
 export const ItemsContext = createContext(NOOP);
 export const useItems = () => useContext(ItemsContext);
 

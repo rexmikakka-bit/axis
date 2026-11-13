@@ -62,6 +62,7 @@ export default function DronesPanel({ s, stats }) {
       { label: t("Show info"), onSelect: () => open(d, "info") },
       { label: t("Variations"), onSelect: () => open(d, "variations") },
       hasMuta && { label: t("Mutate"), onSelect: () => open(d, "mutate") },
+      (d.typeID ?? tidByName(d.name)) && { label: t("Show in market"), onSelect: () => itemOps.showInMarket(d.typeID ?? tidByName(d.name)) },
       { divider: true },
       { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(d.id) },
     ];

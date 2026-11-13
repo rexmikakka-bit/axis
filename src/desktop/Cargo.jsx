@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { TYPES, tidByName } from "../calc.js";
@@ -69,6 +70,7 @@ export default function CargoPanel({ s, capacity }) {
           const rp = rs.rowProps(e.id, { target: tid ? typeTarget(tid) : undefined, onOpen: () => remove(e.id), items: [
             { label: t("Show info"), disabled: !tid, onSelect: () => setInfo(tid) },
             variants && { label: t("Variations…"), onSelect: () => insp.inspect(typeTarget(tid), "variations"), submenu: variants },
+            tid && { label: t("Show in market"), onSelect: () => itemOps.showInMarket(tid) },
             { divider: true },
             { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(e.id) },
           ] });
@@ -76,9 +78,7 @@ export default function CargoPanel({ s, capacity }) {
             <div key={e.id} {...rp} title={`${e.name} · ${vol.toLocaleString(undefined, { maximumFractionDigits: 1 })} m³`} style={{ ...rp.style, display: "grid", gridTemplateColumns: cols, columnGap: 8, alignItems: "center", minHeight: 28, padding: "0 12px", borderBottom: `1px solid ${C.border}99` }}>
               <span>{tid && <img className="eve-icon" src={eveIcon(tid, 32)} width={18} height={18} alt="" onError={ev => { ev.target.style.visibility = "hidden"; }} />}</span>
               <span title={e.name} style={{ fontSize: TYPE.label, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</span>
-              <input type="text" inputMode="numeric" value={e.qty} onChange={ev => { const n = parseInt(ev.target.value.replace(/[^0-9]/g, ""), 10); if (n > 0) setQty(e.id, n); }} aria-label={t("Quantity of {name}", { name: e.name })}
-                style={{ width: "100%", boxSizing: "border-box", height: 24, textAlign: "right", fontSize: TYPE.label, padding: "0 4px",
-                         background: C.bg, border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, fontVariantNumeric: "tabular-nums" }} />
+              <QtyInput qty={e.qty} onSet={(n) => setQty(e.id, n)} label={t("Quantity of {name}", { name: e.name })} />
 
               <button type="button" onClick={() => remove(e.id)} aria-label={t("Remove {name}", { name: e.name })} title={t("Remove")}
                 style={{ border: "none", background: "none", color: C.textMid, cursor: "pointer", fontSize: 14, padding: 0 }}>×</button>
@@ -88,5 +88,19 @@ export default function CargoPanel({ s, capacity }) {
       </div>
       {rs.view}
     </div>
+  );
+}
+
+// The quantity cell. It can be cleared while typing (select the 1, type 3); each number typed applies
+// at once, and leaving it empty puts the stack's quantity back.
+function QtyInput({ qty, onSet, label }) {
+  const [draft, setDraft] = useState(null);
+  return (
+    <input type="text" inputMode="numeric" value={draft ?? qty} aria-label={label}
+      onChange={ev => { const v = ev.target.value.replace(/[^0-9]/g, ""); setDraft(v); const n = parseInt(v, 10); if (n > 0) onSet(n); }}
+      onFocus={ev => ev.target.select()} onBlur={() => setDraft(null)}
+      onKeyDown={ev => { if (ev.key === "Enter" || ev.key === "Escape") ev.currentTarget.blur(); }}
+      style={{ width: "100%", boxSizing: "border-box", height: 24, textAlign: "right", fontSize: TYPE.label, padding: "0 4px",
+               background: C.bg, border: `1px solid ${C.border}`, borderRadius: 4, color: C.text, fontVariantNumeric: "tabular-nums" }} />
   );
 }

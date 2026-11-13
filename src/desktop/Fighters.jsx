@@ -83,6 +83,7 @@ export default function FightersPanel({ s, stats, shipFighter }) {
               { divider: true },
               { label: t("Show info"), disabled: !tid, onSelect: () => insp.inspect(typeTarget(tid), "info") },
               { label: t("Variations"), disabled: !tid, onSelect: () => insp.inspect(typeTarget(tid), "variations") },
+              tid && { label: t("Show in market"), onSelect: () => itemOps.showInMarket(tid) },
               { divider: true },
               { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(f.id) },
             ],

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { C } from "../theme.js";
 import { t } from "../lib/i18n.js";
 import { tidByName, calcRangeFactor, stackingPenalty, jamChanceFrom, computeCommandBursts } from "../calc.js";
@@ -11,6 +11,7 @@ import { Empty, TYPE } from "./kit.jsx";
 import { useRowSelect } from "./ContextMenu.jsx";
 import { tabFits } from "./tab-fits.js";
 import { useInspect } from "./inspect-context.jsx";
+import { fetchPrices } from "../prices.js";
 import { boosterTarget } from "./inspect.js";
 import { useItemDrop, useFitDrop, DropHint, useItems } from "./items-context.jsx";
 import { ContextMenu } from "./ContextMenu.jsx";
@@ -85,12 +86,24 @@ function SideEffects({ booster, onUpdate }) {
   );
 }
 
+const isk = (n) => n == null ? "—" : n >= 1e9 ? `${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n));
+
 export function BoostersPanel({ s }) {
   // "+ Booster" opens the Browser narrowed to boosters; its double-click (or a drag) lands here.
   const itemOps = useItems();
   const insp = useInspect();
   const rs = useRowSelect();
   const drop = useItemDrop("boosters");
+  // Each booster's price at the chosen hub, as the Fitting window prices its modules.
+  const ids = (s.boosters ?? []).map(b => tidByName(b.name)).filter(Boolean);
+  const idKey = ids.join(",");
+  const [prices, setPrices] = useState(() => new Map());
+  useEffect(() => {
+    if (!ids.length) return;
+    let live = true;
+    fetchPrices(ids, s.priceHub, s.priceSource).then(m => { if (live && m) setPrices(new Map([...m].map(([k, v]) => [Number(k), v]))); }).catch(() => {});
+    return () => { live = false; };
+  }, [idKey, s.priceHub, s.priceSource]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!s.activeFit?.ship) return <Empty>{t("Open a fit from the Browser to see it here.")}</Empty>;
   const list = [...(s.boosters ?? [])].sort((a, b) => boosterSlotOf(a) - boosterSlotOf(b));
   const set = (fn) => s.setBoosters(prev => fn(prev ?? []));
@@ -114,6 +127,8 @@ export function BoostersPanel({ s }) {
               { divider: true },
               { label: t("Show info"), disabled: !known, onSelect: () => show(b, "info") },
               { label: t("Variations"), disabled: !known, onSelect: () => show(b, "variations") },
+              known && { label: t("Show in market"), onSelect: () => itemOps.showInMarket(tidByName(b.name)) },
+              known && { label: t("Add to cargo"), onSelect: () => itemOps.add({ typeID: tidByName(b.name), name: b.name }, "cargo") },
               { divider: true },
               { label: t("Remove"), hint: t("double-click · Del"), danger: true, onSelect: () => remove(b.id) },
             ],
@@ -130,6 +145,8 @@ export function BoostersPanel({ s }) {
                            : t("No longer in the game. Has no effect.")}
                   </div>
                 </div>
+                {known && <span title={t("Price at {hub}", { hub: s.priceHub ?? "Jita" })}
+                  style={{ fontSize: TYPE.small, color: C.textMid, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{isk(prices.get(Number(tidByName(b.name))))}</span>}
                 <Remove onClick={() => set(bs => bs.filter(x => x.id !== b.id))} label={t("Remove")} />
               </div>
               <SideEffects booster={b} onUpdate={nb => set(bs => bs.map(x => x.id === b.id ? nb : x))} />

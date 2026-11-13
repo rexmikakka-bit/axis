@@ -1640,4 +1640,8 @@ export default {
   "Sort descending": "По убыванию",
   "Hide column": "Скрыть столбец",
   "Merges into the existing tag \"{tag}\"": "Будет объединён с существующим тегом «{tag}»",
+  "Show in market": "Показать на рынке",
+  "Show charge in market": "Показать заряд на рынке",
+  "That item isn't on the market.": "Этого предмета нет на рынке.",
+  "Price at {hub}": "Цена в {hub}",
 };
