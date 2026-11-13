@@ -1688,4 +1688,8 @@ export default {
   "Sort descending": "Absteigend sortieren",
   "Hide column": "Spalte ausblenden",
   "Merges into the existing tag \"{tag}\"": "Wird mit dem vorhandenen Tag „{tag}“ zusammengeführt",
+  "Show in market": "Im Markt anzeigen",
+  "Show charge in market": "Munition im Markt anzeigen",
+  "That item isn't on the market.": "Dieser Gegenstand ist nicht auf dem Markt.",
+  "Price at {hub}": "Preis in {hub}",
 };

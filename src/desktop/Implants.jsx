@@ -141,6 +141,7 @@ export default function ImplantsPanel({ s }) {
                       : [
                           { label: t("Show info"), onSelect: () => showDetail(imp, n, "info") },
                           { label: t("Variations"), onSelect: () => showDetail(imp, n, "variations") },
+                          (imp.typeID ?? tidByName(imp.name)) && { label: t("Show in market"), onSelect: () => itemOps.showInMarket(imp.typeID ?? tidByName(imp.name)) },
                           { label: t("Change implant…"), onSelect: () => browseSlot(n) },
                           implantSetMembers(imp.name) && { label: t("+ {set} set", { set: implantSetMembers(imp.name).setName }), onSelect: () => fitSet(implantSetMembers(imp.name)) },
                           { divider: true },

@@ -89,6 +89,8 @@ export function CargoBrowserSheet({onAdd,onClose,slots,justAdded}){
         }
       }
     }
+    // Nanite Repair Paste, always: any fit can carry it to repair overheat damage.
+    if(!seen.has("Nanite Repair Paste"))seen.set("Nanite Repair Paste",{typeID:28668,name:"Nanite Repair Paste",vol:marketTreeData.t[28668]?.[2]??0.01});
     return Array.from(seen.values()).sort((a,b)=>a.name.localeCompare(b.name));
   })();
 

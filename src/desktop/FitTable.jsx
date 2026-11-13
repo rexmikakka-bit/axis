@@ -352,6 +352,7 @@ export function FitTable({ api }) {
           row.ammo && { label: t("Unload"), danger: true, onSelect: () => unloadFrom(secKey, row) },
         ].filter(Boolean) },
         row.ammo && { label: t("Show charge info…"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, secKey, row.id), "info") },
+        row.ammo && tidByName(bareAmmo(row.ammo)) && { label: t("Show charge in market"), onSelect: () => items.showInMarket(tidByName(bareAmmo(row.ammo))) },
         takesCharges && { divider: true },
         (TYPES[row.typeID] ?? TYPES[String(row.typeID)])?.gn === "Armor Resistance Shift Hardener" && { label: t("Adaptation…"), onSelect: () => inspectRow(secKey, row, "rah") },
         { label: t("Show info…"), onSelect: () => inspectRow(secKey, row, "info") },
@@ -359,6 +360,7 @@ export function FitTable({ api }) {
         // in (the whole row, as the Variations window does); a click on Variations itself opens that window.
         { label: t("Variations…"), onSelect: () => inspectRow(secKey, row, "variations"), submenu: src ? variantItems(secKey, row, src) : undefined },
         mutable && { label: t("Mutate…"), onSelect: () => inspectRow(secKey, row, "mutate") },
+        row.typeID != null && { label: t("Show in market"), onSelect: () => items.showInMarket(row.typeID) },
         { divider: true },
         ...clipboardItems(secKey, row),
         src && duplicateRoom(secKey, src) > 0 && { label: t("Copy to an empty slot"), onSelect: () => duplicateMod(secKey, src, 1) },
@@ -446,6 +448,7 @@ export function FitTable({ api }) {
           ...chargeMenuItems(chargeMenu.row, bareAmmo(chargeMenu.row.ammo), c => loadInto(chargeMenu.secKey, chargeMenu.row, c)),
           { divider: true },
           { label: t("Show charge info…"), hint: t("double-click"), onSelect: () => insp.inspect(chargeTarget(insp.fitRef, chargeMenu.secKey, chargeMenu.row.id), "info") },
+          tidByName(bareAmmo(chargeMenu.row.ammo)) && { label: t("Show in market"), onSelect: () => items.showInMarket(tidByName(bareAmmo(chargeMenu.row.ammo))) },
           { divider: true },
           { label: chargeMenu.row.count > 1 ? t("Unload charge from all {n}", { n: chargeMenu.row.count }) : t("Unload charge"), danger: true, onSelect: () => chargeMenu.unload() },
         ]} />}

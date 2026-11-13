@@ -1703,4 +1703,8 @@ export default {
   "Sort descending": "Orden descendente",
   "Hide column": "Ocultar columna",
   "Merges into the existing tag \"{tag}\"": "Se fusiona con la etiqueta existente «{tag}»",
+  "Show in market": "Mostrar en el mercado",
+  "Show charge in market": "Mostrar la carga en el mercado",
+  "That item isn't on the market.": "Ese objeto no está en el mercado.",
+  "Price at {hub}": "Precio en {hub}",
 };

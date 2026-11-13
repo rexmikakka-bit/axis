@@ -1633,4 +1633,8 @@ export default {
   "Sort descending": "降序排列",
   "Hide column": "隐藏列",
   "Merges into the existing tag \"{tag}\"": "将合并到现有标签“{tag}”",
+  "Show in market": "在市场中显示",
+  "Show charge in market": "在市场中显示弹药",
+  "That item isn't on the market.": "该物品不在市场上。",
+  "Price at {hub}": "{hub}价格",
 };

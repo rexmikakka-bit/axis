@@ -1638,4 +1638,8 @@ export default {
   "Sort descending": "내림차순 정렬",
   "Hide column": "열 숨기기",
   "Merges into the existing tag \"{tag}\"": "기존 태그 \"{tag}\"에 병합됩니다",
+  "Show in market": "마켓에서 보기",
+  "Show charge in market": "탄약을 마켓에서 보기",
+  "That item isn't on the market.": "이 아이템은 마켓에 없습니다.",
+  "Price at {hub}": "{hub} 가격",
 };

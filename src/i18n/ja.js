@@ -1639,4 +1639,8 @@ export default {
   "Sort descending": "降順で並べ替え",
   "Hide column": "列を非表示",
   "Merges into the existing tag \"{tag}\"": "既存のタグ「{tag}」に統合されます",
+  "Show in market": "マーケットで表示",
+  "Show charge in market": "チャージをマーケットで表示",
+  "That item isn't on the market.": "このアイテムはマーケットにありません。",
+  "Price at {hub}": "{hub}での価格",
 };
