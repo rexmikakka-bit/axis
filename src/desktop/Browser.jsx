@@ -469,7 +469,7 @@ function ShipsPane({ s }) {
   const tree = useMemo(() => buildShipTaxonomy(), []);
   const [open, setOpen] = useState(() => new Set());
   const [search, setSearch] = useState("");
-  const [renaming, setRenaming] = useState(null);   // {ship, id, name}
+  const [renaming, setRenaming] = useState(null);   // {ship, id, at}: the fit, and which of its rows is the field
   const [ctx, setCtx] = useState(null);   // {x, y, items}
   const openCtx = (e, items) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, items }); };
   const fitsDB = s.fitsDB ?? {};
@@ -565,7 +565,11 @@ function ShipsPane({ s }) {
   const fitRow = (ship, fit, depth, withShip = false, hideTag = null) => {
     const tags = tagsOf(fit).filter(x => !hideTag || tagKey(x) !== tagKey(hideTag));
     const on = s.activeFit?.ship === ship && s.activeFit?.fitName === fit.name;
-    if (renaming?.ship === ship && renaming?.id === fit.id) return (
+    // A fit can be listed more than once (its hull, Recent fits, each of its tags). Only the row
+    // Rename was picked on becomes the field: two autofocused fields would take focus from each
+    // other, and the blur ended the rename before a key was typed.
+    const at = hideTag ? `tag:${hideTag}` : withShip ? "recent" : "hull";
+    if (renaming?.ship === ship && renaming?.id === fit.id && renaming.at === at) return (
       <div key={fit.id} style={{ padding: `2px 10px 2px ${10 + depth * INDENT + 16}px` }}>
         <input autoFocus defaultValue={fit.name} aria-label={t("Fit name")}
           onKeyDown={e => { if (e.key === "Enter") rename(ship, fit.id, e.target.value); if (e.key === "Escape") setRenaming(null); }}
@@ -576,7 +580,7 @@ function ShipsPane({ s }) {
     const actions = [
       { label: t("Open"), onSelect: () => s.loadFit(ship, fit.name) },
       { label: t("Open in New Tab"), onSelect: () => s.openFitInNewTab(ship, fit.name) },
-      { label: t("Rename"), onSelect: () => setRenaming({ ship, id: fit.id }) },
+      { label: t("Rename"), onSelect: () => setRenaming({ ship, id: fit.id, at }) },
       { label: t("Duplicate"), onSelect: () => duplicate(ship, fit) },
       { label: `${t("Tags")}…`, onSelect: () => setTagFit({ ship, id: fit.id }) },
       { label: t("Ship info"), icon: eveIcon(tidByName(ship), 32), onSelect: () => insp.inspect(typeTarget(tidByName(ship)), "info") },
