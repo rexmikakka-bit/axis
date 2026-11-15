@@ -3926,9 +3926,12 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       }
       droneDps.total    += volley / cycleS;
       droneVolley.total += volley;
-      // Damage-graph contributor: full DPS up to control range, zero beyond (drones orbit the
-      // target, so range-to-target doesn't reduce their damage — only losing control does).
-      graphWeapons.push({ kind:'drone', volley:{...dmg}, cycleS, controlRange: droneControlRange });
+      // Damage-graph contributor. The turret stats are for a drone that can't keep up with its
+      // target (and every sentry): the graph then shoots it from the ship, as pyfa does.
+      graphWeapons.push({ kind:'drone', volley:{...dmg}, cycleS, controlRange: droneControlRange,
+        speed: item.get('maxVelocity') ?? 0, radius: item.get('radius') ?? 0,
+        optimal: item.get('maxRange') ?? 0, falloff: item.get('falloff') ?? 0,
+        tracking: item.get('trackingSpeed') ?? 0, optimalSigRadius: item.get('optimalSigRadius') ?? 0 });
     } else if (raw) {
       // Fallback for drones not resolvable as engine FitItems (raw type data, no bonuses).
       const typeData = getDroneByName(raw.name);
@@ -3942,6 +3945,8 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       droneVolley.total += volley;
       const _dm=dmgMult*qty;
       graphWeapons.push({ kind:'drone', cycleS, controlRange: droneControlRange,
+        speed: da.maxVelocity ?? 0, radius: da.radius ?? 0, optimal: da.maxRange ?? 0, falloff: da.falloff ?? 0,
+        tracking: da.trackingSpeed ?? 0, optimalSigRadius: da.optimalSigRadius ?? 0,
         volley:{ em:(da.emDamage??0)*_dm, th:(da.thermalDamage??0)*_dm, kin:(da.kineticDamage??0)*_dm, exp:(da.explosiveDamage??0)*_dm } });
     }
   }
