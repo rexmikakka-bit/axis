@@ -37,6 +37,7 @@ import { useBackHandler } from "../lib/use-back-handler.js";
 import { useSwipeBack } from "../lib/use-swipe-back.js";
 import { t } from "../lib/i18n.js";
 import { parseItemLink, resolveItemLink } from "../lib/abyssal-paste.js";
+import { synchronizerBonuses } from "../lib/synchronizer.js";
 let _typeDescsCache = null;
 function useTypeDescriptions() {
   const [descs, setDescs] = useState(null);
@@ -1362,6 +1363,32 @@ export function ModifierBreakdown({attr, ex, bleed, fmt, desk}) {
 // `hideName` is for the one host that already prints the name in a sheet header of its own
 // (ItemInfoSheet) — the icon, group and badges still earn their place, the name would just be the
 // same string twice at the same size, one line apart.
+// A Synchronizer rig's bonuses as plain lines ("Damage (hybrid turrets) +5%"), with how much each
+// fitted faction module adds. On a fitted rig the numbers are the fit's own: the engine has already
+// added the faction modules, and Synchronization Rigging has already cut the drawback.
+function SynchronizerBonuses({sync, attrs, eng}) {
+  const pct = (v) => `${v > 0 ? "+" : "−"}${Math.abs(Math.round(v * 10) / 10)}%`;
+  const val = (k) => eng ? eng.get(k) : attrs[k];
+  const count = eng ? Math.round(eng.get(sync.setAttr) ?? 0) : null;
+  const line = (label, v, color) => (
+    <div key={label} style={{display:'grid',gridTemplateColumns:'1fr auto',gap:10,alignItems:'baseline',padding:'5px 0',borderBottom:`1px solid ${C.border}`}}>
+      <span style={{fontSize:12,color:C.textMid,minWidth:0,wordBreak:'break-word'}}>{label}</span>
+      <span style={{fontSize:12,fontWeight:600,textAlign:'right',fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap',color}}>{pct(v)}</span>
+    </div>
+  );
+  return (
+    <div style={{marginBottom:12}}>
+      <div style={{fontSize:10,fontWeight:700,color:C.textMute,textTransform:'uppercase',letterSpacing:.5,marginBottom:4}}>{t("Synchronizer bonuses")}</div>
+      <div style={{fontSize:11.5,color:C.textMid,lineHeight:1.45,marginBottom:4}}>
+        {t("Each {faction} module fitted adds {n}% to every bonus.", {faction: sync.faction, n: sync.perModule})}
+        {count != null && <> {t("This fit has {n}.", {n: count})}</>}
+      </div>
+      {sync.bonuses.map(b => line(b.label, b.sign * val(b.attr), C.rig))}
+      {sync.drawback && line(t("{what} (drawback)", {what: sync.drawback.label}), val(sync.drawback.attr), C.danger)}
+    </div>
+  );
+}
+
 function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, rolled, bleed=14, hideName,priceContent}) {
   const typeDescriptions = useTypeDescriptions();
   // Which rows are showing their modifier breakdown, and the traced twin of `item` that supplies it.
@@ -1404,11 +1431,16 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
     }
   }
 
+  // A Synchronizer's bonuses, spelled out in their own section (lib/synchronizer.js); the raw
+  // attributes behind them are left out of the list below rather than shown twice.
+  const sync = synchronizerBonuses(typeID);
+  const syncKeys = new Set(sync?.attrs ?? []);
+
   // Build section rows
-  const shownKeys = new Set();
+  const shownKeys = new Set(syncKeys);
   const sections = [];
   for (const sec of INFO_SECTIONS) {
-    const rows = sec.keys.filter(k => attrs[k] != null && !INFO_HIDDEN.has(k) && !resistKeys.has(k));
+    const rows = sec.keys.filter(k => attrs[k] != null && !INFO_HIDDEN.has(k) && !resistKeys.has(k) && !syncKeys.has(k));
     if (rows.length) { sections.push({id:sec.id, label:sec.label(), rows}); rows.forEach(k=>shownKeys.add(k)); }
   }
   resistKeys.forEach(k => shownKeys.add(k));
@@ -1556,6 +1588,7 @@ function ItemInfoPanel({typeID, item, mutaplasmid, overrides,baseOverrides, roll
           </div>
         </div>
       )}
+      {sync && <SynchronizerBonuses sync={sync} attrs={attrs} eng={eng}/>}
       {/* Base resistances — right under Required Skills, same slot on every item that has them,
           rather than wherever Shield happened to fall in the attribute section order. */}
       {resistLayers.length > 0 && (
