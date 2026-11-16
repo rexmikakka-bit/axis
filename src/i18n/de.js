@@ -929,7 +929,6 @@ export default {
   "{mode} Mode": "Modus {mode}",
   "{mods} modules": { one: "{mods} Modul", other: "{mods} Module" },
   "{name} info": "Infos zu {name}",
-  "{n} attrs": { one: "{n} Attr.", other: "{n} Attr." },
   "{n} boosters": { one: "{n} Booster", other: "{n} Booster" },
   "{n} cargo": "{n} Frachtposten",
   "{n} drone types": { one: "{n} Drohnentyp", other: "{n} Drohnentypen" },

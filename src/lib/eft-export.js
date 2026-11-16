@@ -44,6 +44,12 @@ export function mutaplasmidName(mutaID) {
 // of the word "Drone" anywhere in the name — "Radical Drone Damage Amplifier Mutaplasmid" is a
 // MODULE mutaplasmid (for the Drone Damage Amplifier module) and must still return "Radical".
 export function abyssalGrade(mutaID) {
+  return mutaplasmidGrade(mutaID)?.replace(/^Glorified /, "G. ") ?? null;
+}
+
+// The same word, with "Glorified" spelled out: what the Mutate picker lists, where the module the
+// mutaplasmid is for is already on screen.
+export function mutaplasmidGrade(mutaID) {
   if (!mutaID) return null;
   const words = (mutaplasmidName(mutaID) ?? "").replace(/ Mutaplasmid$/, "").split(" ");
   let glorified = false;
@@ -55,8 +61,8 @@ export function abyssalGrade(mutaID) {
   } else {
     tag = words[0] || null;
   }
-  if (!tag) return glorified ? "G. Abyssal" : "Abyssal";
-  return glorified ? `G. ${tag}` : tag;
+  if (!tag) return glorified ? "Glorified Abyssal" : "Abyssal";
+  return glorified ? `Glorified ${tag}` : tag;
 }
 
 // EFT is a sequence of SECTIONS separated by two blank lines, each of which may hold sub-sections

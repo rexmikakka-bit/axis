@@ -943,7 +943,6 @@ export default {
   "{mode} Mode": "Mode {mode}",
   "{mods} modules": { one: "{mods} module", other: "{mods} modules" },
   "{name} info": "Infos sur {name}",
-  "{n} attrs": { one: "{n} attr.", other: "{n} attr." },
   "{n} boosters": { one: "{n} booster", other: "{n} boosters" },
   "{n} cargo": "{n} en soute",
   "{n} drone types": { one: "{n} type de drone", other: "{n} types de drones" },

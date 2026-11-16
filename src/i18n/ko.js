@@ -883,7 +883,6 @@ export default {
   "{mode} Mode": "{mode} 모드",
   "{mods} modules": "모듈 {mods}개",
   "{name} info": "「{name}」 정보",
-  "{n} attrs": "속성 {n}개",
   "{n} boosters": "부스터 {n}개",
   "{n} cargo": "화물 {n}개",
   "{n} drone types": "드론 {n}종",

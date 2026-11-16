@@ -884,7 +884,6 @@ export default {
   "{mode} Mode": "{mode} モード",
   "{mods} modules": "{mods} 個のモジュール",
   "{name} info": "「{name}」の情報",
-  "{n} attrs": "{n} 件の属性",
   "{n} boosters": "{n} 個のブースター",
   "{n} cargo": "カーゴ {n} 件",
   "{n} drone types": "{n} 種類のドローン",

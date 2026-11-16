@@ -885,7 +885,6 @@ export default {
   "{mode} Mode": "Режим {mode}",
   "{mods} modules": { one: "{mods} модуль", few: "{mods} модуля", many: "{mods} модулей", other: "{mods} модуля" },
   "{name} info": "О «{name}»",
-  "{n} attrs": { one: "{n} атр.", few: "{n} атр.", many: "{n} атр.", other: "{n} атр." },
   "{n} boosters": { one: "{n} бустер", few: "{n} бустера", many: "{n} бустеров", other: "{n} бустера" },
   "{n} cargo": "{n} в трюме",
   "{n} drone types": { one: "{n} тип дронов", few: "{n} типа дронов", many: "{n} типов дронов", other: "{n} типа дронов" },

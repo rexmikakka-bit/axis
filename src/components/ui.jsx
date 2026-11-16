@@ -30,7 +30,7 @@ import { jargonSearch } from "../lib/jargon.js";
 import { fmtResource, fmtPriceAge, fmtMarginPct } from "../lib/fmt.js";
 import { fetchPrices, priceAsOf } from "../prices.js";
 import { sortCompareRows, directionOf, filterLockedRows, bestFirstDirection } from "../lib/compare.js";
-import { abyssalGrade } from "../lib/eft-export.js";
+import { abyssalGrade, mutaplasmidGrade } from "../lib/eft-export.js";
 import { SkillMark } from "./skill-mark.jsx";
 import { useSheetDrag, sheetTransform, SheetGrabber, SHEET_EXIT_MS, dismissKeyboardOnScroll } from "../lib/use-sheet-drag.jsx";
 import { useBackHandler } from "../lib/use-back-handler.js";
@@ -2528,11 +2528,22 @@ function MutaplasmidEditor({mod,onUpdateMod}){
     if(!applicable.length) return <div style={{padding:"16px",fontSize:12,color:C.textMute,textAlign:"center"}}>{t("No mutaplasmids apply to this module.")}</div>;
     return(<div style={{padding:"10px 12px"}}>
       <div style={{fontSize:11,color:C.textMid,marginBottom:8}}>{t("Apply a mutaplasmid to mutate this module's stats:")}</div>
-      {applicable.map(mid=>{const m=mutaplasmidData[mid];return(
-        <button key={mid} onClick={()=>{pushHistory('apply');const ranges=mutaAttrRanges(mid,mod.typeID);const mutations={};for(const r of ranges)mutations[r.name]=r.base;onUpdateMod({...mod,mutaplasmid:mid,mutations});}}
+      {/* Weakest first, by how far the mutaplasmid can move the stats (the summed width of its
+          roll ranges): Decayed, Glorified Decayed, Gravid, ... A drone's families (Firepower,
+          Navigation, ...) differ in width only by which stat they favour, so they sort as one grade
+          (Exigent, then Glorified) and alphabetically within it. Each row names only the grade: the
+          module it is for is the one this sheet is open on. */}
+      {(()=>{
+        const spread=mid=>Object.values(mutaplasmidData[mid]?.a||{}).reduce((s,[lo,hi])=>s+(hi-lo),0);
+        const tier=mid=>/^Glorified /.test(mutaplasmidData[mid]?.n??"")?"G":"";
+        const exigent=mid=>/^(Glorified )?Exigent /.test(mutaplasmidData[mid]?.n??"");
+        const key=mid=>exigent(mid)?(tier(mid)?1e3:0):spread(mid);
+        return [...applicable].sort((a,b)=>key(a)-key(b)||String(mutaplasmidGrade(a)).localeCompare(String(mutaplasmidGrade(b))));
+      })().map(mid=>(
+        <button key={mid} title={mutaplasmidData[mid]?.n} onClick={()=>{pushHistory('apply');const ranges=mutaAttrRanges(mid,mod.typeID);const mutations={};for(const r of ranges)mutations[r.name]=r.base;onUpdateMod({...mod,mutaplasmid:mid,mutations});}}
           style={{display:"block",width:"100%",textAlign:"left",padding:"9px 11px",marginBottom:6,background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,color:C.text,fontSize:12,fontWeight:600,cursor:"pointer"}}>
-          {m.n}<span style={{fontSize:9,color:C.textMute,marginLeft:6}}>{t({one:"{n} attr",other:"{n} attrs"},{n:Object.keys(m.a||{}).length})}</span>
-        </button>);})}
+          {mutaplasmidGrade(mid)??mutaplasmidData[mid]?.n}
+        </button>))}
       {/* Reachable from here too: Remove drops you back to this list, and losing a tuned roll to a
           mis-tap is exactly the case undo exists for. */}
       {history.length>0&&<UndoBtn style={{width:"100%",marginTop:4}}/>}

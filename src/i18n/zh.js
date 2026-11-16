@@ -878,7 +878,6 @@ export default {
   "{mode} Mode": "{mode}模式",
   "{mods} modules": "{mods} 件装备",
   "{name} info": "{name} 信息",
-  "{n} attrs": "{n} 项属性",
   "{n} boosters": "{n} 个强化剂",
   "{n} cargo": "{n} 件货物",
   "{n} drone types": "{n} 种无人机",
