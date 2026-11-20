@@ -266,7 +266,18 @@ function generateCurve(catKey,yKey,xKey,params={}){
           return df * calcMissileFactor(w.explosionRadius, w.explosionVelocity, w.aoeDamageReductionFactor,
                                         perfect?0:tgtSpeed, perfect?IDEAL_SIG:tgtSig);
         } else if (w.kind === "drone") {
-          return distM <= (w.controlRange ?? Infinity) ? 1 : 0;
+          // pyfa's "Auto" drone mode (getDroneMult). Past control range a drone takes no orders. A
+          // drone at least as fast as its target is assumed to catch it and hit, since nobody can
+          // say where it actually flies. A slower one, and every sentry, is shot from your ship:
+          // turret math at the slower of your speed and its own, with its range measured from you.
+          if (distM > (w.controlRange ?? Infinity)) return 0;
+          const tv = perfect ? 0 : tgtSpeed;
+          if ((w.speed ?? 0) > 1 && w.speed >= tv) return 1;
+          const cth = calcTurretCTH({ atkSpeed: perfect?0:Math.min(atkSpeed, w.speed ?? 0), atkAngle,
+            atkRadius: w.radius ?? 0, optimal: w.optimal ?? 0, falloff: w.falloff ?? 0, tracking: w.tracking ?? 0,
+            optimalSigRadius: w.optimalSigRadius ?? 0, distance: distM + shipRadius - (w.radius ?? 0),
+            tgtSpeed: tv, tgtAngle, tgtRadius, tgtSig: perfect?IDEAL_SIG:tgtSig });
+          return calcTurretMult(cth);
         } else if (w.kind === "fighter") {
           // A squadron has to be locked to be told what to shoot, so the carrier's own lock range is a
           // hard edge. Inside it, a squadron faster than its target chases it down and fights at its own

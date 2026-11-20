@@ -1802,7 +1802,7 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
   for (const drone of (opts.drones ?? [])) {
     if (anyDroneActive && drone.active !== true) continue;
     const dtid = drone.typeID ?? (typeIDByName(drone.name) ?? tidByName(drone.name));
-    if (dtid && TYPES[dtid]) droneItems.push({ item: fit.addDrone(dtid, drone.mutations), qty: drone.qty ?? drone.count ?? 1, name: drone.name ?? TYPES[dtid].n });
+    if (dtid && TYPES[dtid]) droneItems.push({ item: fit.addDrone(dtid, drone.mutations), qty: drone.qty ?? drone.count ?? 1, name: drone.name ?? TYPES[dtid].n, effects: TYPES[dtid].e ?? [] });
   }
   // The system the SOURCE is sitting in affects what it projects too (a Wolf-Rayet logi reps the
   // same, but a storm changes its damage). Cheap to thread through and wrong to omit.
@@ -1988,6 +1988,47 @@ export function computeProjectedReps(ship, slots, skills = SKILL_DEFAULTS, opts 
       // tab read as 0 — a Basilisk's five remote boosters vanished along with its bots (issue #105).
       // rawPS stays the whole flight's, which is what every per-fit card sums.
       if (amt[kind] > 0) reps.push({ kind, name, rawPS: (amt[kind] / dur) * qty, amount: amt[kind], cycleS: dur, sources: qty, optimal: droneReach, falloff: 0 });
+    }
+  }
+  // Ewar drones: webbing, neutralizing, painting, damping, disrupting and jamming. Told apart by the
+  // EFFECT that does the work (pyfa's Effect6690-6695), not the group: the Huntsman SW-600-I webs
+  // from the 'Hybrid Drone' group. They reach the same way the logistic drones above do, in full
+  // anywhere inside drone control range. pyfa instead holds each drone to its own maxRange from the
+  // ship. One entry per DRONE, so a flight of webs stacks penalised like as many web modules,
+  // which is how pyfa projects them.
+  const DRONE_EWAR = { web: 6690, neut: 6691, paint: 6692, damp: 6693, disrupt: 6694, ecm: 6695 };
+  for (const { item, qty, name, effects } of droneItems) {
+    if (!item) continue;
+    const has = (k) => effects.includes(DRONE_EWAR[k]);
+    const at = { optimal: droneReach, falloff: 0 };
+    for (let i = 0; i < qty; i++) {
+      if (has('web')) {
+        const sf = item.get('speedFactor') ?? 0;
+        if (sf < 0) webs.push({ name, speedFactor: sf, ...at });
+      }
+      if (has('neut')) {
+        const amt = item.get('energyNeutralizerAmount') ?? 0, dur = (item.get('energyNeutralizerDuration') ?? 0) / 1000;
+        if (amt > 0 && dur > 0) neuts.push({ name, gjPerSec: amt / dur, amount: amt, cycleS: dur, ...at });
+      }
+      if (has('paint')) {
+        const sig = item.get('signatureRadiusBonus') ?? 0;
+        if (sig > 0) painters.push({ name, sigBonus: sig, ...at });
+      }
+      if (has('damp')) {
+        const lr = item.get('maxTargetRangeBonus') ?? 0, sr = item.get('scanResolutionBonus') ?? 0;
+        if (lr < 0 || sr < 0) damps.push({ name, lockBonus: lr, scanResBonus: sr, ...at });
+      }
+      if (has('disrupt')) {
+        const trk = item.get('trackingSpeedBonus') ?? 0, opt = item.get('maxRangeBonus') ?? 0, fal = item.get('falloffBonus') ?? 0;
+        if (trk < 0 || opt < 0 || fal < 0) trackDisr.push({ name, tracking: trk, optimalBonus: opt, falloffBonus: fal, ...at });
+      }
+      if (has('ecm')) {
+        const byType = {
+          Gravimetric: item.get('scanGravimetricStrengthBonus') ?? 0, Ladar: item.get('scanLadarStrengthBonus') ?? 0,
+          Magnetometric: item.get('scanMagnetometricStrengthBonus') ?? 0, Radar: item.get('scanRadarStrengthBonus') ?? 0,
+        };
+        if (Object.values(byType).some(v => v > 0)) ecm.push({ name, byType, ...at });
+      }
     }
   }
   return { reps, caps, webs, neuts, painters, scrams, damps, sensorBoosts, trackDisr, guideDisr, ecm, trackBoosts };
@@ -3926,9 +3967,12 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       }
       droneDps.total    += volley / cycleS;
       droneVolley.total += volley;
-      // Damage-graph contributor: full DPS up to control range, zero beyond (drones orbit the
-      // target, so range-to-target doesn't reduce their damage — only losing control does).
-      graphWeapons.push({ kind:'drone', volley:{...dmg}, cycleS, controlRange: droneControlRange });
+      // Damage-graph contributor. The turret stats are for a drone that can't keep up with its
+      // target (and every sentry): the graph then shoots it from the ship, as pyfa does.
+      graphWeapons.push({ kind:'drone', volley:{...dmg}, cycleS, controlRange: droneControlRange,
+        speed: item.get('maxVelocity') ?? 0, radius: item.get('radius') ?? 0,
+        optimal: item.get('maxRange') ?? 0, falloff: item.get('falloff') ?? 0,
+        tracking: item.get('trackingSpeed') ?? 0, optimalSigRadius: item.get('optimalSigRadius') ?? 0 });
     } else if (raw) {
       // Fallback for drones not resolvable as engine FitItems (raw type data, no bonuses).
       const typeData = getDroneByName(raw.name);
@@ -3942,6 +3986,8 @@ function _calcFitStats(ship, slots, drones = [], skills = SKILL_DEFAULTS, opts =
       droneVolley.total += volley;
       const _dm=dmgMult*qty;
       graphWeapons.push({ kind:'drone', cycleS, controlRange: droneControlRange,
+        speed: da.maxVelocity ?? 0, radius: da.radius ?? 0, optimal: da.maxRange ?? 0, falloff: da.falloff ?? 0,
+        tracking: da.trackingSpeed ?? 0, optimalSigRadius: da.optimalSigRadius ?? 0,
         volley:{ em:(da.emDamage??0)*_dm, th:(da.thermalDamage??0)*_dm, kin:(da.kineticDamage??0)*_dm, exp:(da.explosiveDamage??0)*_dm } });
     }
   }

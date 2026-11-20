@@ -969,6 +969,36 @@ function check(group, label, actual, expected, tol = 0.005) {
   for (const [n, eos] of [[1, 229.05], [2, 269.86], [3, 301.42]])
     check('dronemod', `${n}x Drone Damage Amplifier II unchanged`, rack('Ishtar', null, null,
           'Drone Damage Amplifier II', n, ogres).droneDps.total, eos, 0.001);
+
+  // The damage graph applies a drone the way pyfa's getDroneMult does, so its graph entry has to
+  // carry the same engine-resolved speed and turret stats the drone list shows. A sentry has no
+  // speed, which is what sends it down the shot-from-the-ship branch.
+  const gardes = [{ name: 'Garde II', typeID: tid('Garde II'), qty: 2, active: true }];
+  for (const [label, bay] of [['Ogre II', ogres], ['Garde II', gardes]]) {
+    const cs = rack('Ishtar', null, null, 'Drone Damage Amplifier II', 1, bay);
+    const g = cs.graphWeapons.find((w) => w.kind === 'drone'), d = cs.droneInfo[0];
+    for (const k of ['optimal', 'falloff', 'tracking'])
+      check('dronegraph', `${label} graph ${k} matches the drone list`, g[k], d[k], 0);
+    check('dronegraph', `${label} graph speed matches the drone list`, g.speed, d.velocity, 0);
+  }
+  // Not quite zero: CCP stores a sentry's maxVelocity as 0.0000125, which is why pyfa (and the
+  // graph) test speed > 1 rather than speed > 0.
+  // Ewar drones project from the drone bay, one entry per drone so a flight stacks like that many
+  // modules. The Huntsman webs from the 'Hybrid Drone' group, so it is caught by its effect.
+  {
+    const EMPTY = { high: [], mid: [], low: [], rigs: [] };
+    const fl = (n, qty, active = true) => ({ name: n, typeID: tid(n), qty, active });
+    const hunt = computeProjectedReps({ name: 'Vexor', typeID: tid('Vexor') }, EMPTY, undefined, { drones: [fl('Huntsman SW-600-I', 5)] });
+    check('dronegraph', '5 Huntsmans project 5 webs', hunt.webs.length, 5, 0);
+    check('dronegraph', 'a Huntsman webs for -10%', hunt.webs[0].speedFactor, -10, 0);
+    check('dronegraph', 'Huntsmans left in the bay project nothing', computeProjectedReps({ name: 'Vexor', typeID: tid('Vexor') }, EMPTY, undefined,
+          { drones: [fl('Huntsman SW-600-I', 5, false)] }).webs.length, 0, 0);
+    const mix = computeProjectedReps({ name: 'Ishtar', typeID: tid('Ishtar') }, EMPTY, undefined, { drones: [fl('Infiltrator EV-600', 2), fl('Hornet EC-300', 1), fl('Praetor TD-900', 1), fl('Hobgoblin SD-300', 1)] });
+    check('dronegraph', 'neut drones project their drain', mix.neuts.length * mix.neuts[0].amount, 20, 0);
+    check('dronegraph', 'ECM, TD and damp drones each project', mix.ecm.length + mix.trackDisr.length + mix.damps.length, 3, 0);
+  }
+  check('dronegraph', 'a sentry counts as immobile', rack('Ishtar', null, null, 'Drone Damage Amplifier II', 1, gardes)
+        .graphWeapons.find((w) => w.kind === 'drone').speed <= 1 ? 1 : 0, 1, 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
